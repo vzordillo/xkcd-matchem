@@ -1,0 +1,98 @@
+xkcd-matchem
+Copyright 2026 xkcd-matchem contributors
+
+This product includes software developed by the xkcd-matchem contributors
+licensed under the Apache License, Version 2.0 (see LICENSE).
+
+===========================================================================
+Documentation and Gallery Figures
+===========================================================================
+The documentation, tutorials, and gallery figures in `book/` are licensed
+under the Creative Commons Attribution 4.0 International License (CC BY 4.0).
+See `book/LICENSE-CC-BY-4.0.txt`.
+
+===========================================================================
+Bundled Handwritten Fonts (SIL Open Font License 1.1)
+===========================================================================
+This distribution includes the following fonts in
+`src/xkcd_matchem/data/fonts/`:
+
+1. Patrick Hand (`PatrickHand-Regular.ttf`)
+   Copyright 2011 The Patrick Hand Project Authors
+   (Patrick Wagesreiter <pwagesreiter@gmail.com>)
+   Licensed under the SIL Open Font License, Version 1.1.
+   Full license text: `src/xkcd_matchem/data/fonts/PatrickHand-OFL.txt`.
+
+2. Comic Neue (`ComicNeue-Regular.ttf`, `ComicNeue-Bold.ttf`)
+   Copyright 2014 The Comic Neue Project Authors
+   (Craig Rozynski & Hrant Papazian)
+   Licensed under the SIL Open Font License, Version 1.1.
+   Full license text: `src/xkcd_matchem/data/fonts/ComicNeue-OFL.txt`.
+
+===========================================================================
+Scientific Data Sources and Attributions
+===========================================================================
+Physical constants, atomic weights, atomic radii, X-ray scattering form
+factors, and perceptual palettes in `src/xkcd_matchem/data/` and
+`src/xkcd_matchem/style/` compile factual values from the following
+verified primary sources:
+
+1. CODATA Recommended Values of the Fundamental Physical Constants: 2022
+   Mohr, P. J.; Newell, D. B.; Taylor, B. N.; Tiesinga, E. (2025).
+   Reviews of Modern Physics, 97(2), 025002.
+   DOI: 10.1103/RevModPhys.97.025002
+   Primary data table: NIST Standard Reference Database 121
+   (https://physics.nist.gov/constants).
+
+2. Standard Atomic Weights of the Elements (IUPAC / CIAAW)
+   Prohaska, T.; Irrgeher, J.; Benefield, J.; Bohlke, J. K.; Chesson, L. A.;
+   Coplen, T. B.; Ding, T.; Dunn, P. J. H.; Groning, M.; Holden, N. E.;
+   Meijer, H. A. J.; Moossen, H.; Possolo, A.; Takahashi, Y.; Vogl, J.;
+   Walczyk, T.; Wang, J.; Wieser, M. E.; Yoneda, S.; Zhu, X.-K.; Meija, J.
+   (2022). Pure and Applied Chemistry, 94(5), 573-600.
+   DOI: 10.1515/pac-2019-0603
+   With 2024 CIAAW updates for Gd (157.249), Lu (174.96669), and Zr (91.222)
+   from https://ciaaw.org/atomic-weights.htm, and selected radioactive
+   nuclide masses from Prohaska et al. (2022) Table 2.
+
+3. Blue Obelisk Data Repository (BODR) - Elements Dataset
+   Guha, R.; Howard, M. T.; Hutchison, G. R.; Murray-Rust, P.; Rzepa, H.;
+   Steinbeck, C.; Wegner, J.; Willighagen, E. L. (2006).
+   Journal of Chemical Information and Modeling, 46(3), 991-998.
+   DOI: 10.1021/ci050400b
+   Dataset `elements.xml` dedicated to the public domain under CC0 1.0
+   Universal (BODR COPYING).
+
+4. PubChem Periodic Table Cross-Checks
+   Kim, S.; Gindulyte, A.; Zhang, J.; Thiessen, P. A.; Bolton, E. E. (2021).
+   Chemistry Teacher International, 3(1), 57-65.
+   DOI: 10.1515/cti-2020-0006
+
+5. van der Waals Radii
+   - Alvarez, S. (2013). "A cartography of the van der Waals territories".
+     Dalton Transactions, 42(24), 8617-8636. DOI: 10.1039/c3dt50599e
+     (Table 1, Supplementary Table S1, and Section 6 heuristic
+     r_vdw = r_cov + 0.90 A for unmeasured actinides/superheavy elements).
+   - Mantina, M.; Chamberlin, A. C.; Valero, R.; Cramer, C. J.;
+     Truhlar, D. G. (2009). "Consistent van der Waals Radii for the Whole
+     Main Group". The Journal of Physical Chemistry A, 113(19), 5806-5812.
+     DOI: 10.1021/jp8111556 (Table 12 main-group radii, including Po, At,
+     Rn, Fr, Ra).
+
+6. Atomic X-Ray Scattering Form Factors
+   Cromer, D. T.; Mann, J. B. (1967, distributed March 11, 1968).
+   "X-Ray Scattering Factors Computed from Numerical Hartree-Fock Wave
+   Functions". Los Alamos Scientific Laboratory Report LA-3816.
+   DOI: 10.2172/4555098 (Table II Gaussian analytical fits, report pp. 66-69,
+   for neutral He (Z=2) through Lr/Lw (Z=103); neutral H (Z=1) uses the
+   exact analytical spherical 1s form factor (1 + (2*pi*a_0*s)^2)^(-2)).
+
+7. Okabe & Ito Color Universal Design (CUD) Palette
+   Okabe, M.; Ito, K. (2002, modified 2008). "Color Universal Design (CUD):
+   How to make figures and presentations that are friendly to Colorblind
+   people". https://jfly.uni-koeln.de/color/
+
+8. Jmol CPK Element Color Table
+   Jmol Development Team; Herraez, A.; Vervelle, N. "Jmol Colors".
+   https://jmol.sourceforge.net/jscolors/ (JmolConstants.java rev. 14469,
+   with fallback color #FF1493 for elements 110-118 per documentation).

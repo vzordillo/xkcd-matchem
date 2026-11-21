@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package with dev and animation extras
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev,animation]"
+
+      - name: Run Ruff lint check
+        run: ruff check src tests scripts
+
+      - name: Run Pylint on source package
+        run: pylint src/xkcd_matchem
+
+      - name: Run test suite
+        run: pytest -v tests/
+
+      - name: Build sdist and wheel
+        if: matrix.python-version == '3.12'
+        run: python -m build

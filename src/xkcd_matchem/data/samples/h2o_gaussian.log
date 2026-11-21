@@ -1,0 +1,30 @@
+ Entering Gaussian System, Link 0=g16
+ Gaussian 16 Sample Output for xkcd-matchem
+
+                         Standard orientation:
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          8           0        0.000000    0.000000    0.117300
+      2          1           0        0.000000    0.757200   -0.469200
+      3          1           0        0.000000   -0.757200   -0.469200
+ ---------------------------------------------------------------------
+
+ SCF Done:  E(RB3LYP) =  -76.4089534210     A.U. after    7 cycles
+
+ Alpha  occ. eigenvalues --  -19.18520  -1.01240  -0.52840  -0.37120  -0.29450
+ Alpha virt. eigenvalues --    0.03210   0.11480   0.38240   0.46120
+
+ Harmonic frequencies (cm**-1), IR intensities (KM/Mole), Raman scattering
+ activities (A**4/AMU), depolarization ratios for plane and unpolarized
+ incident light, reduced masses (AMU), force constants (mDyne/A),
+ and normal coordinates:
+                     1                      2                      3
+                    A1                     A1                     B2
+ Frequencies --   1638.4500              3812.2000              3921.6500
+ Red. masses --      1.0830                 1.0450                 1.0820
+ Frc consts  --      1.7120                 8.9480                 9.8050
+ IR Inten    --     73.4200                 4.1500                56.8400
+
+ Normal termination of Gaussian 16 at Sat Nov 21 12:00:00 2026.

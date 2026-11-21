@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+title: "xkcd-matchem: Hand-Drawn Visualization for Molecules and Materials"
+message: "If you use xkcd-matchem in your research, please cite it using these metadata."
+type: software
+authors:
+  - alias: vzordillo
+    name: "xkcd-matchem Contributors"
+version: 0.1.0
+date-released: "2026-11-21"
+license: Apache-2.0
+repository-code: "https://github.com/vzordillo/xkcd-matchem"
+url: "https://vzordillo.github.io/xkcd-matchem/"
+keywords:
+  - computational chemistry
+  - materials science
+  - crystal visualization
+  - xkcd
+  - matplotlib
+  - spectroscopy
+  - electronic structure

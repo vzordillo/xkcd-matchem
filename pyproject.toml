@@ -1,0 +1,183 @@
+[build-system]
+requires = ["setuptools>=77.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xkcd-matchem"
+dynamic = ["version"]
+description = "Hand-drawn xkcd-style visualization package for molecules and materials"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md"]
+authors = [
+  {name = "xkcd-matchem Contributors"},
+]
+keywords = [
+  "chemistry",
+  "materials-science",
+  "crystal-structure",
+  "molecular-visualization",
+  "xkcd",
+  "matplotlib",
+  "spectroscopy",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Chemistry",
+  "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = [
+  "numpy>=1.24",
+  "matplotlib>=3.8",
+  "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+ase = ["ase>=3.22"]
+pymatgen = ["pymatgen>=2024.1"]
+qm = ["cclib>=1.8"]
+rdkit = ["rdkit>=2023.9"]
+md = ["MDAnalysis>=2.6", "mdtraj>=1.9"]
+animation = ["pillow>=10.0"]
+docs = [
+  "jupyter-book>=1.0,<2.0",
+  "sphinx-design>=0.5",
+  "sphinx-copybutton>=0.5",
+  "sphinx-thebe>=0.3",
+  "ipykernel>=6.25",
+]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "ruff>=0.4",
+  "pylint>=3.2",
+  "build>=1.2",
+]
+all = [
+  "xkcd-matchem[ase,pymatgen,qm,rdkit,md,animation,docs,dev]",
+]
+
+[project.scripts]
+xkcd-matchem = "xkcd_matchem.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/vzordillo/xkcd-matchem"
+Documentation = "https://vzordillo.github.io/xkcd-matchem/"
+Repository = "https://github.com/vzordillo/xkcd-matchem"
+Issues = "https://github.com/vzordillo/xkcd-matchem/issues"
+
+[tool.setuptools.dynamic]
+version = {attr = "xkcd_matchem._version.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+xkcd_matchem = [
+  "py.typed",
+  "data/fonts/*.ttf",
+  "data/fonts/*OFL.txt",
+  "data/samples/*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 80
+target-version = "py310"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "W",
+  "F",
+  "I",
+  "N",
+  "D",
+  "UP",
+  "B",
+  "A",
+  "S",
+  "BLE",
+  "G",
+  "INP",
+  "PIE",
+  "PT",
+  "Q",
+  "RSE",
+  "RET",
+  "SIM",
+  "TID",
+  "PTH",
+  "PLC",
+  "PLE",
+  "PLR",
+  "PLW",
+]
+ignore = [
+  "PLR2004",
+  "PLR0913",
+  "PLR0917",
+  "PLR0912",
+  "PLR0915",
+  "D203",
+  "D213",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["S101", "D100", "D103", "PLR0914"]
+"scripts/*.py" = ["INP001"]
+"src/xkcd_matchem/io/adapters/*.py" = ["PLC0415"]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+force-sort-within-sections = true
+case-sensitive = false
+known-first-party = ["xkcd_matchem"]
+lines-after-imports = 2
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "double"
+
+[tool.pylint.main]
+py-version = "3.10"
+source-roots = ["src"]
+
+[tool.pylint.format]
+max-line-length = 80
+indent-string = "    "
+max-module-lines = 2000
+
+[tool.pylint.typecheck]
+ignored-modules = ["scipy.spatial"]
+
+[tool.pylint.design]
+max-args = 13
+max-positional-arguments = 13
+max-locals = 28
+max-branches = 18
+max-statements = 70
+max-attributes = 15
+
+[tool.pylint."messages control"]
+disable = [
+  "too-few-public-methods",
+  "duplicate-code",
+  "import-outside-toplevel",
+]

@@ -1,0 +1,52 @@
+title: xkcd-matchem
+author: xkcd-matchem Contributors
+copyright: "2026 xkcd-matchem Contributors (Docs: CC BY 4.0 | Code: Apache-2.0)"
+
+execute:
+  execute_notebooks: force
+  timeout: 120
+
+only_build_toc_files: true
+
+repository:
+  url: https://github.com/vzordillo/xkcd-matchem
+  path_to_book: book
+  branch: main
+
+launch_buttons:
+  notebook_interface: jupyterlab
+  colab_url: "https://colab.research.google.com"
+  binderhub_url: "https://mybinder.org"
+  thebe: true
+
+html:
+  use_repository_button: true
+  use_issues_button: true
+  use_edit_page_button: true
+  home_page_in_navbar: true
+  extra_footer: >-
+    Software licensed under Apache-2.0; tutorials and gallery licensed under
+    CC BY 4.0; bundled handwritten fonts licensed under SIL OFL 1.1.
+
+parse:
+  myst_enable_extensions:
+    - colon_fence
+    - dollarmath
+    - deflist
+    - substitution
+
+sphinx:
+  extra_extensions:
+    - sphinx.ext.autodoc
+    - sphinx.ext.napoleon
+    - sphinx.ext.viewcode
+    - sphinx_design
+    - sphinx_copybutton
+    - sphinx_thebe
+  config:
+    html_theme: sphinx_book_theme
+    autodoc_member_order: bysource
+    napoleon_google_docstring: true
+    napoleon_numpy_docstring: false
+    suppress_warnings:
+      - etoc.toctree
