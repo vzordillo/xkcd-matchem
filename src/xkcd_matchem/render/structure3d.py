@@ -377,6 +377,16 @@ def _draw_queue_item(
             show_label=False,
             zorder=z_layer,
         )
+    elif kind == "cell_edge":
+        ax.plot(
+            [float(payload[0][0]), float(payload[1][0])],  # type: ignore[index]
+            [float(payload[0][1]), float(payload[1][1])],  # type: ignore[index]
+            color=str(plt.rcParams.get("axes.edgecolor", palettes.INK)),
+            linestyle="-",
+            linewidth=payload[2],  # type: ignore[index]
+            solid_capstyle="round",
+            zorder=z_layer,
+        )
 
 
 def _estimate_pt_per_angstrom(
@@ -705,6 +715,48 @@ def _finalize_3d_viewport(
             )
 
 
+_FRONT_CELL_EDGES: tuple[tuple[int, int], ...] = (
+    (0, 1),
+    (0, 2),
+    (0, 3),
+    (1, 4),
+    (1, 5),
+    (2, 4),
+    (2, 6),
+    (3, 5),
+    (3, 6),
+    (4, 7),
+    (5, 7),
+    (6, 7),
+)
+
+
+def _add_front_cell_edges(
+    items: list[tuple[float, str, object]],
+    atoms: structure.AtomsData,
+    cam: geometry.Camera,
+    pivot: np.ndarray,
+    cell_lw: float,
+) -> None:
+    """Adds depth-sorted front cell edges so corner/edge atoms sit cleanly."""
+    if atoms.cell is None:
+        return
+    corners_2d, c_depth, farthest_idx = geometry.cell_corners_projected(
+        atoms.cell, cam, center=pivot
+    )
+    for i_idx, j_idx in _FRONT_CELL_EDGES:
+        if farthest_idx in (i_idx, j_idx):
+            continue
+        edge_depth = 0.5 * float(c_depth[i_idx] + c_depth[j_idx]) - 0.05
+        items.append(
+            (
+                edge_depth,
+                "cell_edge",
+                (corners_2d[i_idx], corners_2d[j_idx], cell_lw),
+            )
+        )
+
+
 def _render_prepared_3d(
     ax: maxes.Axes,
     atoms: structure.AtomsData,
@@ -756,6 +808,9 @@ def _render_prepared_3d(
         polyhedra,
         miller_planes,
     )
+    if draw_box and atoms.cell is not None:
+        _add_front_cell_edges(items, atoms, cam, pivot, widths[3])
+        items.sort(key=lambda entry: entry[0])
     state = (
         atoms,
         xy,
@@ -780,6 +835,7 @@ def _render_prepared_3d(
             linewidth=widths[3],
             draw_back=False,
             draw_front=True,
+            draw_front_edges=False,
             base_plane_color=None,
             cell_axes=box_axes,
             front_zorder=front_z,

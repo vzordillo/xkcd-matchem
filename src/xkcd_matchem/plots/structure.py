@@ -493,6 +493,28 @@ def plot_molecule(
     return ax
 
 
+def _prepare_crystal_display(
+    atoms: structure.AtomsData,
+    style: str,
+    show_bonds: bool | None,
+    boundary_atoms: bool,
+) -> structure.AtomsData:
+    """Completes closed ``[0, 1]^3`` boundary sites and interior bonds."""
+    if not boundary_atoms or atoms.cell is None or not any(atoms.pbc):
+        return atoms
+    completed = atoms.with_boundary_atoms()
+    if len(completed) <= len(atoms):
+        return atoms
+    draw_bonds = (
+        style not in ("spacefill", "polyhedra")
+        if show_bonds is None
+        else show_bonds
+    )
+    if draw_bonds and len(completed) <= 600:
+        completed.bonds = bonding.infer_bonds(completed, use_pbc=False)
+    return completed
+
+
 def plot_crystal(
     source: structure.AtomsData | str | pathlib.Path,
     ax: maxes.Axes | None = None,
@@ -503,27 +525,30 @@ def plot_crystal(
     show_cell: bool | str = True,
     show_labels: bool = False,
     show_legend: bool = True,
-    center_in_cell: bool | None = None,
+    center_in_cell: bool = False,
     miller_planes: Sequence[tuple[int, int, int]] | None = None,
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
     *,
     crystal_axes: bool | str | None = None,
     show_bonds: bool | None = None,
+    boundary_atoms: bool = True,
 ) -> maxes.Axes:
     """Plots a periodic crystal or supercell with unit cell, axes & bonds.
 
-    Pass ``show_bonds=False`` to show pure atomic lattice sites inside the
-    unit cell without any bond network.
+    Preserves exact crystallographic Wyckoff coordinates (``center_in_cell``
+    defaults to ``False``) and displays periodic boundary images on the closed
+    ``[0, 1]^3`` cell faces, edges, and corners (``boundary_atoms=True``).
+    Pass ``show_bonds=False`` to display atomic lattice sites without bonds.
     """
     atoms = _coerce_atoms(source).wrap_positions()
-    should_center = (
-        not miller_planes if center_in_cell is None else center_in_cell
-    )
-    if should_center:
+    if center_in_cell:
         atoms = atoms.center_in_cell()
     if supercell != (1, 1, 1) and atoms.cell is not None:
         atoms = atoms.repeat(supercell)
+    display_atoms = _prepare_crystal_display(
+        atoms, style, show_bonds, boundary_atoms
+    )
     cam: geometry.Camera | str | None = camera
     if cam is None and miller_planes:
         cam = geometry.Camera(azimuth=32.0, elevation=22.0)
@@ -533,7 +558,7 @@ def plot_crystal(
         else:
             theme.style_existing_axes(ax, preset=preset)
         structure3d.render_structure_3d(
-            atoms,
+            display_atoms,
             ax=ax,
             camera=cam,
             style=style,

@@ -659,6 +659,7 @@ def draw_unit_cell_box(
     linewidth: float = 1.35,
     draw_back: bool = True,
     draw_front: bool = True,
+    draw_front_edges: bool = True,
     base_plane_color: str | None = palettes.VACUUM_TINT,
     cell_axes: str = "edges",
     front_zorder: float = 500.0,
@@ -696,17 +697,24 @@ def draw_unit_cell_box(
                     zorder=1.0,
                 )
     if draw_front:
-        for i_idx, j_idx, _ in _CELL_EDGE_PAIRS:
-            if farthest_idx not in (i_idx, j_idx):
-                ax.plot(
-                    [float(corners_2d[i_idx][0]), float(corners_2d[j_idx][0])],
-                    [float(corners_2d[i_idx][1]), float(corners_2d[j_idx][1])],
-                    color=stroke,
-                    linestyle="-",
-                    linewidth=linewidth,
-                    solid_capstyle="round",
-                    zorder=front_zorder,
-                )
+        if draw_front_edges:
+            for i_idx, j_idx, _ in _CELL_EDGE_PAIRS:
+                if farthest_idx not in (i_idx, j_idx):
+                    ax.plot(
+                        [
+                            float(corners_2d[i_idx][0]),
+                            float(corners_2d[j_idx][0]),
+                        ],
+                        [
+                            float(corners_2d[i_idx][1]),
+                            float(corners_2d[j_idx][1]),
+                        ],
+                        color=stroke,
+                        linestyle="-",
+                        linewidth=linewidth,
+                        solid_capstyle="round",
+                        zorder=front_zorder,
+                    )
         axes_mode = cell_axes.lower()
         if axes_mode == "edges":
             _draw_edge_axis_labels(

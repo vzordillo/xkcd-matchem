@@ -331,8 +331,9 @@ canvas#xm-canvas:active { cursor: grabbing; }
         </select>
       </div>
       <div class="xm-row">
-        <label><input type="checkbox" id="xm-show-bonds" checked /> Show bonds</label>
-        <label><input type="checkbox" id="xm-center-cell" checked /> Center</label>
+        <label><input type="checkbox" id="xm-show-bonds" checked /> Bonds</label>
+        <label><input type="checkbox" id="xm-boundary-atoms" checked /> Boundary</label>
+        <label><input type="checkbox" id="xm-center-cell" /> Center</label>
         <label><input type="checkbox" id="xm-legend" checked /> Legend</label>
       </div>
     </div>
@@ -407,7 +408,8 @@ canvas#xm-canvas:active { cursor: grabbing; }
     cellMode: resolveInitialCellMode(currentSample.show_cell),
     axesMode: resolveInitialAxesMode(currentSample.show_cell),
     showBonds: true,
-    centerInCell: true,
+    boundaryAtoms: true,
+    centerInCell: false,
     showLegend: true,
     scale: currentSample.scale || 1.0,
     wiggle: 0.9,
@@ -569,9 +571,50 @@ canvas#xm-canvas:active { cursor: grabbing; }
       }
     }
 
+    // Replicate boundary atoms on closed [0, 1]^3 cell faces/edges/corners.
+    let addedBoundary = false;
+    if (hasCell && state.boundaryAtoms && state.style !== "polyhedra") {
+      const invCell = inv3x3(cell);
+      if (invCell) {
+        const tol = 1e-3;
+        const bSyms = [];
+        const bPos = [];
+        for (let k = 0; k < symbols.length; k++) {
+          const f = matVec3T(invCell, positions[k]).map((val, ax) => {
+            if (!baseData.pbc[ax]) return val;
+            let w = ((val % 1) + 1) % 1;
+            if (Math.abs(w - 1) <= tol) w = 0;
+            return w;
+          });
+          const opts = [0, 1, 2].map((ax) =>
+            baseData.pbc[ax] && f[ax] <= tol ? [0, 1] : [f[ax]]
+          );
+          for (const fx of opts[0]) {
+            for (const fy of opts[1]) {
+              for (const fz of opts[2]) {
+                bSyms.push(symbols[k]);
+                bPos.push(matVec3T(cell, [fx, fy, fz]));
+              }
+            }
+          }
+        }
+        if (bSyms.length > symbols.length) {
+          addedBoundary = true;
+          symbols.length = 0;
+          positions.length = 0;
+          for (let k = 0; k < bSyms.length; k++) {
+            symbols.push(bSyms[k]);
+            positions.push(bPos[k]);
+          }
+        }
+      }
+    }
+
     // Recompute or reuse bonds cleanly
     let bonds = [];
-    if (na === 1 && nb === 1 && nc === 1 && baseData.bonds && baseData.bonds.length) {
+    if (addedBoundary) {
+      bonds = inferBondsJS(symbols, positions, null, [false, false, false]);
+    } else if (na === 1 && nb === 1 && nc === 1 && baseData.bonds && baseData.bonds.length) {
       bonds = baseData.bonds;
     } else {
       bonds = inferBondsJS(symbols, positions, cell, baseData.pbc);
@@ -1636,6 +1679,9 @@ canvas#xm-canvas:active { cursor: grabbing; }
   });
   document.getElementById("xm-show-bonds").addEventListener("change", (e) => {
     state.showBonds = e.target.checked; renderFrame();
+  });
+  document.getElementById("xm-boundary-atoms").addEventListener("change", (e) => {
+    state.boundaryAtoms = e.target.checked; renderFrame();
   });
   document.getElementById("xm-center-cell").addEventListener("change", (e) => {
     state.centerInCell = e.target.checked; renderFrame();

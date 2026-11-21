@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import collections
 import dataclasses
+import itertools
 import math
 from typing import Any
 
@@ -244,6 +245,55 @@ class AtomsData:
         centered = self.copy()
         centered.positions = frac @ self.cell
         return centered
+
+    def with_boundary_atoms(self, tol: float = 1e-3) -> AtomsData:
+        """Returns a display copy including periodic images on closed faces.
+
+        Replicates any atom sitting within ``tol`` of fractional coordinate
+        ``0`` (or ``1``) onto both ``0.0`` and ``1.0`` along active periodic
+        axes, producing the standard closed ``[0, 1]^3`` crystallographic
+        unit-cell representation (for example 27 sites for rocksalt NaCl and
+        18 sites for diamond Si).
+
+        Note:
+          Use only for visualization; physical properties (stoichiometry,
+          density, XRD, RDF) should always operate on the half-open ``[0, 1)``
+          unit cell.
+
+        Args:
+          tol: Fractional-coordinate tolerance for detecting boundary atoms.
+
+        Returns:
+          New ``AtomsData`` populated on the closed ``[0, 1]^3`` box.
+        """
+        if self.cell is None or not any(self.pbc) or len(self) == 0:
+            return self.copy()
+        frac = self.fractional_positions()
+        for axis, periodic in enumerate(self.pbc):
+            if periodic:
+                wrapped = np.mod(frac[:, axis], 1.0)
+                wrapped[np.isclose(wrapped, 1.0, atol=tol)] = 0.0
+                frac[:, axis] = wrapped
+        syms: list[str] = []
+        frac_out: list[tuple[float, float, float]] = []
+        for sym, f_vec in zip(self.symbols, frac, strict=True):
+            axis_opts = [
+                (0.0, 1.0)
+                if (self.pbc[d] and float(f_vec[d]) <= tol)
+                else (float(f_vec[d]),)
+                for d in range(3)
+            ]
+            for combo in itertools.product(*axis_opts):
+                syms.append(sym)
+                frac_out.append((combo[0], combo[1], combo[2]))
+        pos = np.asarray(frac_out, dtype=np.float64) @ self.cell
+        return AtomsData(
+            symbols=syms,
+            positions=pos,
+            cell=self.cell.copy(),
+            pbc=self.pbc,
+            metadata=dict(self.metadata),
+        )
 
     def repeat(self, rep: tuple[int, int, int] = (1, 1, 1)) -> AtomsData:
         """Builds a periodic ``(nx, ny, nz)`` supercell.

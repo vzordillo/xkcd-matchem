@@ -84,8 +84,10 @@ def test_render_2d_crystal_slab_and_polyhedra() -> None:
     plt.close(ax_axes_only.figure)
 
     ax_no_bonds = struct_plots.plot_crystal("nacl.cif", show_bonds=False)
-    # Only the 12 unit-cell box edges are drawn as Line2D (zero bonds).
+    # Only the 12 unit-cell box edges are drawn as Line2D (zero bonds),
+    # and all 27 closed-cell rock-salt sites render (27 spheres + highlights).
     assert len(ax_no_bonds.lines) == 12
+    assert len(ax_no_bonds.patches) >= 55
     plt.close(ax_no_bonds.figure)
 
     ax_slab_nb = struct_plots.plot_slab(

@@ -169,6 +169,17 @@ def test_powder_xrd_peaks_for_si_and_nacl() -> None:
     assert 28.0 <= top_peak.position <= 28.9
 
     nacl = loader.load("nacl.cif")
+    nacl_closed = nacl.with_boundary_atoms()
+    assert len(nacl_closed) == 27
+    assert nacl_closed.symbols.count("Na") == 14
+    assert nacl_closed.symbols.count("Cl") == 13
+    assert len(bonding.infer_bonds(nacl_closed, use_pbc=False)) == 54
+
+    si = loader.load("si_diamond.cif")
+    si_closed = si.with_boundary_atoms()
+    assert len(si_closed) == 18
+    assert len(bonding.infer_bonds(si_closed, use_pbc=False)) == 16
+
     xrd_nacl = spectroscopy.compute_xrd(nacl, two_theta_range=(20.0, 60.0))
     top_nacl = max(xrd_nacl.peaks, key=lambda p: p.intensity)
     # NaCl (200) strongest reflection sits at ~31.7 degrees 2theta.
