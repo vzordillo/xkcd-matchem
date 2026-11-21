@@ -11,10 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Bond inference and coordination polyhedra via cKDTree and ConvexHull."""
+"""Bond inference, bond-order perception, and coordination polyhedra."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 import dataclasses
 
 import numpy as np
@@ -22,6 +23,41 @@ from scipy import spatial
 
 from xkcd_matchem.core import structure
 from xkcd_matchem.data import elements
+
+
+_ORGANIC_VALENCE: dict[str, int] = {
+    "H": 1,
+    "B": 3,
+    "C": 4,
+    "N": 3,
+    "O": 2,
+    "F": 1,
+    "Si": 4,
+    "P": 3,
+    "S": 2,
+    "Cl": 1,
+    "Br": 1,
+    "I": 1,
+}
+
+_TRIPLE_MAX_DIST: dict[tuple[str, str], float] = {
+    ("C", "C"): 1.24,
+    ("C", "N"): 1.20,
+    ("N", "N"): 1.16,
+    ("C", "O"): 1.17,
+}
+
+_DOUBLE_MAX_DIST: dict[tuple[str, str], float] = {
+    ("C", "C"): 1.44,
+    ("C", "O"): 1.30,
+    ("C", "N"): 1.36,
+    ("N", "N"): 1.32,
+    ("N", "O"): 1.28,
+    ("O", "O"): 1.28,
+    ("C", "S"): 1.70,
+    ("O", "S"): 1.54,
+    ("O", "P"): 1.56,
+}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -56,6 +92,140 @@ def _periodic_shifts(
             for sz in rz:
                 shifts.append((sx, sy, sz))
     return shifts
+
+
+def _pair_key(s_a: str, s_b: str) -> tuple[str, str]:
+    """Returns canonical alphabetically sorted element pair key."""
+    return (s_a, s_b) if s_a <= s_b else (s_b, s_a)
+
+
+def _match_deficit_double_bonds(
+    candidates: list[tuple[float, int, int, int]],
+    deficits: list[int],
+    orders: list[float],
+) -> None:
+    """Assigns double bonds via min-degree-first matching for Kekule rings."""
+    active_edges: list[tuple[float, int, int, int]] = [
+        item
+        for item in candidates
+        if deficits[item[2]] >= 1 and deficits[item[3]] >= 1
+    ]
+    while active_edges:
+        deg_map: dict[int, int] = {}
+        for _, _, u, v in active_edges:
+            deg_map[u] = deg_map.get(u, 0) + 1
+            deg_map[v] = deg_map.get(v, 0) + 1
+        chosen = min(
+            active_edges,
+            key=lambda item: (
+                min(deg_map[item[2]], deg_map[item[3]]),
+                deg_map[item[2]] + deg_map[item[3]],
+                item[0],
+            ),
+        )
+        _, b_idx, u, v = chosen
+        orders[b_idx] = 2.0
+        deficits[u] -= 1
+        deficits[v] -= 1
+        active_edges = [
+            item
+            for item in active_edges
+            if item[1] != b_idx
+            and deficits[item[2]] >= 1
+            and deficits[item[3]] >= 1
+        ]
+
+
+def infer_bond_orders(
+    atoms: structure.AtomsData,
+    bonds: Sequence[structure.Bond],
+) -> list[structure.Bond]:
+    """Infers organic multiple bond orders from geometry and valence deficits.
+
+    Preserves periodic bonds (``shift != (0, 0, 0)``) and non-organic metal or
+    extended solid bonds at their existing orders while assigning triple,
+    terminal carbonyl/heteroatom double, and conjugated/aromatic Kekule double
+    bonds for ``C, N, O, S, P`` subgraphs.
+
+    Args:
+      atoms: Input atomic structure.
+      bonds: Initial bond list (typically all order ``1.0``).
+
+    Returns:
+      Updated list of ``Bond`` objects with perceived bond orders.
+    """
+    if not bonds:
+        return []
+    n_atoms = len(atoms)
+    degrees = [0] * n_atoms
+    has_non_organic = [False] * n_atoms
+    orders = [float(b.order) for b in bonds]
+    dists: list[float] = []
+
+    for b in bonds:
+        degrees[b.i] += 1
+        degrees[b.j] += 1
+        if atoms.symbols[b.i] not in _ORGANIC_VALENCE:
+            has_non_organic[b.j] = True
+            has_non_organic[b.i] = True
+        if atoms.symbols[b.j] not in _ORGANIC_VALENCE:
+            has_non_organic[b.i] = True
+            has_non_organic[b.j] = True
+        dists.append(
+            float(np.linalg.norm(atoms.positions[b.j] - atoms.positions[b.i]))
+        )
+
+    deficits = [
+        max(0, _ORGANIC_VALENCE.get(atoms.symbols[i], 0) - degrees[i])
+        if not has_non_organic[i]
+        else 0
+        for i in range(n_atoms)
+    ]
+
+    triple_cands: list[tuple[float, int, int, int]] = []
+    terminal_doubles: list[tuple[float, int, int, int]] = []
+    interior_doubles: list[tuple[float, int, int, int]] = []
+
+    for b_idx, b in enumerate(bonds):
+        if b.shift != (0, 0, 0) or orders[b_idx] > 1.0:
+            continue
+        if has_non_organic[b.i] or has_non_organic[b.j]:
+            continue
+        key = _pair_key(atoms.symbols[b.i], atoms.symbols[b.j])
+        dist = dists[b_idx]
+        t_lim = _TRIPLE_MAX_DIST.get(key)
+        if t_lim is not None and dist <= t_lim:
+            if key == ("C", "O") and not (
+                degrees[b.i] == 1 and degrees[b.j] == 1
+            ):
+                pass
+            elif degrees[b.i] <= 2 and degrees[b.j] <= 2:
+                triple_cands.append((dist, b_idx, b.i, b.j))
+        d_lim = _DOUBLE_MAX_DIST.get(key)
+        if d_lim is not None and dist <= d_lim:
+            if degrees[b.i] == 1 or degrees[b.j] == 1:
+                terminal_doubles.append((dist, b_idx, b.i, b.j))
+            else:
+                interior_doubles.append((dist, b_idx, b.i, b.j))
+
+    for _, b_idx, u, v in sorted(triple_cands):
+        if deficits[u] >= 2 and deficits[v] >= 2:
+            orders[b_idx] = 3.0
+            deficits[u] -= 2
+            deficits[v] -= 2
+
+    for _, b_idx, u, v in sorted(terminal_doubles):
+        if orders[b_idx] == 1.0 and deficits[u] >= 1 and deficits[v] >= 1:
+            orders[b_idx] = 2.0
+            deficits[u] -= 1
+            deficits[v] -= 1
+
+    _match_deficit_double_bonds(interior_doubles, deficits, orders)
+
+    return [
+        structure.Bond(i=b.i, j=b.j, order=orders[idx], shift=b.shift)
+        for idx, b in enumerate(bonds)
+    ]
 
 
 def _collect_pair_bonds(
@@ -110,6 +280,7 @@ def infer_bonds(
     min_dist: float = 0.4,
     max_dist: float = 3.6,
     use_pbc: bool = True,
+    infer_orders: bool = True,
 ) -> list[structure.Bond]:
     """Infers chemical bonds using covalent-radius cutoffs and ``cKDTree``.
 
@@ -119,9 +290,11 @@ def infer_bonds(
       min_dist: Minimum allowed bond length in Angstrom.
       max_dist: Hard upper distance cutoff in Angstrom.
       use_pbc: Whether to search across periodic images when periodic.
+      infer_orders: Whether to perceive organic double/triple bond orders from
+        interatomic distances and valence deficits on non-periodic bonds.
 
     Returns:
-      Sorted list of unique ``Bond`` objects with order ``1.0``.
+      Sorted list of unique ``Bond`` objects.
     """
     if len(atoms) < 2:
         return []
@@ -148,6 +321,8 @@ def infer_bonds(
             bonds,
         )
     bonds.sort(key=lambda b: (b.i, b.j, b.shift))
+    if infer_orders:
+        bonds = infer_bond_orders(atoms, bonds)
     return bonds
 
 

@@ -1,0 +1,651 @@
+# Copyright 2026 xkcd-matchem contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Materials-informatics plots inspired by pymatviz in xkcd style."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from collections.abc import Sequence
+import math
+
+from matplotlib import axes as maxes
+from matplotlib import patches
+from matplotlib import pyplot as plt
+import numpy as np
+from scipy import spatial
+from scipy import stats
+
+from xkcd_matchem.core import exceptions
+from xkcd_matchem.style import palettes
+from xkcd_matchem.style import patterns
+from xkcd_matchem.style import theme
+
+
+_CRYSTAL_SYSTEM_RANGES: tuple[tuple[str, int, int], ...] = (
+    ("Triclinic", 1, 2),
+    ("Monoclinic", 3, 15),
+    ("Orthorhombic", 16, 74),
+    ("Tetragonal", 75, 142),
+    ("Trigonal", 143, 167),
+    ("Hexagonal", 168, 194),
+    ("Cubic", 195, 230),
+)
+
+_SQRT3_HALF = 0.8660254037844386
+
+
+def spacegroup_to_crystal_system(sg_number: int) -> str:
+    """Maps an International Tables space-group number (1-230) to its system."""
+    for name, lo, hi in _CRYSTAL_SYSTEM_RANGES:
+        if lo <= sg_number <= hi:
+            return name
+    raise exceptions.StructureError(
+        f"Space group number {sg_number} out of valid range 1..230."
+    )
+
+
+def _barycentric_to_xy(
+    compositions: np.ndarray,
+) -> np.ndarray:
+    """Maps normalized ``(a, b, c)`` ternary fractions to equilateral 2D xy."""
+    sums = np.sum(compositions, axis=1, keepdims=True)
+    frac = compositions / np.where(sums > 1e-12, sums, 1.0)
+    x = frac[:, 1] + 0.5 * frac[:, 2]
+    y = _SQRT3_HALF * frac[:, 2]
+    return np.column_stack([x, y])
+
+
+def _ternary_lower_hull(
+    xy: np.ndarray,
+    energies: np.ndarray,
+) -> tuple[set[int], set[tuple[int, int]]]:
+    """Returns lower convex-hull vertex indices and tie-line edges."""
+    if len(energies) < 3:
+        return set(range(len(energies))), set()
+    pts3 = np.column_stack([xy, energies])
+    try:
+        hull = spatial.ConvexHull(pts3)
+    except spatial.QhullError:
+        return set(range(len(energies))), set()
+    stable: set[int] = set()
+    edges: set[tuple[int, int]] = set()
+    for simplex, eq in zip(hull.simplices, hull.equations, strict=True):
+        # Outward normal with negative z-component belongs to the lower hull.
+        if float(eq[2]) < -1e-7:
+            i0, i1, i2 = int(simplex[0]), int(simplex[1]), int(simplex[2])
+            stable.update((i0, i1, i2))
+            for u, v in ((i0, i1), (i1, i2), (i2, i0)):
+                edges.add((min(u, v), max(u, v)))
+    return stable, edges
+
+
+def _draw_ternary_frame(
+    ax: maxes.Axes,
+    corners: tuple[str, str, str],
+    ink_col: str,
+    show_grid: bool,
+    shade: str | None,
+) -> None:
+    """Draws the Gibbs triangle border, barycentric grid, and corner labels."""
+    tri = np.array([[0.0, 0.0], [1.0, 0.0], [0.5, _SQRT3_HALF]])
+    hatch = patterns.resolve_hatch(shade)
+    bg_poly = patches.Polygon(
+        tri,
+        closed=True,
+        facecolor="#F8FAFC" if hatch else "none",
+        edgecolor=ink_col,
+        linewidth=2.0,
+        hatch=hatch,
+        alpha=0.22 if hatch else 1.0,
+        zorder=1.0,
+    )
+    if hatch:
+        bg_poly.set_sketch_params(0.0, 0.0, 0.0)
+    ax.add_patch(bg_poly)
+    if hatch:
+        ax.add_patch(
+            patches.Polygon(
+                tri,
+                closed=True,
+                facecolor="none",
+                edgecolor=ink_col,
+                linewidth=2.0,
+                zorder=2.2,
+            )
+        )
+    if show_grid:
+        for frac in (0.2, 0.4, 0.6, 0.8):
+            p_ab = np.array([frac, 0.0])
+            p_ac = np.array([0.5 * frac, _SQRT3_HALF * frac])
+            p_bc = np.array([1.0 - 0.5 * frac, _SQRT3_HALF * frac])
+            p_ba = np.array([1.0 - frac, 0.0])
+            for s_pt, e_pt in (
+                (p_ac, p_bc),
+                (p_ab, np.array([0.5 + 0.5 * frac, _SQRT3_HALF * (1 - frac)])),
+                (p_ba, np.array([0.5 * (1 - frac), _SQRT3_HALF * (1 - frac)])),
+            ):
+                (g_line,) = ax.plot(
+                    [s_pt[0], e_pt[0]],
+                    [s_pt[1], e_pt[1]],
+                    color=palettes.MUTED_GRAY,
+                    linewidth=0.75,
+                    alpha=0.35,
+                    linestyle="--",
+                    zorder=1.2,
+                )
+                g_line.set_sketch_params(0.0, 0.0, 0.0)
+    ax.text(
+        -0.05,
+        -0.05,
+        corners[0],
+        ha="right",
+        va="top",
+        fontsize=13.0,
+        color=ink_col,
+    )
+    ax.text(
+        1.05,
+        -0.05,
+        corners[1],
+        ha="left",
+        va="top",
+        fontsize=13.0,
+        color=ink_col,
+    )
+    ax.text(
+        0.50,
+        _SQRT3_HALF + 0.05,
+        corners[2],
+        ha="center",
+        va="bottom",
+        fontsize=13.0,
+        color=ink_col,
+    )
+
+
+def plot_ternary_phase_diagram(
+    compositions: Sequence[tuple[float, float, float]] | np.ndarray,
+    energies: Sequence[float] | np.ndarray | None = None,
+    *,
+    corners: tuple[str, str, str] = ("A", "B", "C"),
+    labels: Sequence[str] | None = None,
+    ax: maxes.Axes | None = None,
+    show_grid: bool = True,
+    shade: str | None = None,
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
+    title: str | None = None,
+) -> maxes.Axes:
+    """Plots an xkcd-style ternary Gibbs composition and convex-hull triangle.
+
+    Args:
+      compositions: Sequence of ``(x_A, x_B, x_C)`` composition triples.
+      energies: Optional formation energies (eV/atom). When supplied, computes
+        lower convex-hull tie-lines and separates stable vs. above-hull phases.
+      corners: Corner labels ``(A, B, C)`` for bottom-left, bottom-right, top.
+      labels: Optional formula labels for each point.
+      ax: Optional target Matplotlib ``Axes``.
+      show_grid: Whether to draw dashed 20% barycentric gridlines.
+      shade: Optional subtle interior triangle hatch (e.g., ``"dots"``).
+      palette: Series palette name or sequence of hex colors.
+      preset: Visual theme preset name or ``ThemePreset``.
+      title: Optional heading above the triangle.
+
+    Returns:
+      Matplotlib ``Axes`` containing the ternary diagram.
+    """
+    comp_arr = np.asarray(compositions, dtype=np.float64)
+    if comp_arr.ndim != 2 or comp_arr.shape[1] != 3:
+        raise exceptions.StructureError(
+            "compositions must have shape (N, 3) for ternary diagrams."
+        )
+    xy = _barycentric_to_xy(comp_arr)
+    series = palettes.get_palette(palette)
+    stable_col = series[3 % len(series)]
+    tie_col = series[5 % len(series)]
+    above_col = series[6 % len(series)]
+    preset_obj = theme.get_preset(preset)
+    ink_col = preset_obj.ink_color
+
+    stable_idx: set[int] = set(range(len(xy)))
+    tie_edges: set[tuple[int, int]] = set()
+    if energies is not None:
+        e_arr = np.asarray(energies, dtype=np.float64)
+        stable_idx, tie_edges = _ternary_lower_hull(xy, e_arr)
+
+    with theme.xkcd_style(preset=preset):
+        if ax is None:
+            _, ax = plt.subplots(figsize=(6.2, 5.6))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
+        _draw_ternary_frame(ax, corners, ink_col, show_grid, shade)
+
+        for u, v in sorted(tie_edges):
+            ax.plot(
+                [xy[u, 0], xy[v, 0]],
+                [xy[u, 1], xy[v, 1]],
+                color=tie_col,
+                linewidth=1.8,
+                zorder=3.0,
+            )
+
+        s_list = sorted(stable_idx)
+        u_list = [i for i in range(len(xy)) if i not in stable_idx]
+        if s_list:
+            ax.scatter(
+                xy[s_list, 0],
+                xy[s_list, 1],
+                s=90,
+                facecolor=stable_col,
+                edgecolor=ink_col,
+                linewidth=1.5,
+                zorder=5.0,
+                label="Stable",
+            )
+        if u_list:
+            ax.scatter(
+                xy[u_list, 0],
+                xy[u_list, 1],
+                s=75,
+                marker="D",
+                facecolor=preset_obj.axes_facecolor,
+                edgecolor=above_col,
+                linewidth=1.5,
+                zorder=4.5,
+                label="Above Hull",
+            )
+        if labels:
+            for idx, lbl in enumerate(labels):
+                if not lbl:
+                    continue
+                dy = 8 if (idx in stable_idx and xy[idx, 1] > 0.08) else -13
+                ax.annotate(
+                    lbl,
+                    xy=(float(xy[idx, 0]), float(xy[idx, 1])),
+                    xytext=(0, dy),
+                    textcoords="offset points",
+                    ha="center",
+                    fontsize=8.8,
+                    color=ink_col,
+                    zorder=6.0,
+                )
+        if energies is not None:
+            ax.legend(loc="upper right", frameon=True, fontsize=8.5)
+        ax.set_xlim(-0.18, 1.18)
+        ax.set_ylim(-0.16, _SQRT3_HALF + 0.17)
+        ax.set_aspect("equal")
+        ax.set_axis_off()
+        if title:
+            ax.set_title(title, color=ink_col, pad=6.0)
+    return ax
+
+
+def _aggregate_spacegroups(
+    spacegroups: Sequence[int] | Mapping[int, int],
+) -> tuple[dict[str, int], dict[str, list[tuple[int, int]]]]:
+    """Aggregates space-group counts by crystal system."""
+    sg_counts: dict[int, int] = {}
+    if isinstance(spacegroups, Mapping):
+        for sg, cnt in spacegroups.items():
+            sg_counts[int(sg)] = sg_counts.get(int(sg), 0) + int(cnt)
+    else:
+        for sg in spacegroups:
+            sg_int = int(sg)
+            sg_counts[sg_int] = sg_counts.get(sg_int, 0) + 1
+
+    sys_totals: dict[str, int] = {}
+    sys_members: dict[str, list[tuple[int, int]]] = {}
+    for sg_num, cnt in sg_counts.items():
+        if cnt <= 0:
+            continue
+        sys_name = spacegroup_to_crystal_system(sg_num)
+        sys_totals[sys_name] = sys_totals.get(sys_name, 0) + cnt
+        sys_members.setdefault(sys_name, []).append((sg_num, cnt))
+    for members in sys_members.values():
+        members.sort(key=lambda pair: (-pair[1], pair[0]))
+    return sys_totals, sys_members
+
+
+def _draw_sunburst_rings(
+    ax: maxes.Axes,
+    sys_totals: dict[str, int],
+    sys_members: dict[str, list[tuple[int, int]]],
+    series: Sequence[str],
+    ink_col: str,
+    shade: str | Sequence[str | None] | None,
+) -> None:
+    """Draws inner crystal-system ring and outer space-group ring wedges."""
+    total = float(sum(sys_totals.values()))
+    if total <= 0.0:
+        return
+    ordered = [
+        (name, sys_totals[name])
+        for name, _, _ in _CRYSTAL_SYSTEM_RANGES
+        if name in sys_totals
+    ]
+    angle = 90.0
+    for idx, (sys_name, sys_cnt) in enumerate(ordered):
+        span = 360.0 * (sys_cnt / total)
+        col = series[(idx + 1) % len(series)]
+        hatch = patterns.resolve_hatch(shade, index=idx)
+        inner = patches.Wedge(
+            (0.0, 0.0),
+            0.58,
+            angle,
+            angle + span,
+            width=0.33,
+            facecolor=col,
+            edgecolor=ink_col,
+            linewidth=1.5,
+            alpha=0.86,
+            hatch=hatch,
+            zorder=3.0,
+        )
+        if hatch:
+            inner.set_sketch_params(0.0, 0.0, 0.0)
+        ax.add_patch(inner)
+        mid_rad = math.radians(angle + 0.5 * span)
+        if span >= 22.0:
+            ax.text(
+                0.415 * math.cos(mid_rad),
+                0.415 * math.sin(mid_rad),
+                sys_name[:5] if span < 42.0 else sys_name,
+                ha="center",
+                va="center",
+                fontsize=8.0,
+                color=ink_col,
+                bbox={
+                    "boxstyle": "round,pad=0.14",
+                    "facecolor": "#FFFFFF",
+                    "edgecolor": "none",
+                    "alpha": 0.82,
+                },
+                zorder=5.0,
+            )
+
+        sub_ang = angle
+        for sg_num, cnt in sys_members.get(sys_name, []):
+            sub_span = 360.0 * (cnt / total)
+            outer = patches.Wedge(
+                (0.0, 0.0),
+                0.96,
+                sub_ang,
+                sub_ang + sub_span,
+                width=0.34,
+                facecolor=col,
+                edgecolor=ink_col,
+                linewidth=1.2,
+                alpha=0.52,
+                zorder=2.5,
+            )
+            ax.add_patch(outer)
+            if sub_span >= 15.0:
+                s_rad = math.radians(sub_ang + 0.5 * sub_span)
+                ax.text(
+                    0.79 * math.cos(s_rad),
+                    0.79 * math.sin(s_rad),
+                    f"#{sg_num}",
+                    ha="center",
+                    va="center",
+                    fontsize=7.8,
+                    color=ink_col,
+                    zorder=5.0,
+                )
+            sub_ang += sub_span
+        angle += span
+
+    ax.text(
+        0.0,
+        0.0,
+        f"N={int(total)}",
+        ha="center",
+        va="center",
+        fontsize=11.0,
+        color=ink_col,
+        zorder=6.0,
+    )
+
+
+def plot_spacegroup_distribution(
+    spacegroups: Sequence[int] | Mapping[int, int],
+    *,
+    mode: str = "sunburst",
+    ax: maxes.Axes | None = None,
+    shade: str | Sequence[str | None] | None = None,
+    background_grid: str | None = None,
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
+    title: str | None = None,
+) -> maxes.Axes:
+    """Plots crystal-system & space-group counts as a sunburst or bar chart.
+
+    Inspired by ``pymatviz.spacegroup_sunburst`` and ``spacegroup_bar``,
+    automatically grouping International Tables space groups ``1..230`` into
+    the 7 crystal systems.
+
+    Args:
+      spacegroups: Sequence of space-group numbers or ``{sg_num: count}`` dict.
+      mode: ``"sunburst"`` (two-ring radial chart) or ``"bar"`` (crystal-system
+        count bars).
+      ax: Optional target Matplotlib ``Axes``.
+      shade: Optional hatched/stippled shading (e.g., ``"cycle"``, ``"hatch"``).
+      background_grid: Optional background grid style (applies in ``"bar"``).
+      palette: Series palette name or hex color list.
+      preset: Visual theme preset name or ``ThemePreset``.
+      title: Optional plot heading.
+
+    Returns:
+      Matplotlib ``Axes`` containing the space-group breakdown.
+    """
+    view_mode = mode.strip().lower()
+    if view_mode not in ("sunburst", "bar"):
+        raise exceptions.StructureError(
+            f"Unsupported mode {mode!r}. Use 'sunburst' or 'bar'."
+        )
+    sys_totals, sys_members = _aggregate_spacegroups(spacegroups)
+    series = palettes.get_palette(palette)
+    ink_col = theme.get_preset(preset).ink_color
+
+    with theme.xkcd_style(preset=preset):
+        if ax is None:
+            figsize = (5.8, 5.4) if view_mode == "sunburst" else (7.0, 4.3)
+            _, ax = plt.subplots(figsize=figsize)
+        else:
+            theme.style_existing_axes(ax, preset=preset)
+
+        if view_mode == "sunburst":
+            _draw_sunburst_rings(
+                ax, sys_totals, sys_members, series, ink_col, shade
+            )
+            ax.set_xlim(-1.12, 1.12)
+            ax.set_ylim(-1.12, 1.12)
+            ax.set_aspect("equal")
+            ax.set_axis_off()
+        else:
+            if background_grid:
+                patterns.apply_background_grid(ax, style=background_grid)
+            ordered = [
+                (name, sys_totals[name])
+                for name, _, _ in _CRYSTAL_SYSTEM_RANGES
+                if name in sys_totals
+            ]
+            names = [item[0] for item in ordered]
+            counts = [item[1] for item in ordered]
+            xs = np.arange(len(names))
+            for idx, (cnt, x_pos) in enumerate(zip(counts, xs, strict=True)):
+                col = series[(idx + 1) % len(series)]
+                hatch = patterns.resolve_hatch(shade, index=idx)
+                bar_list = ax.bar(
+                    [x_pos],
+                    [cnt],
+                    color=col,
+                    edgecolor=ink_col,
+                    linewidth=1.5,
+                    width=0.64,
+                    alpha=0.88,
+                    hatch=hatch,
+                    zorder=3.0,
+                )
+                if hatch:
+                    bar_list[0].set_sketch_params(0.0, 0.0, 0.0)
+                ax.text(
+                    float(x_pos),
+                    float(cnt),
+                    str(cnt),
+                    ha="center",
+                    va="bottom",
+                    fontsize=9.5,
+                    color=ink_col,
+                )
+            ax.set_xticks(xs)
+            ax.set_xticklabels(names, rotation=22, ha="right")
+            ax.set_ylabel("Structure Count")
+            theme.apply_xkcd_spines(ax, preset=preset)
+        if title:
+            ax.set_title(title, color=ink_col)
+    return ax
+
+
+def _draw_hist_series(
+    ax: maxes.Axes,
+    lbl: str,
+    vals: np.ndarray,
+    bins: int,
+    style_cfg: tuple[str, str, str | None, bool, bool, bool],
+) -> None:
+    """Draws one histogram series with optional hatch, KDE, and mean line."""
+    col, ink_col, hatch, multi, show_kde, show_mean = style_cfg
+    clean = vals[np.isfinite(vals)]
+    if clean.size == 0:
+        return
+    counts, edges, bar_patches = ax.hist(
+        clean,
+        bins=bins,
+        color=col,
+        edgecolor=ink_col,
+        linewidth=1.3,
+        alpha=0.58 if multi else 0.72,
+        hatch=hatch,
+        label=lbl if multi else None,
+        zorder=3.0,
+    )
+    if hatch:
+        for patch in bar_patches:
+            patch.set_sketch_params(0.0, 0.0, 0.0)
+    if show_kde and clean.size >= 4 and float(np.std(clean)) > 1e-9:
+        kde = stats.gaussian_kde(clean)
+        x_grid = np.linspace(float(edges[0]), float(edges[-1]), 140)
+        bin_w = float(edges[1] - edges[0])
+        ax.plot(
+            x_grid,
+            kde(x_grid) * clean.size * bin_w,
+            color=col,
+            linewidth=2.2,
+            zorder=4.5,
+        )
+    if show_mean:
+        mu = float(np.mean(clean))
+        ax.axvline(
+            mu,
+            color=ink_col,
+            linestyle="--",
+            linewidth=1.35,
+            alpha=0.8,
+            zorder=4.0,
+        )
+        ax.text(
+            mu,
+            max(float(np.max(counts)), 1.0) * 0.96,
+            f" mean={mu:.2f}",
+            ha="left",
+            va="top",
+            fontsize=8.8,
+            color=ink_col,
+            zorder=5.0,
+        )
+
+
+def plot_histogram(
+    data: Sequence[float]
+    | np.ndarray
+    | Mapping[str, Sequence[float] | np.ndarray],
+    *,
+    bins: int = 18,
+    ax: maxes.Axes | None = None,
+    xlabel: str = "Property Value",
+    ylabel: str = "Count",
+    show_kde: bool = True,
+    show_mean: bool = True,
+    shade: str | Sequence[str | None] | None = "hatch",
+    background_grid: str | None = None,
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
+    title: str | None = None,
+) -> maxes.Axes:
+    """Plots an xkcd-style property histogram with hatched fills and KDE.
+
+    Args:
+      data: 1D array/sequence of values or ``{series_label: values}`` mapping.
+      bins: Number of histogram bins.
+      ax: Optional target Matplotlib ``Axes``.
+      xlabel: Horizontal axis label.
+      ylabel: Vertical axis label.
+      show_kde: Whether to overlay a smooth SciPy Gaussian KDE curve.
+      show_mean: Whether to mark each series mean with a vertical dashed line.
+      shade: Bar fill pattern (``"hatch"``, ``"crosshatch"``, ``"dots"``,
+        ``"cycle"``, ``"solid"``, or raw Matplotlib hatch string).
+      background_grid: Optional background grid (``"grid"``, ``"dots"``, etc.).
+      palette: Series palette name or hex color sequence.
+      preset: Visual theme preset name or ``ThemePreset``.
+      title: Optional heading above the histogram.
+
+    Returns:
+      Matplotlib ``Axes`` containing the histogram.
+    """
+    series_map: dict[str, np.ndarray] = (
+        {str(k): np.asarray(v, dtype=np.float64) for k, v in data.items()}
+        if isinstance(data, Mapping)
+        else {"Distribution": np.asarray(data, dtype=np.float64)}
+    )
+    series_cols = palettes.get_palette(palette)
+    ink_col = theme.get_preset(preset).ink_color
+    multi = len(series_map) > 1
+
+    with theme.xkcd_style(preset=preset):
+        if ax is None:
+            _, ax = plt.subplots(figsize=(6.4, 4.2))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
+        if background_grid:
+            patterns.apply_background_grid(ax, style=background_grid)
+
+        for idx, (lbl, vals) in enumerate(series_map.items()):
+            col = series_cols[(idx + 1) % len(series_cols)]
+            hatch = patterns.resolve_hatch(shade, index=idx)
+            _draw_hist_series(
+                ax,
+                lbl,
+                vals,
+                bins,
+                (col, ink_col, hatch, multi, show_kde, show_mean),
+            )
+
+        if multi:
+            ax.legend(loc="best", frameon=True, fontsize=8.8)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        theme.apply_xkcd_spines(ax, preset=preset)
+        if title:
+            ax.set_title(title, color=ink_col)
+    return ax

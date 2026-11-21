@@ -29,6 +29,7 @@ from matplotlib import pyplot as plt
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.style import fonts
 from xkcd_matchem.style import palettes
+from xkcd_matchem.style import patterns
 
 
 @dataclasses.dataclass(frozen=True)
@@ -145,6 +146,22 @@ PRESETS: dict[str, ThemePreset] = {
         grid=True,
         grid_alpha=0.18,
         linewidth=1.9,
+        font_size=12.0,
+        title_size=14.0,
+        dpi=160,
+    ),
+    "blueprint": ThemePreset(
+        name="blueprint",
+        font="Patrick Hand",
+        sketch_scale=0.85,
+        sketch_length=110.0,
+        sketch_randomness=1.7,
+        figure_facecolor=patterns.BLUEPRINT_BG,
+        axes_facecolor=patterns.BLUEPRINT_BG,
+        ink_color=patterns.BLUEPRINT_INK,
+        grid=True,
+        grid_alpha=0.28,
+        linewidth=1.8,
         font_size=12.0,
         title_size=14.0,
         dpi=160,

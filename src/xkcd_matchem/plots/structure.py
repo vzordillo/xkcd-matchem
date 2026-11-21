@@ -222,17 +222,34 @@ def _build_slab_side_items(
         vec = (
             frac[b.j] + np.asarray(b.shift, dtype=np.float64) - frac[b.i]
         ) @ atoms.cell
-        half = np.array(
-            [0.5 * float(np.dot(vec, ey)), 0.5 * float(np.dot(vec, ez))],
+        full_2d = np.array(
+            [float(np.dot(vec, ey)), float(np.dot(vec, ez))],
             dtype=np.float64,
         )
+        direct_2d = xy_side[b.j] - xy_side[b.i]
+        if float(np.linalg.norm(direct_2d - full_2d)) < 1e-4:
+            items.append(
+                (
+                    min(float(x_coord[b.i]), float(x_coord[b.j])) - 0.04,
+                    "bond",
+                    (
+                        xy_side[b.i],
+                        xy_side[b.j],
+                        colors[b.i],
+                        colors[b.j],
+                        b.order,
+                    ),
+                )
+            )
+            continue
+        half = 0.5 * full_2d
         for idx, sign in ((b.i, 1.0), (b.j, -1.0)):
             p0 = xy_side[idx]
             items.append(
                 (
                     float(x_coord[idx]) - 0.06,
                     "half",
-                    (p0, p0 + sign * half, colors[idx]),
+                    (p0, p0 + sign * half, colors[idx], b.order),
                 )
             )
     items.sort(key=lambda entry: entry[0])
@@ -257,6 +274,49 @@ def _estimate_slab_widths(
     )
 
 
+def _paint_slab_item(
+    ax: maxes.Axes,
+    atoms: structure.AtomsData,
+    xy_side: np.ndarray,
+    colors: list[str],
+    widths: tuple[float, float],
+    kind: str,
+    payload: object,
+    z_ord: float,
+) -> None:
+    """Paints a single atom sphere, unified bond, or edge stub in slab view."""
+    bond_w, atom_lw = widths
+    if kind == "atom":
+        idx = int(payload)  # type: ignore[arg-type]
+        r_cov = 0.34 if atoms.symbols[idx] in ("H", "O", "C", "N") else 0.44
+        primitives.draw_atom_sphere(
+            ax,
+            float(xy_side[idx, 0]),
+            float(xy_side[idx, 1]),
+            radius=r_cov,
+            facecolor=colors[idx],
+            linewidth=atom_lw,
+            zorder=z_ord,
+        )
+    elif kind == "bond":
+        p0, p1, c0, c1, order = payload  # type: ignore[misc]
+        primitives.draw_two_tone_bond(
+            ax,
+            p0,
+            p1,
+            c1=c0,
+            c2=c1,
+            width=bond_w,
+            order=order,
+            zorder=z_ord,
+        )
+    else:
+        p0, p1, col, order = payload  # type: ignore[misc]
+        primitives.draw_half_bond(
+            ax, p0, p1, color=col, width=bond_w, order=order, zorder=z_ord
+        )
+
+
 def _draw_slab_atoms_and_bonds(
     ax: maxes.Axes,
     atoms: structure.AtomsData,
@@ -277,27 +337,19 @@ def _draw_slab_atoms_and_bonds(
         palettes.get_element_color(sym, scheme=palette) for sym in atoms.symbols
     ]
     items = _build_slab_side_items(atoms, x_coord, xy_side, ey, ez, colors)
-    bond_w, atom_lw = _estimate_slab_widths(ax, period_y, height_c)
+    widths = _estimate_slab_widths(ax, period_y, height_c)
     before = len(ax.patches)
     for rank, (_, kind, payload) in enumerate(items):
-        z_ord = 2.0 + 0.02 * rank
-        if kind == "atom":
-            idx = int(payload)  # type: ignore[arg-type]
-            r_cov = 0.34 if atoms.symbols[idx] in ("H", "O", "C", "N") else 0.44
-            primitives.draw_atom_sphere(
-                ax,
-                float(xy_side[idx, 0]),
-                float(xy_side[idx, 1]),
-                radius=r_cov,
-                facecolor=colors[idx],
-                linewidth=atom_lw,
-                zorder=z_ord,
-            )
-        else:
-            p0, p1, col = payload  # type: ignore[misc]
-            primitives.draw_half_bond(
-                ax, p0, p1, color=col, width=bond_w, zorder=z_ord
-            )
+        _paint_slab_item(
+            ax,
+            atoms,
+            xy_side,
+            colors,
+            widths,
+            kind,
+            payload,
+            2.0 + 0.02 * rank,
+        )
     for patch in ax.patches[before:]:
         patch.set_clip_path(clip_rect)
     for line in ax.lines:

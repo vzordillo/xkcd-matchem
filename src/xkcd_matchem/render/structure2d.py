@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import collections
 from collections.abc import Mapping
 
 from matplotlib import axes as maxes
@@ -42,6 +43,42 @@ def _pca_2d_projection(positions: np.ndarray) -> np.ndarray:
     return proj
 
 
+def _find_ring_centroids(
+    bonds: list[structure.Bond],
+    neighbors: dict[int, list[tuple[int, float]]],
+    xy: np.ndarray,
+    max_ring_size: int = 8,
+) -> dict[tuple[int, int], np.ndarray]:
+    """Maps each small-ring bond edge to its shortest-cycle 2D centroid."""
+    centroids: dict[tuple[int, int], np.ndarray] = {}
+    for b in bonds:
+        u, v = b.i, b.j
+        queue: collections.deque[tuple[int, list[int]]] = collections.deque(
+            [(u, [u])]
+        )
+        visited = {u}
+        found_cycle: list[int] | None = None
+        while queue:
+            curr, path = queue.popleft()
+            if len(path) >= max_ring_size:
+                continue
+            for nxt, _ in neighbors[curr]:
+                if curr == u and nxt == v:
+                    continue
+                if nxt == v:
+                    found_cycle = path + [v]
+                    break
+                if nxt not in visited:
+                    visited.add(nxt)
+                    queue.append((nxt, path + [nxt]))
+            if found_cycle is not None:
+                break
+        if found_cycle is not None:
+            key = (min(u, v), max(u, v))
+            centroids[key] = np.mean(xy[found_cycle], axis=0)
+    return centroids
+
+
 def _draw_skeletal_bond(
     ax: maxes.Axes,
     p1: np.ndarray,
@@ -50,6 +87,7 @@ def _draw_skeletal_bond(
     ink_color: str,
     shorten_i: float = 0.0,
     shorten_j: float = 0.0,
+    ring_center: np.ndarray | None = None,
 ) -> None:
     """Draws single, double, triple, or aromatic 2D skeletal lines."""
     vec = p2 - p1
@@ -62,7 +100,32 @@ def _draw_skeletal_bond(
     end = p2 - unit * shorten_j
 
     if abs(order - 2.0) < 0.25:
-        off = perp * 0.07
+        if ring_center is not None:
+            mid = 0.5 * (p1 + p2)
+            if float(np.dot(perp, ring_center - mid)) < 0.0:
+                perp = -perp
+            ax.plot(
+                [start[0], end[0]],
+                [start[1], end[1]],
+                color=ink_color,
+                lw=2.1,
+                solid_capstyle="round",
+                zorder=2,
+            )
+            inner_off = perp * 0.165
+            trim = 0.14 * (end - start)
+            in_s = start + trim + inner_off
+            in_e = end - trim + inner_off
+            ax.plot(
+                [in_s[0], in_e[0]],
+                [in_s[1], in_e[1]],
+                color=ink_color,
+                lw=1.85,
+                solid_capstyle="round",
+                zorder=2,
+            )
+            return
+        off = perp * 0.085
         ax.plot(
             [start[0] + off[0], end[0] + off[0]],
             [start[1] + off[1], end[1] + off[1]],
@@ -82,7 +145,7 @@ def _draw_skeletal_bond(
         return
 
     if abs(order - 3.0) < 0.25:
-        off = perp * 0.095
+        off = perp * 0.105
         for mul in (-1.0, 0.0, 1.0):
             s_pt = start + mul * off
             e_pt = end + mul * off
@@ -105,18 +168,22 @@ def _draw_skeletal_bond(
         zorder=2,
     )
     if abs(order - 1.5) < 0.2:
-        off = perp * 0.08
+        if ring_center is not None:
+            mid = 0.5 * (p1 + p2)
+            if float(np.dot(perp, ring_center - mid)) < 0.0:
+                perp = -perp
+        off = perp * 0.15
         ax.plot(
             [
-                start[0] + off[0] + 0.1 * unit[0],
-                end[0] + off[0] - 0.1 * unit[0],
+                start[0] + off[0] + 0.12 * unit[0],
+                end[0] + off[0] - 0.12 * unit[0],
             ],
             [
-                start[1] + off[1] + 0.1 * unit[1],
-                end[1] + off[1] - 0.1 * unit[1],
+                start[1] + off[1] + 0.12 * unit[1],
+                end[1] + off[1] - 0.12 * unit[1],
             ],
             color=ink_color,
-            lw=1.4,
+            lw=1.5,
             linestyle="--",
             zorder=2,
         )
@@ -148,6 +215,68 @@ def _compute_visibility(
         if sym not in ("C", "H")
     }
     return visible, hetero_h_count
+
+
+def _label_color(sym: str, palette: str | Mapping[str, str], ink: str) -> str:
+    """Resolves high-contrast heteroatom text color against white paper."""
+    if sym == "C":
+        return ink
+    col = palettes.get_element_color(sym, scheme=palette)
+    hex_c = col.lstrip("#")
+    if len(hex_c) == 6:
+        r = int(hex_c[0:2], 16) / 255.0
+        g = int(hex_c[2:4], 16) / 255.0
+        b = int(hex_c[4:6], 16) / 255.0
+        if (0.2126 * r + 0.7152 * g + 0.0722 * b) > 0.70:
+            return ink
+    return col
+
+
+def _draw_skeletal_labels(
+    ax: maxes.Axes,
+    atoms: structure.AtomsData,
+    xy: np.ndarray,
+    neighbors: dict[int, list[tuple[int, float]]],
+    visible: list[bool],
+    hetero_h_count: dict[int, int],
+    palette: str | Mapping[str, str],
+    ink: str,
+    bg: str,
+) -> None:
+    """Draws halo-backed heteroatom and terminal carbon labels."""
+    for idx, sym in enumerate(atoms.symbols):
+        if not visible[idx]:
+            continue
+        if sym == "C" and len(neighbors[idx]) >= 2:
+            continue
+        label = sym
+        h_cnt = hetero_h_count.get(idx, 0)
+        if h_cnt == 1:
+            label = f"{sym}H"
+        elif h_cnt > 1:
+            label = f"{sym}H{h_cnt}"
+        if sym == "C":
+            label = "CH3" if len(neighbors[idx]) == 1 else "C"
+        text_col = _label_color(sym, palette, ink)
+        ax.add_patch(
+            patches.Circle(
+                (float(xy[idx, 0]), float(xy[idx, 1])),
+                radius=0.17,
+                facecolor=bg,
+                edgecolor="none",
+                zorder=3,
+            )
+        )
+        ax.text(
+            float(xy[idx, 0]),
+            float(xy[idx, 1]),
+            label,
+            ha="center",
+            va="center",
+            fontsize=11.5,
+            color=text_col,
+            zorder=4,
+        )
 
 
 def render_structure_2d(
@@ -188,6 +317,7 @@ def render_structure_2d(
     for b in bonds:
         neighbors[b.i].append((b.j, b.order))
         neighbors[b.j].append((b.i, b.order))
+    ring_centroids = _find_ring_centroids(bonds, neighbors, xy)
     visible, hetero_h_count = _compute_visibility(
         atoms, neighbors, show_hydrogens
     )
@@ -197,8 +327,9 @@ def render_structure_2d(
     for b in bonds:
         if not (visible[b.i] and visible[b.j]):
             continue
-        s_i = 0.22 if atoms.symbols[b.i] != "C" else 0.0
-        s_j = 0.22 if atoms.symbols[b.j] != "C" else 0.0
+        s_i = 0.17 if atoms.symbols[b.i] != "C" else 0.0
+        s_j = 0.17 if atoms.symbols[b.j] != "C" else 0.0
+        edge_key = (min(b.i, b.j), max(b.i, b.j))
         _draw_skeletal_bond(
             ax,
             xy[b.i],
@@ -207,53 +338,12 @@ def render_structure_2d(
             ink_color=ink,
             shorten_i=s_i,
             shorten_j=s_j,
+            ring_center=ring_centroids.get(edge_key),
         )
 
-    for idx, sym in enumerate(atoms.symbols):
-        if not visible[idx]:
-            continue
-        if sym == "C" and len(neighbors[idx]) >= 2:
-            continue
-        label = sym
-        h_cnt = hetero_h_count.get(idx, 0)
-        if h_cnt == 1:
-            label = f"{sym}H"
-        elif h_cnt > 1:
-            label = f"{sym}H{h_cnt}"
-        col = palettes.get_element_color(sym, scheme=palette)
-        hex_c = col.lstrip("#")
-        bright = False
-        if len(hex_c) == 6:
-            r, g, b = (
-                int(hex_c[0:2], 16) / 255.0,
-                int(hex_c[2:4], 16) / 255.0,
-                int(hex_c[4:6], 16) / 255.0,
-            )
-            bright = (0.2126 * r + 0.7152 * g + 0.0722 * b) > 0.70
-        text_col = ink if bright else col
-        if sym == "C":
-            text_col = ink
-            label = "CH3" if len(neighbors[idx]) == 1 else "C"
-        # Soft circular halo keeps bond ends clean behind atom text.
-        ax.add_patch(
-            patches.Circle(
-                (float(xy[idx, 0]), float(xy[idx, 1])),
-                radius=0.19,
-                facecolor=bg,
-                edgecolor="none",
-                zorder=3,
-            )
-        )
-        ax.text(
-            float(xy[idx, 0]),
-            float(xy[idx, 1]),
-            label,
-            ha="center",
-            va="center",
-            fontsize=11.0,
-            color=text_col,
-            zorder=4,
-        )
+    _draw_skeletal_labels(
+        ax, atoms, xy, neighbors, visible, hetero_h_count, palette, ink, bg
+    )
 
     vis_xy = xy[np.array(visible, dtype=bool)]
     if vis_xy.size == 0:

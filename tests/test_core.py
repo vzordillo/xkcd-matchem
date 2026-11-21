@@ -121,6 +121,36 @@ def test_periodic_bonding_and_polyhedra() -> None:
     bonds = bonding.infer_bonds(si, scale=1.20)
     # 8 Si atoms * 4 tetrahedrally coordinated bonds / 2 = 16 unique bonds.
     assert len(bonds) == 16
+    assert all(b.order == 1.0 for b in bonds)
+
+    # Organic bond-order perception for XYZ, ORCA, and PDB structures.
+    aspirin = loader.load("aspirin.xyz")
+    asp_bonds = bonding.infer_bonds(aspirin)
+    double_bonds = [b for b in asp_bonds if b.order == 2.0]
+    co_doubles = [
+        b
+        for b in double_bonds
+        if {aspirin.symbols[b.i], aspirin.symbols[b.j]} == {"C", "O"}
+    ]
+    cc_doubles = [
+        b
+        for b in double_bonds
+        if {aspirin.symbols[b.i], aspirin.symbols[b.j]} == {"C"}
+    ]
+    assert len(co_doubles) == 2
+    assert len(cc_doubles) == 3
+
+    benz_orca = loader.load("benzene_orca.out")
+    benz_doubles = [b for b in bonding.infer_bonds(benz_orca) if b.order == 2.0]
+    assert len(benz_doubles) == 3
+
+    pep = loader.load("alaninedipeptide.pdb")
+    pep_co_doubles = [
+        b
+        for b in pep.bonds
+        if b.order == 2.0 and {pep.symbols[b.i], pep.symbols[b.j]} == {"C", "O"}
+    ]
+    assert len(pep_co_doubles) == 2
 
     tio2 = loader.load("tio2_slab.poscar")
     polys = bonding.find_coordination_polyhedra(

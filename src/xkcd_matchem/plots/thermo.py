@@ -26,6 +26,7 @@ from scipy import spatial
 
 from xkcd_matchem.data import elements
 from xkcd_matchem.style import palettes
+from xkcd_matchem.style import patterns
 from xkcd_matchem.style import theme
 
 
@@ -238,6 +239,8 @@ def plot_pourbaix(
     ph_range: tuple[float, float] = (0.0, 14.0),
     potential_range: tuple[float, float] = (-1.2, 2.0),
     show_water_window: bool = True,
+    shade: str | Sequence[str | None] | None = None,
+    background_grid: str | None = None,
     palette: str | Sequence[str] = "okabe_ito",
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
@@ -250,9 +253,12 @@ def plot_pourbaix(
             _, ax = plt.subplots(figsize=(6.2, 4.8))
         else:
             theme.style_existing_axes(ax, preset=preset)
+        if background_grid:
+            patterns.apply_background_grid(ax, style=background_grid)
         for idx, (label, vertices) in enumerate(regions):
             pts = np.asarray(vertices, dtype=np.float64)
             col = series[(idx + 1) % len(series)]
+            hatch = patterns.resolve_hatch(shade, index=idx)
             poly = patches.Polygon(
                 pts,
                 closed=True,
@@ -260,8 +266,11 @@ def plot_pourbaix(
                 edgecolor=ink_col,
                 linewidth=1.7,
                 alpha=0.28,
+                hatch=hatch,
                 zorder=2,
             )
+            if hatch:
+                poly.set_sketch_params(0.0, 0.0, 0.0)
             ax.add_patch(poly)
             ctr = np.mean(pts, axis=0)
             ax.text(

@@ -20,6 +20,7 @@ parts:
       - file: tutorials/08_md_trajectories_and_rdf
       - file: tutorials/09_thermodynamics_and_ml_parity
       - file: tutorials/10_posters_boards_and_interoperability
+      - file: tutorials/11_periodic_table_scrolls_and_informatics
   - caption: Reference
     chapters:
       - file: reference/supported_formats

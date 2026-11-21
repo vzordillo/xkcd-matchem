@@ -308,58 +308,72 @@ def _make_md_thermo(out_dir: pathlib.Path) -> None:
 
 
 def _make_opt_in_poster(out_dir: pathlib.Path) -> None:
-    """Generates opt-in Board/Container/Card/Badge millimeter poster."""
+    """Generates opt-in Board with stacked Cards grouped inside Containers."""
     board_p = xm.Board(
-        260.0,
-        176.0,
+        264.0,
+        180.0,
         dpi=170,
-        title="Opt-In Board Layout: High-Throughput Catalyst Screening",
-        subtitle="Composed with Board / Container / Card / Badge in mm units",
+        title="Opt-In Board Layout: Stacking Cards Inside Container Boxes",
+        subtitle=(
+            "Group and stack Cards vertically or side by side "
+            "inside Containers (mm units)"
+        ),
         preset="poster",
     )
     board_p.add_container(
         6.0,
         25.0,
-        248.0,
-        144.0,
-        title="Workflow & Screening Summary",
+        123.0,
+        148.0,
+        title="1. Workflow & Structure (Stacked Cards)",
         solid_header=True,
     )
+    board_p.add_container(
+        135.0,
+        25.0,
+        123.0,
+        148.0,
+        title="2. Benchmarks & Stability (Stacked Cards)",
+        solid_header=True,
+        header_color="#2A9D8F",
+    )
     p1 = board_p.add_card(
-        10.0,
+        10.5,
         36.5,
-        118.0,
-        59.0,
+        114.0,
+        61.0,
         title="Pipeline Architecture",
         header_band=True,
         inner_pad_mm=(4.5, 4.5, 11.5, 4.5),
     )
-    p2 = board_p.add_card(
-        134.0,
-        36.5,
-        116.0,
-        59.0,
-        title="Functional Benchmark",
-        header_band=True,
-        inner_pad_mm=(19.5, 6.0, 13.5, 14.0),
-    )
     p3 = board_p.add_card(
-        10.0,
-        102.0,
-        118.0,
-        61.0,
+        10.5,
+        103.5,
+        114.0,
+        64.5,
         title="TiO2 (110) Slab",
         header_band=True,
         inner_pad_mm=(4.5, 4.5, 11.5, 4.5),
     )
-    p4 = board_p.add_card(
-        134.0,
-        102.0,
-        116.0,
+    p2 = board_p.add_card(
+        139.5,
+        36.5,
+        114.0,
         61.0,
+        title="Functional Benchmark",
+        header_band=True,
+        header_color="#2A9D8F",
+        inner_pad_mm=(19.5, 6.0, 13.5, 15.0),
+    )
+    p4 = board_p.add_card(
+        139.5,
+        103.5,
+        114.0,
+        64.5,
         title="Pourbaix Stability",
         header_band=True,
-        inner_pad_mm=(19.5, 6.0, 13.5, 15.0),
+        header_color="#2A9D8F",
+        inner_pad_mm=(19.5, 6.0, 13.5, 18.0),
     )
     xm.plot_pipeline_diagram(
         [
@@ -392,7 +406,7 @@ def _make_opt_in_poster(out_dir: pathlib.Path) -> None:
         ax=p4.axes,
         preset="poster",
     )
-    board_p.add_badge(234.0, 15.0, "Opt-in Board")
+    board_p.add_badge(238.0, 15.0, "Opt-in Board")
     board_p.save(out_dir / "poster_board.png")
     plt.close(board_p.figure)
 
@@ -600,6 +614,230 @@ def _make_readme_gifs(out_dir: pathlib.Path) -> None:
     _make_theme_switcher_gif(out_dir)
 
 
+def _make_periodic_table_gallery(out_dir: pathlib.Path) -> None:
+    """Generates a 2-row xkcd Periodic Table family + heatmap showcase."""
+    with xm.xkcd_style("classic"):
+        fig, (ax_top, ax_bot) = plt.subplots(
+            2, 1, figsize=(15.0, 14.2), dpi=165
+        )
+        fig.patch.set_facecolor(xm.style.PAPER)
+        xm.plot_periodic_table(
+            ax=ax_top,
+            title="Periodic Table of Elements (xkcd Chemical Families)",
+        )
+        xm.plot_periodic_table(
+            element_property="electronegativity",
+            cmap="YlOrRd",
+            missing_shade="hatch",
+            ax=ax_bot,
+            title="Pauling Electronegativity Heatmap (Hatched Missing Values)",
+        )
+        fig.tight_layout(h_pad=1.6)
+        xm.save_figure(fig, out_dir / "periodic_table.png", dpi=165)
+        plt.close(fig)
+
+
+def _make_materials_informatics_gallery(out_dir: pathlib.Path) -> None:
+    """Generates ternary hull, spacegroup sunburst, and hatched histogram."""
+    comps = [
+        (1.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+        (0.0, 0.0, 1.0),
+        (0.5, 0.0, 0.5),
+        (0.0, 0.4, 0.6),
+        (0.0, 0.5, 0.5),
+        (0.25, 0.25, 0.50),
+        (0.50, 0.17, 0.33),
+        (0.36, 0.36, 0.28),
+    ]
+    energies = [0.0, 0.0, 0.0, -1.95, -1.65, -1.35, -1.88, -2.02, -1.42]
+    labels = [
+        "",
+        "",
+        "",
+        "Li2O",
+        "Fe2O3",
+        "FeO",
+        "LiFeO2",
+        "Li3FeO3",
+        "meta",
+    ]
+    sg_counts = {
+        225: 32,
+        227: 18,
+        221: 24,
+        194: 26,
+        166: 14,
+        139: 19,
+        129: 12,
+        62: 28,
+        63: 15,
+        14: 22,
+        12: 11,
+        2: 9,
+    }
+    rng = np.random.default_rng(42)
+    gaps = np.concatenate(
+        [rng.normal(1.35, 0.42, 160), rng.normal(3.15, 0.55, 95)]
+    )
+    gaps = gaps[gaps > 0.05]
+    with xm.xkcd_style("classic"):
+        fig, axes = plt.subplots(1, 3, figsize=(16.0, 5.4), dpi=165)
+        fig.patch.set_facecolor(xm.style.PAPER)
+        xm.plot_ternary_phase_diagram(
+            comps,
+            energies,
+            corners=("Li", "Fe", "O"),
+            labels=labels,
+            ax=axes[0],
+            title="Ternary Li-Fe-O Convex Hull",
+        )
+        xm.plot_spacegroup_distribution(
+            sg_counts,
+            mode="sunburst",
+            shade="cycle",
+            ax=axes[1],
+            title="Space Group Sunburst (1-230)",
+        )
+        xm.plot_histogram(
+            gaps,
+            bins=16,
+            xlabel="DFT Band Gap (eV)",
+            shade="hatch",
+            background_grid="dotgrid",
+            ax=axes[2],
+            title="Hatched Band-Gap Distribution",
+        )
+        fig.suptitle(
+            "Materials Informatics in xkcd Style (Inspired by pymatviz)",
+            fontsize=15,
+            y=0.98,
+        )
+        fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.92), w_pad=2.0)
+        xm.save_figure(fig, out_dir / "materials_informatics.png", dpi=165)
+        plt.close(fig)
+
+
+def _make_scrolls_and_grids_gallery(out_dir: pathlib.Path) -> None:
+    """Generates portrait/landscape scroll cards, grid papers, and hatching."""
+    board = xm.Board(
+        268.0,
+        190.0,
+        dpi=165,
+        title="Background Grids, Hatched Shading & Vintage Scroll Cards",
+        subtitle=(
+            "Graph/dot/blueprint backgrounds, hatched fills, "
+            "plus portrait & landscape scroll templates"
+        ),
+        preset="classic",
+        background_style="dotgrid",
+    )
+    c_tl = board.add_card(
+        8.0,
+        26.0,
+        122.0,
+        74.0,
+        title="Hatched Bars on Graph Paper",
+        inner_pad_mm=(16.5, 5.5, 13.0, 13.0),
+    )
+    c_tr = board.add_card(
+        138.0,
+        26.0,
+        122.0,
+        74.0,
+        title="Blueprint Grid + Crosshatch Pourbaix",
+        preset="blueprint",
+        inner_pad_mm=(17.5, 5.5, 13.0, 14.5),
+    )
+    xm.plot_bar_comparison(
+        ["PBE", "r2SCAN", "HSE06", "GW"],
+        [0.62, 1.04, 1.15, 1.24],
+        ylabel="Si Gap (eV)",
+        shade="cycle",
+        background_grid="graph",
+        ax=c_tl.axes,
+    )
+    xm.plot_pourbaix(
+        [
+            ("Ti3+", [(0, -0.8), (3.8, -0.8), (3.8, 1.4), (0, 1.4)]),
+            ("TiO2", [(3.8, -0.8), (14, -0.8), (14, 1.4), (3.8, 1.4)]),
+        ],
+        shade=("crosshatch", "dots"),
+        background_grid="blueprint",
+        preset="blueprint",
+        ax=c_tr.axes,
+    )
+
+    board.add_scroll_card(
+        8.0,
+        104.0,
+        106.0,
+        80.0,
+        orientation="portrait",
+        title="Portrait Scroll: DFT Checklist",
+        items=[
+            ("1. Cell", "Check POSCAR & CIF symmetry"),
+            ("2. Mesh", "Converge k-points & ENCUT"),
+            ("3. Relax", "Forces < 0.01 eV/A"),
+            ("4. Bands", "Align DOS & Fermi level"),
+            ("5. SciComm", "Sketch with xkcd-matchem!"),
+        ],
+        bullet="checked",
+        background_grid="ruled",
+    )
+    sc_land = board.add_scroll_card(
+        120.0,
+        104.0,
+        140.0,
+        80.0,
+        orientation="landscape",
+        title="Landscape Scroll: Synthesis Roadmap",
+        background_grid="dotgrid",
+        inner_pad_mm=(4.0, 4.0, 13.5, 3.5),
+    )
+    xm.plot_pipeline_diagram(
+        [
+            ("Precursors", "TiO2 + Li2CO3"),
+            ("Calcination", "850 C / 12 h"),
+            ("XRD Check", "Cu Ka1"),
+        ],
+        ax=sc_land.axes,
+        palette="pastel",
+    )
+    sc_land.axes.set_facecolor(xm.layout.scroll.PARCHMENT_LIGHT)
+    board.save(out_dir / "scrolls_grids_shading.png")
+    plt.close(board.figure)
+
+
+def _make_icons_and_graphs_gallery(out_dir: pathlib.Path) -> None:
+    """Generates xkcd MatChem icons/element badges and GNN structure graphs."""
+    with xm.xkcd_style("classic"):
+        fig, (ax_l, ax_r) = plt.subplots(
+            1,
+            2,
+            figsize=(15.4, 6.2),
+            dpi=165,
+            gridspec_kw={"width_ratios": [1.35, 1.0]},
+        )
+        fig.patch.set_facecolor(xm.style.PAPER)
+        xm.plot_icon_sheet(
+            elements_to_show=("H", "Li", "C", "O", "Si", "Ti", "Fe", "Au"),
+            ncols=6,
+            ax=ax_l,
+            title="xkcd MatChem Icons & Element Badges",
+        )
+        xm.plot_structure_graph(
+            "si_diamond.cif",
+            layout="spring",
+            ax=ax_r,
+            background_grid="isometric",
+            title="Diamond Si Crystal Graph (GNN Periodic Edges)",
+        )
+        fig.tight_layout(w_pad=2.0)
+        xm.save_figure(fig, out_dir / "icons_and_graphs.png", dpi=165)
+        plt.close(fig)
+
+
 def main() -> None:
     """Generates all gallery PNGs, GIFs, and static interactive assets."""
     matplotlib.use("Agg")
@@ -611,6 +849,10 @@ def main() -> None:
     _make_spectroscopy_reactions(_OUT_DIR)
     _make_md_thermo(_OUT_DIR)
     _make_opt_in_poster(_OUT_DIR)
+    _make_periodic_table_gallery(_OUT_DIR)
+    _make_materials_informatics_gallery(_OUT_DIR)
+    _make_scrolls_and_grids_gallery(_OUT_DIR)
+    _make_icons_and_graphs_gallery(_OUT_DIR)
     _make_readme_gifs(_OUT_DIR)
     _export_docs_assets()
     print(f"Generated gallery images, GIFs, and studio in {_BOOK_STATIC}")

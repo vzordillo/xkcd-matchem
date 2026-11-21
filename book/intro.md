@@ -17,7 +17,7 @@ Not sure where to jump in? Choose the path that fits what you want to do right n
 - **Want to try it without writing code?** Open the **[Interactive 3D Studio](playground.md)** right inside this documentation to spin crystals, swap atom colors, build supercells, and copy ready-to-run Python snippets.
 - **Want to browse what's possible first?** Flip through the **[Visual Gallery](gallery.md)** — every figure links directly to the tutorial notebook that builds it.
 - **Ready to plot your own files?** Follow **[Installation](installation.md)**, then work through **Basic Usage** (Tutorials 01, 02, 03, 04, and 06) for one-line defaults across molecules, crystals, slabs, bands/DOS, spectra, and powder XRD.
-- **Customizing a talk, poster, or simulation workflow?** Jump to **Advanced Usage** (Tutorials 05, 07, 08, 09, and 10) for custom themes and palettes, volumetric cubes, NEB pathways, periodic MD/RDF analysis, thermodynamic hulls, millimeter poster boards, and ASE/pymatgen/RDKit/cclib bridges.
+- **Customizing a talk, poster, or simulation workflow?** Jump to **Advanced Usage** (Tutorials 05, 07, 08, 09, 10, and 11) for custom themes and palettes, volumetric cubes, NEB pathways, periodic MD/RDF analysis, thermodynamic hulls, millimeter poster boards (with stacked cards and vintage parchment scrolls), the xkcd periodic table, background grids & hatched shading, matchem icons, GNN structure graphs, and ASE/pymatgen/RDKit/cclib bridges.
 
 :::{note}
 **Defaults first, full control whenever you want it.**

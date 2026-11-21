@@ -18,7 +18,7 @@ A quick overview spanning molecules, periodic crystals, electronic structure, sp
 
 ## Molecules: 3D Ball-and-Stick, Spacefill & 2D Skeletal
 
-Compare `plot_molecule(..., style="ball_and_stick")`, `style="spacefill"`, and `mode="2d"` with automatic split half-bonds and inline element legends.
+Compare `plot_molecule(..., style="ball_and_stick")`, `style="spacefill"`, and `mode="2d"` with seamless two-tone bonds, automatic organic bond-order perception (ring and carbonyl double bonds), and inline element legends.
 See [Tutorial 02: Molecules in 3D, 2D & Interactive Studio](tutorials/02_molecules_3d_and_2d.ipynb).
 
 ![Molecular renderers](_static/gallery/molecules_3d_2d.png)
@@ -74,6 +74,34 @@ See [Tutorial 09: Thermodynamics & ML Parity](tutorials/09_thermodynamics_and_ml
 
 ## Opt-In Poster Composition (`Board`, `Container`, `Card`, `Badge`)
 
-Individual plots always stay borderless on an open canvas. When assembling a full conference poster or group-meeting handout in millimeter coordinates, opt into `xm.Board` — see [Tutorial 10: Opt-In Poster Boards & Interoperability](tutorials/10_posters_boards_and_interoperability.ipynb):
+Individual plots always stay borderless on an open canvas. When assembling a full conference poster or group-meeting handout in millimeter coordinates, opt into `xm.Board` — you can group and **stack multiple cards vertically or side by side inside container boxes**. See [Tutorial 10: Opt-In Poster Boards & Interoperability](tutorials/10_posters_boards_and_interoperability.ipynb):
 
 ![Poster board example](_static/gallery/poster_board.png)
+
+## Periodic Table of Elements & Property Heatmaps
+
+Render all 118 elements by chemical family, map custom datasets or built-in atomic properties (`electronegativity`, `covalent_radius`, `vdw_radius`, `atomic_mass`) with hatched missing tiles, or spotlight formulas like `"LiFePO4"` using `plot_periodic_table()`.
+See [Tutorial 11: Periodic Table, Scrolls, Grids, Icons & Graphs](tutorials/11_periodic_table_scrolls_and_informatics.ipynb).
+
+![xkcd Periodic Table](_static/gallery/periodic_table.png)
+
+## Materials Informatics (Ternary Hulls, Space Group Sunbursts & Histograms)
+
+Inspired by `pymatviz`, explore ternary Gibbs convex hulls (`plot_ternary_phase_diagram()`), two-ring crystal-system/space-group sunbursts (`plot_spacegroup_distribution()`), and hatched property histograms with KDE overlays (`plot_histogram()`).
+See [Tutorial 11: Periodic Table, Scrolls, Grids, Icons & Graphs](tutorials/11_periodic_table_scrolls_and_informatics.ipynb).
+
+![Materials informatics gallery](_static/gallery/materials_informatics.png)
+
+## Background Grids, Hatched Shading & Vintage Scroll Cards
+
+Layer notebook/graph/dotgrid/isometric/blueprint paper backgrounds (`background_grid=`, `apply_background_grid()`), hatched or stippled fills (`shade="cycle" | "crosshatch" | "dots"`), and portrait or landscape vintage parchment scroll cards (`plot_scroll_card()`, `board.add_scroll_card()`).
+See [Tutorial 11: Periodic Table, Scrolls, Grids, Icons & Graphs](tutorials/11_periodic_table_scrolls_and_informatics.ipynb).
+
+![Scrolls, grids, and hatched shading](_static/gallery/scrolls_grids_shading.png)
+
+## xkcd MatChem Icons, Element Badges & GNN Structure Graphs
+
+Drop playful vector icons (`flask`, `crystal`, `battery`, `graphene`, `catalyst`, `dft`, `neural_net`) and element badges (`draw_element_badge()`) onto any figure, or turn molecules and periodic crystals into GNN graphs with dashed periodic boundary arcs (`plot_structure_graph()`, `plot_graph_network()`).
+See [Tutorial 11: Periodic Table, Scrolls, Grids, Icons & Graphs](tutorials/11_periodic_table_scrolls_and_informatics.ipynb).
+
+![Icons and GNN structure graphs](_static/gallery/icons_and_graphs.png)

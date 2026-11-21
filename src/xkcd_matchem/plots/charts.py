@@ -23,6 +23,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 from xkcd_matchem.style import palettes
+from xkcd_matchem.style import patterns
 from xkcd_matchem.style import theme
 
 
@@ -109,6 +110,8 @@ def plot_bar_comparison(
     errors: Sequence[float] | np.ndarray | None = None,
     ylabel: str = "Value",
     annotate_values: bool = True,
+    shade: str | Sequence[str | None] | None = None,
+    background_grid: str | None = None,
     palette: str | Sequence[str] = "okabe_ito",
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
@@ -123,6 +126,8 @@ def plot_bar_comparison(
             _, ax = plt.subplots(figsize=(6.2, 4.2))
         else:
             theme.style_existing_axes(ax, preset=preset)
+        if background_grid:
+            patterns.apply_background_grid(ax, style=background_grid)
         xs = np.arange(len(labels))
         bars = ax.bar(
             xs,
@@ -134,7 +139,14 @@ def plot_bar_comparison(
             width=0.62,
             capsize=4.0,
             alpha=0.88,
+            zorder=3.0,
         )
+        if shade is not None:
+            for idx, rect in enumerate(bars):
+                hatch = patterns.resolve_hatch(shade, index=idx)
+                if hatch:
+                    rect.set_hatch(hatch)
+                    rect.set_sketch_params(0.0, 0.0, 0.0)
         if annotate_values:
             for rect, v in zip(bars, vals, strict=True):
                 ax.text(

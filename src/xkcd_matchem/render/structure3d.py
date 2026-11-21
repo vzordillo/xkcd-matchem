@@ -84,6 +84,49 @@ def _polyhedra_pair_filter(
     return None
 
 
+def _build_interior_bond_item(
+    atoms: structure.AtomsData,
+    bond: structure.Bond,
+    xy: np.ndarray,
+    depth: np.ndarray,
+    colors: Sequence[str],
+    radii: Sequence[float],
+) -> tuple[float, str, object]:
+    """Builds one unified depth-sorted interior bond item."""
+    i_idx, j_idx = bond.i, bond.j
+    i_back, i_front = (
+        (i_idx, j_idx) if depth[i_idx] <= depth[j_idx] else (j_idx, i_idx)
+    )
+    dz = float(depth[i_front] - depth[i_back])
+    p_back = xy[i_back]
+    p_front = xy[i_front]
+    seg_2d = float(np.linalg.norm(p_front - p_back))
+    if dz < 0.25 or seg_2d < 0.65 * radii[i_back]:
+        bond_z = float(depth[i_back]) - 0.04
+        p_start = p_back
+        split_frac = 0.5
+    else:
+        d3 = float(
+            np.linalg.norm(atoms.positions[i_front] - atoms.positions[i_back])
+        )
+        t_start = min(0.32, 0.55 * radii[i_back] / max(d3, 1e-6))
+        p_start = p_back + t_start * (p_front - p_back)
+        split_frac = (0.5 - t_start) / max(1.0 - t_start, 1e-6)
+        bond_z = 0.5 * float(depth[i_back] + depth[i_front]) - 0.02
+    return (
+        bond_z,
+        "bond",
+        (
+            p_start,
+            p_front,
+            colors[i_back],
+            colors[i_front],
+            bond.order,
+            split_frac,
+        ),
+    )
+
+
 def _add_bond_queue_items(
     items: list[tuple[float, str, object]],
     atoms: structure.AtomsData,
@@ -92,9 +135,10 @@ def _add_bond_queue_items(
     pivot: np.ndarray,
     xy_and_depth: tuple[np.ndarray, np.ndarray],
     colors: Sequence[str],
+    radii: Sequence[float],
     skip_pair: tuple[str | None, str | None] | None = None,
 ) -> None:
-    """Appends two depth-sorted half-bonds per interior or periodic bond."""
+    """Appends unified two-tone interior bonds and periodic edge stubs."""
     xy, depth = xy_and_depth
     for bond in bonds:
         i_idx, j_idx = bond.i, bond.j
@@ -108,20 +152,8 @@ def _add_bond_queue_items(
             if match_fwd or match_rev:
                 continue
         if bond.shift == (0, 0, 0) or atoms.cell is None:
-            mid_xy = 0.5 * (xy[i_idx] + xy[j_idx])
             items.append(
-                (
-                    float(depth[i_idx]) - 0.06,
-                    "half",
-                    (xy[i_idx], mid_xy, colors[i_idx], bond.order),
-                )
-            )
-            items.append(
-                (
-                    float(depth[j_idx]) - 0.06,
-                    "half",
-                    (xy[j_idx], mid_xy, colors[j_idx], bond.order),
-                )
+                _build_interior_bond_item(atoms, bond, xy, depth, colors, radii)
             )
             continue
         shift_vec = (
@@ -204,12 +236,23 @@ def _draw_queue_item(
         list[float],
         float,
         float,
+        float,
         bool,
         str,
     ],
 ) -> None:
-    """Paints a single depth-ranked atom sphere, half-bond, or poly facet."""
-    atoms, xy, colors, radii, bond_w, atom_lw, show_labels, style = state
+    """Paints a single depth-ranked atom sphere, bond, or polyhedron facet."""
+    (
+        atoms,
+        xy,
+        colors,
+        radii,
+        bond_w,
+        bond_off,
+        atom_lw,
+        show_labels,
+        style,
+    ) = state
     if kind == "atom":
         idx = int(payload)  # type: ignore[arg-type]
         primitives.draw_atom_sphere(
@@ -223,6 +266,20 @@ def _draw_queue_item(
             highlight=style != "stick",
             zorder=z_layer,
         )
+    elif kind == "bond":
+        p_a, p_b, col_a, col_b, order, split_frac = payload  # type: ignore[misc]
+        primitives.draw_two_tone_bond(
+            ax,
+            p_a,
+            p_b,
+            c1=col_a,
+            c2=col_b,
+            width=bond_w,
+            order=order,
+            offset_scale=bond_off,
+            zorder=z_layer,
+            split_frac=split_frac,
+        )
     elif kind == "half":
         p_a, p_b, col, order = payload  # type: ignore[misc]
         primitives.draw_half_bond(
@@ -232,6 +289,7 @@ def _draw_queue_item(
             color=col,
             width=bond_w,
             order=order,
+            offset_scale=bond_off,
             zorder=z_layer,
         )
     elif kind == "tri":
@@ -301,7 +359,7 @@ def _prepare_scene_geometry(
     list[float],
     float,
     tuple[bool, str | None, str],
-    tuple[float, float, float],
+    tuple[float, float, float, float],
 ]:
     """Computes projected points, colors, radii, cell mode, and widths."""
     pivot = (
@@ -331,6 +389,10 @@ def _prepare_scene_geometry(
     bond_w = float(np.clip(0.26 * pt_per_a, 1.8, 5.2))
     if style == "stick":
         bond_w *= 1.35
+    rail_outer = bond_w * 0.50 + max(1.4, 0.27 * bond_w)
+    bond_off = float(
+        np.clip(0.72 * rail_outer / max(pt_per_a, 1.0), 0.08, 0.135)
+    )
     atom_lw = float(np.clip(0.11 * pt_per_a, 1.3, 2.2))
     cell_lw = float(np.clip(0.10 * pt_per_a, 1.15, 1.9))
     return (
@@ -342,7 +404,7 @@ def _prepare_scene_geometry(
         radii,
         margin,
         cell_cfg,
-        (bond_w, atom_lw, cell_lw),
+        (bond_w, bond_off, atom_lw, cell_lw),
     )
 
 
@@ -417,12 +479,13 @@ def _build_3d_painter_queue(
     xy: np.ndarray,
     depth: np.ndarray,
     colors: list[str],
+    radii: list[float],
     opts: tuple[str, str | Mapping[str, str], bool, bool, float],
     polyhedra: tuple[str, str | None]
     | Sequence[bonding.CoordinationPolyhedron]
     | None,
 ) -> list[tuple[float, str, object]]:
-    """Assembles and depth-sorts atoms, half-bonds, and polyhedra faces."""
+    """Assembles and depth-sorts atoms, unified bonds, and polyhedra faces."""
     style, palette, _, show_bonds, bond_scale = opts
     items: list[tuple[float, str, object]] = [
         (float(depth[idx]), "atom", idx) for idx in range(len(atoms))
@@ -441,6 +504,7 @@ def _build_3d_painter_queue(
             pivot,
             (xy, depth),
             colors,
+            radii,
             skip_pair=_polyhedra_pair_filter(style, polyhedra),
         )
     _add_polyhedra_items(items, atoms, polyhedra, cam, pivot, palette)
@@ -461,7 +525,7 @@ def _render_prepared_3d(
         list[float],
         float,
         tuple[bool, str | None, str],
-        tuple[float, float, float],
+        tuple[float, float, float, float],
     ],
     opts: tuple[str, str | Mapping[str, str], bool, bool, float],
     polyhedra: tuple[str, str | None]
@@ -479,7 +543,7 @@ def _render_prepared_3d(
             atoms.cell,
             cam,
             center=pivot,
-            linewidth=widths[2],
+            linewidth=widths[3],
             draw_back=True,
             draw_front=False,
             base_plane_color=cell_cfg[1],
@@ -487,9 +551,19 @@ def _render_prepared_3d(
         )
 
     items = _build_3d_painter_queue(
-        atoms, cam, pivot, xy, depth, colors, opts, polyhedra
+        atoms, cam, pivot, xy, depth, colors, radii, opts, polyhedra
     )
-    state = (atoms, xy, colors, radii, widths[0], widths[1], opts[2], opts[0])
+    state = (
+        atoms,
+        xy,
+        colors,
+        radii,
+        widths[0],
+        widths[1],
+        widths[2],
+        opts[2],
+        opts[0],
+    )
     for rank, (_, kind, payload) in enumerate(items):
         _draw_queue_item(ax, kind, payload, 2.0 + 0.02 * rank, state)
 
@@ -500,7 +574,7 @@ def _render_prepared_3d(
             atoms.cell,
             cam,
             center=pivot,
-            linewidth=widths[2],
+            linewidth=widths[3],
             draw_back=False,
             draw_front=True,
             base_plane_color=None,

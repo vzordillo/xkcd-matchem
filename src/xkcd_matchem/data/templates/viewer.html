@@ -814,9 +814,22 @@ canvas#xm-canvas:active { cursor: grabbing; }
       if (i >= proj.length || j >= proj.length) continue;
       const isInternal = shift[0] === 0 && shift[1] === 0 && shift[2] === 0;
       if (isInternal || !cell) {
-        const mid = [0.5 * (proj[i][0] + proj[j][0]), 0.5 * (proj[i][1] + proj[j][1])];
-        items.push({ depth: proj[i][2] - 0.06, kind: "half", p0: proj[i], p1: mid, col: elementColor(symbols[i]), order, seed: idx + 1 });
-        items.push({ depth: proj[j][2] - 0.06, kind: "half", p0: proj[j], p1: mid, col: elementColor(symbols[j]), order, seed: idx + 100 });
+        const iBack = proj[i][2] <= proj[j][2] ? i : j;
+        const iFront = iBack === i ? j : i;
+        const dz = proj[iFront][2] - proj[iBack][2];
+        const bondDepth = dz < 0.25
+          ? proj[iBack][2] - 0.04
+          : 0.5 * (proj[iBack][2] + proj[iFront][2]) - 0.02;
+        items.push({
+          depth: bondDepth,
+          kind: "bond",
+          p0: proj[iBack],
+          p1: proj[iFront],
+          c0: elementColor(symbols[iBack]),
+          c1: elementColor(symbols[iFront]),
+          order,
+          seed: idx + 1,
+        });
       } else {
         const sv = [
           shift[0] * cell[0][0] + shift[1] * cell[1][0] + shift[2] * cell[2][0],
@@ -864,6 +877,9 @@ canvas#xm-canvas:active { cursor: grabbing; }
         ctx.strokeStyle = ink;
         ctx.lineWidth = 1.0;
         ctx.stroke();
+      } else if (item.kind === "bond") {
+        if (state.style === "spacefill") continue;
+        drawTwoToneBond(toScreen(item.p0), toScreen(item.p1), item.c0, item.c1, ink, stickHalfPx, item.order, item.seed);
       } else if (item.kind === "half") {
         if (state.style === "spacefill") continue;
         drawHalfBond(toScreen(item.p0), toScreen(item.p1), item.col, ink, stickHalfPx, item.order, item.seed);
@@ -918,24 +934,67 @@ canvas#xm-canvas:active { cursor: grabbing; }
     ctx.restore();
   }
 
+  function drawTwoToneBond(s0, s1, c0, c1, ink, halfPx, order, seed) {
+    const dx = s1[0] - s0[0], dy = s1[1] - s0[1];
+    const len = Math.hypot(dx, dy);
+    if (len < 1) return;
+    const offsets = order >= 2.5 ? [-1.05, 0, 1.05] : order >= 1.5 ? [-0.78, 0.78] : [0];
+    const nx = -dy / len, ny = dx / len;
+    const scaleW = order >= 2.5 ? 0.42 : order >= 1.5 ? 0.52 : 1.0;
+    const outerW = 2 * halfPx * scaleW + 2.2;
+    const innerW = Math.max(1.5, 2 * halfPx * scaleW - 0.8);
+    for (const off of offsets) {
+      const ox = nx * off * halfPx, oy = ny * off * halfPx;
+      const a = [s0[0] + ox, s0[1] + oy], b = [s1[0] + ox, s1[1] + oy];
+      const mid = [0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1])];
+      const ov = [a[0] + 0.52 * (b[0] - a[0]), a[1] + 0.52 * (b[1] - a[1])];
+      ctx.save();
+      ctx.lineCap = "butt";
+      ctx.beginPath();
+      ctx.moveTo(a[0], a[1]);
+      ctx.lineTo(b[0], b[1]);
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = outerW;
+      ctx.stroke();
+      if (c0 === c1) {
+        ctx.strokeStyle = c0;
+        ctx.lineWidth = innerW;
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(a[0], a[1]);
+        ctx.lineTo(ov[0], ov[1]);
+        ctx.strokeStyle = c0;
+        ctx.lineWidth = innerW;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(mid[0], mid[1]);
+        ctx.lineTo(b[0], b[1]);
+        ctx.strokeStyle = c1;
+        ctx.lineWidth = innerW;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
   function drawHalfBond(s0, s1, fillCol, ink, halfPx, order, seed) {
     const dx = s1[0] - s0[0], dy = s1[1] - s0[1];
     const len = Math.hypot(dx, dy);
     if (len < 1) return;
-    const offsets = order >= 2.5 ? [-0.95, 0, 0.95] : order >= 1.5 ? [-0.65, 0.65] : [0];
+    const offsets = order >= 2.5 ? [-1.05, 0, 1.05] : order >= 1.5 ? [-0.78, 0.78] : [0];
     const nx = -dy / len, ny = dx / len;
-    const scaleW = order >= 2.5 ? 0.45 : order >= 1.5 ? 0.55 : 1.0;
+    const scaleW = order >= 2.5 ? 0.42 : order >= 1.5 ? 0.52 : 1.0;
     for (const off of offsets) {
       const ox = nx * off * halfPx, oy = ny * off * halfPx;
       const a = [s0[0] + ox, s0[1] + oy], b = [s1[0] + ox, s1[1] + oy];
-      const pts = wiggledSegment(a, b, state.wiggle * 0.45, seed);
       ctx.save();
       ctx.lineCap = "butt";
       ctx.beginPath();
-      ctx.moveTo(pts[0][0], pts[0][1]);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.moveTo(a[0], a[1]);
+      ctx.lineTo(b[0], b[1]);
       ctx.strokeStyle = ink;
-      ctx.lineWidth = 2 * halfPx * scaleW + 2.4;
+      ctx.lineWidth = 2 * halfPx * scaleW + 2.2;
       ctx.stroke();
       ctx.strokeStyle = fillCol;
       ctx.lineWidth = Math.max(1.5, 2 * halfPx * scaleW - 0.8);
@@ -1186,9 +1245,11 @@ canvas#xm-canvas:active { cursor: grabbing; }
         if (i >= proj.length || j >= proj.length) return;
         const isInternal = shift[0] === 0 && shift[1] === 0 && shift[2] === 0;
         if (isInternal || !cell) {
-          const mid = [0.5 * (proj[i][0] + proj[j][0]), 0.5 * (proj[i][1] + proj[j][1])];
-          q.push({ d: proj[i][2] - 0.06, t: "b", a: sc(proj[i]), b: sc(mid), c: elementColor(symbols[i]), order });
-          q.push({ d: proj[j][2] - 0.06, t: "b", a: sc(proj[j]), b: sc(mid), c: elementColor(symbols[j]), order });
+          const iBack = proj[i][2] <= proj[j][2] ? i : j;
+          const iFront = iBack === i ? j : i;
+          const dz = proj[iFront][2] - proj[iBack][2];
+          const bd = dz < 0.25 ? proj[iBack][2] - 0.04 : 0.5 * (proj[iBack][2] + proj[iFront][2]) - 0.02;
+          q.push({ d: bd, t: "b2", a: sc(proj[iBack]), b: sc(proj[iFront]), c0: elementColor(symbols[iBack]), c1: elementColor(symbols[iFront]), order });
         } else {
           const sv = [
             shift[0] * cell[0][0] + shift[1] * cell[1][0] + shift[2] * cell[2][0],
@@ -1221,6 +1282,25 @@ canvas#xm-canvas:active { cursor: grabbing; }
       if (it.t === "tri") {
         const ptsStr = it.pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
         parts.push(`<polygon points="${ptsStr}" fill="${it.c}" fill-opacity="0.42" stroke="${ink}" stroke-width="1.0"/>`);
+      } else if (it.t === "b2") {
+        const dx = it.b[0] - it.a[0], dy = it.b[1] - it.a[1], l = Math.hypot(dx, dy) || 1;
+        const nx = -dy / l, ny = dx / l;
+        const offs = it.order >= 2.5 ? [-1.05, 0, 1.05] : it.order >= 1.5 ? [-0.78, 0.78] : [0];
+        const sw = it.order >= 2.5 ? 0.42 : it.order >= 1.5 ? 0.52 : 1.0;
+        const ow = stickW * sw + 2.2, iw = Math.max(1.5, stickW * sw - 0.8);
+        for (const ofst of offs) {
+          const ox = nx * ofst * stickW * 0.5, oy = ny * ofst * stickW * 0.5;
+          const ax0 = it.a[0] + ox, ay0 = it.a[1] + oy, bx0 = it.b[0] + ox, by0 = it.b[1] + oy;
+          const mx = 0.5 * (ax0 + bx0), my = 0.5 * (ay0 + by0);
+          const ovx = ax0 + 0.52 * (bx0 - ax0), ovy = ay0 + 0.52 * (by0 - ay0);
+          parts.push(`<line x1="${ax0.toFixed(1)}" y1="${ay0.toFixed(1)}" x2="${bx0.toFixed(1)}" y2="${by0.toFixed(1)}" stroke="${ink}" stroke-width="${ow.toFixed(1)}" stroke-linecap="butt"/>`);
+          if (it.c0 === it.c1) {
+            parts.push(`<line x1="${ax0.toFixed(1)}" y1="${ay0.toFixed(1)}" x2="${bx0.toFixed(1)}" y2="${by0.toFixed(1)}" stroke="${it.c0}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt"/>`);
+          } else {
+            parts.push(`<line x1="${ax0.toFixed(1)}" y1="${ay0.toFixed(1)}" x2="${ovx.toFixed(1)}" y2="${ovy.toFixed(1)}" stroke="${it.c0}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt"/>`);
+            parts.push(`<line x1="${mx.toFixed(1)}" y1="${my.toFixed(1)}" x2="${bx0.toFixed(1)}" y2="${by0.toFixed(1)}" stroke="${it.c1}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt"/>`);
+          }
+        }
       } else if (it.t === "b") {
         parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${ink}" stroke-width="${(stickW + 2.4).toFixed(1)}" stroke-linecap="butt"/>`);
         parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${it.c}" stroke-width="${Math.max(1.5, stickW - 0.8).toFixed(1)}" stroke-linecap="butt"/>`);

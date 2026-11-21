@@ -17,8 +17,13 @@ Looking for the right function? Start here:
 | Sketch reaction pathways or NEB barriers | `xm.plot_reaction_profile(...)`, `xm.plot_neb(...)` |
 | Analyze or animate MD trajectories & RDFs | `xm.plot_md_timeseries(...)`, `xm.plot_rdf(...)`, `xm.plot_rmsd(...)`, `xm.animate_trajectory(...)` |
 | Plot hulls, EOS fits, Pourbaix maps, or parity benchmarks | `xm.plot_phase_diagram_2d(...)`, `xm.plot_eos(...)`, `xm.plot_pourbaix(...)`, `xm.plot_parity(...)`, `xm.plot_bar_comparison(...)`, `xm.plot_pipeline_diagram(...)` |
+| Plot an xkcd periodic table, heatmap, or formula spotlight | `xm.plot_periodic_table(...)` |
+| Plot ternary hulls, space-group sunbursts, or histograms | `xm.plot_ternary_phase_diagram(...)`, `xm.plot_spacegroup_distribution(...)`, `xm.plot_histogram(...)` |
+| Plot GNN crystal/molecular graphs or informatics networks | `xm.plot_structure_graph(...)`, `xm.plot_graph_network(...)` |
+| Draw xkcd chemistry/materials icons & element tiles | `xm.draw_icon(...)`, `xm.draw_element_badge(...)`, `xm.plot_icon_sheet(...)` |
+| Add notebook/graph/dotgrid/blueprint backgrounds or hatched fills | `xm.apply_background_grid(...)`, `xm.shade_between(...)`, `shade=...`, `background_grid=...` |
 | Customize themes, element colors, or existing Matplotlib axes | `xm.xkcd_style(...)`, `xm.register_preset(...)`, `xm.register_palette(...)`, `xm.register_element_palette(...)`, `xm.style_existing_axes(...)` |
-| Compose a millimeter-accurate conference poster | `xm.Board`, `xm.Container`, `xm.Card`, `xm.Badge` |
+| Compose a poster with stacked cards or parchment scrolls | `xm.Board`, `xm.Container`, `xm.Card`, `xm.ScrollCard`, `xm.plot_scroll_card(...)`, `xm.Badge` |
 
 ## Top-Level Package (`xkcd_matchem`)
 
@@ -40,6 +45,11 @@ Looking for the right function? Start here:
 
 ```{eval-rst}
 .. automodule:: xkcd_matchem.style.palettes
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.style.patterns
    :members:
 ```
 
@@ -102,10 +112,30 @@ Looking for the right function? Start here:
    :members:
 ```
 
-## Interactive 3D Studio & Renderers (`xkcd_matchem.render`)
+```{eval-rst}
+.. automodule:: xkcd_matchem.plots.ptable
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.plots.materials
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.plots.graphs
+   :members:
+```
+
+## Interactive 3D Studio, Icons & Renderers (`xkcd_matchem.render`)
 
 ```{eval-rst}
 .. automodule:: xkcd_matchem.render.interactive
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.render.icons
    :members:
 ```
 
@@ -119,9 +149,14 @@ Looking for the right function? Start here:
    :members:
 ```
 
-## Opt-In Poster Layout (`xkcd_matchem.layout`)
+## Opt-In Poster Layout & Parchment Scrolls (`xkcd_matchem.layout`)
 
 ```{eval-rst}
 .. automodule:: xkcd_matchem.layout.canvas
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.layout.scroll
    :members:
 ```

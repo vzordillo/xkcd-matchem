@@ -20,6 +20,7 @@ import re
 
 import numpy as np
 
+from xkcd_matchem.core import bonding
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import geometry
 from xkcd_matchem.core import structure
@@ -86,17 +87,18 @@ def read_pdb_trajectory(path: str | pathlib.Path) -> trajectory.Trajectory:
             for i, j in sorted(conect_pairs)
             if i < len(cur_symbols) and j < len(cur_symbols)
         ]
-        frames.append(
-            structure.AtomsData(
-                symbols=list(cur_symbols),
-                positions=np.array(cur_coords, dtype=np.float64),
-                cell=cell,
-                pbc=pbc,
-                bonds=bonds,
-                atom_labels=list(cur_labels),
-                metadata={"source": str(p)},
-            )
+        frame = structure.AtomsData(
+            symbols=list(cur_symbols),
+            positions=np.array(cur_coords, dtype=np.float64),
+            cell=cell,
+            pbc=pbc,
+            bonds=bonds,
+            atom_labels=list(cur_labels),
+            metadata={"source": str(p)},
         )
+        if frame.bonds:
+            frame.bonds = bonding.infer_bond_orders(frame, frame.bonds)
+        frames.append(frame)
 
     for line in lines:
         rec = line[:6].strip()

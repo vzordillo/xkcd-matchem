@@ -57,8 +57,14 @@ def test_render_2d_crystal_slab_and_polyhedra() -> None:
     matplotlib.use("Agg")
     benzene = loader.load("benzene.sdf")
     ax_2d = structure2d.render_structure_2d(benzene)
-    assert len(ax_2d.lines) >= 6
+    assert len(ax_2d.lines) >= 9
     plt.close(ax_2d.figure)
+
+    aspirin = loader.load("aspirin.xyz")
+    ax_asp_2d = structure2d.render_structure_2d(aspirin)
+    # 14 visible heavy+polar bonds + 5 double-bond second strokes = 19 lines.
+    assert len(ax_asp_2d.lines) == 19
+    plt.close(ax_asp_2d.figure)
 
     ax_crys = struct_plots.plot_crystal(
         "si_diamond.cif", supercell=(1, 1, 1), miller_planes=[(1, 1, 1)]

@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 import dataclasses
 import pathlib
 
@@ -24,7 +25,9 @@ from matplotlib import patches
 from matplotlib import pyplot as plt
 
 from xkcd_matchem.layout import export
+from xkcd_matchem.layout import scroll
 from xkcd_matchem.style import palettes
+from xkcd_matchem.style import patterns
 from xkcd_matchem.style import theme
 
 
@@ -75,7 +78,8 @@ class Board:
     """Physical millimeter canvas for multi-panel posters and figures.
 
     Uses normalized top-down coordinates ``(x_mm, y_mm)`` with ``(0, 0)`` at the
-    top-left corner of the sheet for predictable layout composition.
+    top-left corner of the sheet so you can group and stack multiple ``Card``
+    panels vertically or side by side inside ``Container`` boxes.
     """
 
     def __init__(
@@ -86,6 +90,7 @@ class Board:
         title: str | None = None,
         subtitle: str | None = None,
         preset: str | theme.ThemePreset = "classic",
+        background_style: str = "none",
     ) -> None:
         """Initializes the millimeter canvas and background overlay axes."""
         self.width_mm = float(width_mm)
@@ -102,11 +107,21 @@ class Board:
                 dpi=self.dpi,
                 facecolor=self.theme.figure_facecolor,
             )
+            self.figure.patch.set_sketch_params(0.0, 0.0, 0.0)
             self.overlay: maxes.Axes = self.figure.add_axes(
                 [0.0, 0.0, 1.0, 1.0]
             )
             self.overlay.set_xlim(0.0, self.width_mm)
             self.overlay.set_ylim(self.height_mm, 0.0)
+            self.overlay.set_facecolor(self.theme.figure_facecolor)
+            self.overlay.patch.set_sketch_params(0.0, 0.0, 0.0)
+            if background_style and background_style.lower() != "none":
+                patterns.apply_background_grid(
+                    self.overlay,
+                    style=background_style,
+                    spacing=0.05,
+                    margin_line=False,
+                )
             self.overlay.set_axis_off()
             if title:
                 self.overlay.text(
@@ -131,6 +146,7 @@ class Board:
                     zorder=5,
                 )
         self.cards: list[Card] = []
+        self.scroll_cards: list[scroll.ScrollCard] = []
 
     def add_container(
         self,
@@ -222,11 +238,14 @@ class Board:
         header_color: str = "#56B4E9",
         header_band: bool = False,
         inner_pad_mm: tuple[float, float, float, float] | None = None,
+        preset: str | theme.ThemePreset | None = None,
     ) -> Card:
         """Adds a framed card and returns its child plotting ``Card.axes``.
 
         Defaults to a clean borderless white card header (``header_band=False``)
-        and switches to a tinted top banner when ``header_band=True``.
+        and switches to a tinted top banner when ``header_band=True``. Pass
+        ``preset="blueprint"`` or ``"dark_chalk"`` to style an individual card
+        in a contrasting theme.
 
         Args:
           x_mm: Left position in millimeters.
@@ -238,24 +257,27 @@ class Board:
           header_color: Fill tint when ``header_band=True``.
           header_band: Whether to draw a tinted header box behind ``title``.
           inner_pad_mm: ``(left, right, top, bottom)`` padding inside the card.
+          preset: Optional per-card theme preset overriding the board preset.
 
         Returns:
           ``Card`` whose ``.axes`` accepts ``xkcd_matchem`` plots.
         """
+        card_preset = self.preset if preset is None else preset
+        card_theme = theme.get_preset(card_preset)
         default_top = 17.0 if (title and subtitle) else (13.0 if title else 6.5)
         pad_l, pad_r, pad_t, pad_b = (
             (18.5, 6.5, default_top, 15.0)
             if inner_pad_mm is None
             else inner_pad_mm
         )
-        with theme.xkcd_style(preset=self.preset):
+        with theme.xkcd_style(preset=card_preset):
             card_box = patches.FancyBboxPatch(
                 (x_mm, y_mm),
                 w_mm,
                 h_mm,
                 boxstyle="round,pad=0.3,rounding_size=2.2",
-                facecolor=self.theme.axes_facecolor,
-                edgecolor=self.theme.ink_color,
+                facecolor=card_theme.axes_facecolor,
+                edgecolor=card_theme.ink_color,
                 linewidth=1.5,
                 zorder=2,
             )
@@ -267,7 +289,7 @@ class Board:
                     8.2,
                     boxstyle="round,pad=0.1,rounding_size=1.4",
                     facecolor=header_color,
-                    edgecolor=self.theme.ink_color,
+                    edgecolor=card_theme.ink_color,
                     linewidth=1.1,
                     alpha=0.28,
                     zorder=3,
@@ -278,7 +300,7 @@ class Board:
                     y_mm + 4.9,
                     title,
                     fontsize=11.0,
-                    color=self.theme.ink_color,
+                    color=card_theme.ink_color,
                     va="center",
                     ha="left",
                     zorder=4,
@@ -289,7 +311,7 @@ class Board:
                     y_mm + 4.8,
                     title,
                     fontsize=11.5,
-                    color=self.theme.ink_color,
+                    color=card_theme.ink_color,
                     va="center",
                     ha="center",
                     zorder=4,
@@ -323,6 +345,46 @@ class Board:
         )
         self.cards.append(card)
         return card
+
+    def add_scroll_card(
+        self,
+        x_mm: float,
+        y_mm: float,
+        w_mm: float,
+        h_mm: float,
+        *,
+        orientation: str = "portrait",
+        title: str | None = None,
+        subtitle: str | None = None,
+        items: Sequence[str | tuple[str, str]] | None = None,
+        bullet: str = "check",
+        parchment_color: str = scroll.PARCHMENT_LIGHT,
+        roller_color: str = scroll.PARCHMENT_ROLLER,
+        background_grid: str | None = None,
+        inner_pad_mm: tuple[float, float, float, float] | None = None,
+    ) -> scroll.ScrollCard:
+        """Adds a parchment scroll card in portrait or landscape view."""
+        sc = scroll.draw_scroll_card_on_board(
+            self.figure,
+            self.overlay,
+            (self.width_mm, self.height_mm),
+            (x_mm, y_mm, w_mm, h_mm),
+            orientation=orientation,
+            title=title,
+            subtitle=subtitle,
+            items=items,
+            bullet=bullet,
+            scroll_colors=(
+                parchment_color,
+                roller_color,
+                scroll.PARCHMENT_INK,
+            ),
+            background_grid=background_grid,
+            preset=self.preset,
+            inner_pad_mm=inner_pad_mm,
+        )
+        self.scroll_cards.append(sc)
+        return sc
 
     def add_badge(
         self,

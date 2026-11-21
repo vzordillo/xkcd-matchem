@@ -24,6 +24,7 @@ import numpy as np
 
 from xkcd_matchem.core import electronic
 from xkcd_matchem.style import palettes
+from xkcd_matchem.style import patterns
 from xkcd_matchem.style import theme
 
 
@@ -99,6 +100,8 @@ def plot_dos(
     orientation: str = "horizontal",
     xlim: tuple[float, float] | None = None,
     shift_fermi: bool = True,
+    shade: str | None = None,
+    background_grid: str | None = None,
     palette: str | Sequence[str] = "okabe_ito",
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
@@ -117,6 +120,8 @@ def plot_dos(
             _, ax = plt.subplots(figsize=(5.8, 4.0))
         else:
             theme.style_existing_axes(ax, preset=preset)
+        if background_grid:
+            patterns.apply_background_grid(ax, style=background_grid)
         vert = orientation.lower() == "vertical"
         if vert:
             ax.plot(
@@ -126,8 +131,15 @@ def plot_dos(
                 lw=1.9,
                 label="Total DOS",
             )
-            ax.fill_betweenx(
-                e_grid, 0.0, dos.total_dos, color=fill_col, alpha=0.35
+            patterns.shade_between(
+                ax,
+                e_grid,
+                0.0,
+                dos.total_dos,
+                color=fill_col,
+                shade=shade,
+                alpha=0.35,
+                vertical=True,
             )
             if dos.spin_down_dos is not None:
                 ax.plot(
@@ -158,8 +170,15 @@ def plot_dos(
                 lw=1.9,
                 label="Total DOS",
             )
-            ax.fill_between(
-                e_grid, 0.0, dos.total_dos, color=fill_col, alpha=0.35
+            patterns.shade_between(
+                ax,
+                e_grid,
+                0.0,
+                dos.total_dos,
+                color=fill_col,
+                shade=shade,
+                alpha=0.35,
+                vertical=False,
             )
             if dos.spin_down_dos is not None:
                 ax.plot(

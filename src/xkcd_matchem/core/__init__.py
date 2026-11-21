@@ -46,6 +46,7 @@ __all__ = [
     "cell_vectors_from_parameters",
     "compute_xrd",
     "find_coordination_polyhedra",
+    "infer_bond_orders",
     "infer_bonds",
     "miller_plane_polygon",
     "minimum_image_vector",
@@ -75,6 +76,7 @@ broaden_peaks = spectroscopy.broaden_peaks
 cell_vectors_from_parameters = geometry.cell_vectors_from_parameters
 compute_xrd = spectroscopy.compute_xrd
 find_coordination_polyhedra = bonding.find_coordination_polyhedra
+infer_bond_orders = bonding.infer_bond_orders
 infer_bonds = bonding.infer_bonds
 miller_plane_polygon = geometry.miller_plane_polygon
 minimum_image_vector = geometry.minimum_image_vector

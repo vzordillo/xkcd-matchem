@@ -26,6 +26,7 @@ from xkcd_matchem.core import structure
 from xkcd_matchem.data import elements
 from xkcd_matchem.io import loader
 from xkcd_matchem.style import palettes
+from xkcd_matchem.style import patterns
 from xkcd_matchem.style import theme
 
 
@@ -37,6 +38,8 @@ def plot_spectrum(
     annotate_peaks: int = 5,
     color: str | None = None,
     fill_under: bool = True,
+    shade: str | None = None,
+    background_grid: str | None = None,
     palette: str | Sequence[str] = "okabe_ito",
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
@@ -54,10 +57,18 @@ def plot_spectrum(
             _, ax = plt.subplots(figsize=(6.4, 4.0))
         else:
             theme.style_existing_axes(ax, preset=preset)
+        if background_grid:
+            patterns.apply_background_grid(ax, style=background_grid)
         ax.plot(spectrum.x, spectrum.y, color=line_col, lw=2.0)
         if fill_under:
-            ax.fill_between(
-                spectrum.x, 0.0, spectrum.y, color=line_col, alpha=0.18
+            patterns.shade_between(
+                ax,
+                spectrum.x,
+                0.0,
+                spectrum.y,
+                color=line_col,
+                shade=shade,
+                alpha=0.22 if shade else 0.18,
             )
         if show_sticks and spectrum.peaks:
             y_max_curve = max(float(max(spectrum.y, default=1.0)), 1e-6)
@@ -108,6 +119,8 @@ def plot_xrd(
     fwhm: float = 0.4,
     label_peaks: int = 5,
     color: str | None = None,
+    shade: str | None = None,
+    background_grid: str | None = None,
     palette: str | Sequence[str] = "okabe_ito",
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
@@ -143,6 +156,8 @@ def plot_xrd(
             show_sticks=True,
             annotate_peaks=label_peaks,
             color=line_col,
+            shade=shade,
+            background_grid=background_grid,
             palette=palette,
             preset=preset,
             title=title,

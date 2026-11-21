@@ -17,6 +17,9 @@ from __future__ import annotations
 
 from xkcd_matchem.plots import charts
 from xkcd_matchem.plots import electronic
+from xkcd_matchem.plots import graphs
+from xkcd_matchem.plots import materials
+from xkcd_matchem.plots import ptable
 from xkcd_matchem.plots import reactions
 from xkcd_matchem.plots import spectroscopy
 from xkcd_matchem.plots import structure
@@ -33,11 +36,14 @@ __all__ = [
     "plot_crystal",
     "plot_dos",
     "plot_eos",
+    "plot_graph_network",
+    "plot_histogram",
     "plot_md_timeseries",
     "plot_mo_diagram",
     "plot_molecule",
     "plot_neb",
     "plot_parity",
+    "plot_periodic_table",
     "plot_phase_diagram_2d",
     "plot_pipeline_diagram",
     "plot_pourbaix",
@@ -45,9 +51,13 @@ __all__ = [
     "plot_reaction_profile",
     "plot_rmsd",
     "plot_slab",
+    "plot_spacegroup_distribution",
     "plot_spectrum",
+    "plot_structure_graph",
+    "plot_ternary_phase_diagram",
     "plot_volumetric_slice",
     "plot_xrd",
+    "spacegroup_to_crystal_system",
 ]
 
 animate_trajectory = trajectory.animate_trajectory
@@ -58,11 +68,14 @@ plot_coordination = structure.plot_coordination
 plot_crystal = structure.plot_crystal
 plot_dos = electronic.plot_dos
 plot_eos = thermo.plot_eos
+plot_graph_network = graphs.plot_graph_network
+plot_histogram = materials.plot_histogram
 plot_md_timeseries = trajectory.plot_md_timeseries
 plot_mo_diagram = electronic.plot_mo_diagram
 plot_molecule = structure.plot_molecule
 plot_neb = reactions.plot_neb
 plot_parity = charts.plot_parity
+plot_periodic_table = ptable.plot_periodic_table
 plot_phase_diagram_2d = thermo.plot_phase_diagram_2d
 plot_pipeline_diagram = charts.plot_pipeline_diagram
 plot_pourbaix = thermo.plot_pourbaix
@@ -70,6 +83,10 @@ plot_rdf = trajectory.plot_rdf
 plot_reaction_profile = reactions.plot_reaction_profile
 plot_rmsd = trajectory.plot_rmsd
 plot_slab = structure.plot_slab
+plot_spacegroup_distribution = materials.plot_spacegroup_distribution
 plot_spectrum = spectroscopy.plot_spectrum
+plot_structure_graph = graphs.plot_structure_graph
+plot_ternary_phase_diagram = materials.plot_ternary_phase_diagram
 plot_volumetric_slice = electronic.plot_volumetric_slice
 plot_xrd = spectroscopy.plot_xrd
+spacegroup_to_crystal_system = materials.spacegroup_to_crystal_system

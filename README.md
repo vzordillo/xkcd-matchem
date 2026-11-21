@@ -8,7 +8,7 @@
 **A more fun — yet crisp and readable — xkcd-style way to view your molecules, crystals, and materials chemistry.**
 
 > **How this started:**
-> I have always had fun reading xkcd comics and loved how comic-style fonts and playful sketches make technical ideas feel instantly approachable. While putting together a research poster recently, I wanted my molecules and plots to look lively without becoming messy. What started as a quick helper for that poster grew into `xkcd-matchem` — an open Python toolkit for fellow students, researchers, and scientists to bring a bit of personality to their **science communication (scicomm)**, posters, group talks, and lectures.
+> I have always had fun reading xkcd comics and loved how comic-style fonts and playful sketches make technical ideas feel instantly approachable. While putting together a research poster recently, I wanted my graphs and figures to look lively without becoming messy. What started as a quick helper for that poster grew into `xkcd-matchem` — an open Python toolkit for fellow students, researchers, and scientists to bring a bit of personality to their **science communication (scicomm)**, posters, group talks, and lectures.
 
 ---
 
@@ -30,7 +30,7 @@
 - **One-line defaults that look clean right away:** Load a molecule, crystal, band structure, or trajectory and plot it immediately on an open white canvas with unified **Patrick Hand** typography (SIL OFL 1.1), split half-bonds, white specular highlights, and zero clutter.
 - **Customize every visual detail:** Swap individual atom colors with a plain Python dict (`{"Ti": "#E07A5F", "O": "#3D405B"}`), create reusable themes (`register_preset`) and color schemes (`register_palette`, `register_element_palette`), pick crystallographic camera angles (`Camera.from_preset`), or restyle your own `plt.subplots()` with `style_existing_axes()`.
 - **Spin structures offline in 3D:** Launch the browser-based **Interactive 3D Studio** (`xm.view_structure(...)` or `xkcd-matchem view ...`) directly in Jupyter or as a standalone offline HTML file — rotate, build supercells, tweak colors live, export PNG/SVG, and copy the matching Python code.
-- **Playful styling backed by real geometry:** Native parsers require only **NumPy, SciPy, and Matplotlib**, and reject ambiguous inputs loudly rather than quietly plotting wrong coordinates.
+- **Zero-dependency built-in readers:** Open 26 common chemistry and materials formats using only **NumPy, SciPy, and Matplotlib**, with optional adapters for **ASE**, **pymatgen**, **RDKit**, **cclib**, **MDAnalysis**, and **MDTraj**.
 
 ---
 
@@ -52,7 +52,15 @@
 | :---: | :---: |
 | ![MD and RDF](book/_static/gallery/md_trajectory_rdf.png) | ![Thermodynamics and parity](book/_static/gallery/thermo_hull_eos.png) |
 
-Putting together a research poster? Opt into `xm.Board`, `Container`, `Card`, and `Badge` for millimeter-accurate multi-panel layouts:
+| Periodic Table & Property Heatmaps | Materials Informatics (Ternary, Sunburst & KDE) |
+| :---: | :---: |
+| ![xkcd Periodic Table](book/_static/gallery/periodic_table.png) | ![Materials informatics plots](book/_static/gallery/materials_informatics.png) |
+
+| Background Grids, Hatched Shading & Vintage Scrolls | MatChem Icons & GNN Structure Graphs |
+| :---: | :---: |
+| ![Grids, hatching, and parchment scrolls](book/_static/gallery/scrolls_grids_shading.png) | ![MatChem icons and crystal graphs](book/_static/gallery/icons_and_graphs.png) |
+
+Putting together a research poster? Opt into `xm.Board`, `Container`, `Card`, `ScrollCard`, and `Badge` for millimeter-accurate layouts — you can group and **stack multiple cards vertically or side by side inside container boxes**:
 
 ![Opt-in poster board](book/_static/gallery/poster_board.png)
 
@@ -104,6 +112,12 @@ xm.plot_bands_dos(bands, dos, ylim=(-8.0, 10.0), title="Silicon Bands & DOS")
 xm.plot_xrd("nacl.cif", label_peaks=4)
 xm.plot_neb(xm.load_trajectory("sn2_neb.xyz"))
 xm.animate_trajectory(xm.load_trajectory("sn2_neb.xyz"), "sn2_path.gif", fps=6)
+
+# Periodic table, materials informatics, scrolls, icons, and crystal GNN graphs
+xm.plot_periodic_table(element_property="electronegativity", missing_shade="hatch")
+xm.plot_spacegroup_distribution({225: 32, 194: 26, 62: 28, 14: 22}, mode="sunburst", shade="cycle")
+xm.plot_structure_graph("si_diamond.cif", layout="spring", background_grid="isometric")
+xm.plot_scroll_card("Lab Checklist", items=[("Step 1", "Relax cell"), ("Step 2", "Plot in xkcd")], background_grid="ruled")
 
 # Open the offline Interactive 3D Studio in Jupyter or a browser
 xm.view_structure("tio2_slab.poscar", style="polyhedra", polyhedra=("Ti", "O"))
@@ -173,22 +187,18 @@ xkcd-matchem view mos2_2h.poscar -o mos2_studio.html --supercell 2 2 1 --backend
 
 ---
 
-## Supported Formats & Scientific Safeguards
+## Supported Formats
 
 All **26 built-in readers** work with zero extra dependencies beyond NumPy, SciPy, and Matplotlib:
 
 | Domain | Built-in Formats |
 | --- | --- |
 | **Molecules & Biomolecules** | XYZ / extXYZ, PDB (`MODEL` + `CONECT`), SDF / MOL (V2000), MOL2 |
-| **Crystals & Periodic DFT** | VASP (`POSCAR`, `CONTCAR`, `XDATCAR`, `DOSCAR`, `EIGENVAL`, `CHGCAR`, `LOCPOT`), CIF (affine symmetry expansion + occupancy metadata), Quantum ESPRESSO (`pw.in`, `pw.out`, `bands.dat`, `dos.dat`), CP2K `.ener`, xTB `.out` |
-| **Molecular Dynamics** | LAMMPS data (explicit style / `type_map`) & `.lammpstrj` (orthogonal + triclinic), GROMACS `.gro` & `.xvg` |
+| **Crystals & Periodic DFT** | VASP (`POSCAR`, `CONTCAR`, `XDATCAR`, `DOSCAR`, `EIGENVAL`, `CHGCAR`, `LOCPOT`), CIF (with symmetry expansion), Quantum ESPRESSO (`pw.in`, `pw.out`, `bands.dat`, `dos.dat`), CP2K `.ener`, xTB `.out` |
+| **Molecular Dynamics** | LAMMPS data & `.lammpstrj` (orthogonal + triclinic), GROMACS `.gro` & `.xvg` |
 | **Quantum Chem & Grids** | Gaussian `.cube`, `.gjf`, `.log`, `.fchk`, ORCA `.inp`, `.out` |
 
-**Built-in scientific care:**
-- **Strict validation over silent guesses:** Unsupported QE cell blocks, ambiguous LAMMPS column tables, or singular lattice matrices raise clear errors pointing to optional **ASE**, **pymatgen**, **RDKit**, **cclib**, **MDAnalysis**, or **MDTraj** adapters.
-- **Accurate periodic geometry:** Triclinic minimum-image vectors use LLL lattice reduction + Gram-bounded closest-vector search; `AtomsData.repeat()` preserves atomic properties across supercells; `Trajectory.compute_rdf()` integrates exact spherical-shell volumes; `Trajectory.rmsd()` unwraps periodic jumps before Kabsch alignment; and `VolumetricGrid.slice_mesh()` projects skewed cells onto an orthonormal 2D plane.
-
-See [Supported Formats & Contracts](book/reference/supported_formats.md) for the complete specification.
+Need specialized formats outside these built-in readers? Optional bridges to **ASE**, **pymatgen**, **RDKit**, **cclib**, **MDAnalysis**, and **MDTraj** are ready to plug in. See [Supported Formats & Contracts](book/reference/supported_formats.md) for full details.
 
 ---
 
