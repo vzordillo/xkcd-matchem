@@ -40,16 +40,88 @@ def _clean_qe_symbol(label: str) -> str:
     ).symbol
 
 
+def _parse_qe_celldm_and_ibrav(
+    text: str, bohr: float
+) -> tuple[float | None, int]:
+    """Extracts ``celldm(1)`` (in Bohr) and ``ibrav`` from a QE input."""
+    celldm1: float | None = None
+    m_cd = re.search(r"celldm\s*\(\s*1\s*\)\s*=\s*([0-9.eEdD+-]+)", text)
+    if m_cd:
+        celldm1 = float(m_cd.group(1).replace("d", "e").replace("D", "E"))
+    else:
+        m_a = re.search(r"(?im)^\s*A\s*=\s*([0-9.eEdD+-]+)", text)
+        if m_a:
+            celldm1 = (
+                float(m_a.group(1).replace("d", "e").replace("D", "E")) / bohr
+            )
+    m_ib = re.search(r"(?im)\bibrav\s*=\s*(-?\d+)", text)
+    return celldm1, int(m_ib.group(1)) if m_ib else 0
+
+
+def _parse_qe_cell_card(
+    lines: list[str],
+    idx: int,
+    celldm1: float | None,
+    bohr: float,
+) -> tuple[np.ndarray, int]:
+    """Parses a QE ``CELL_PARAMETERS`` card into an Angstrom matrix."""
+    upper = lines[idx].strip().upper()
+    if "ANGSTROM" in upper:
+        scale = 1.0
+    elif "BOHR" in upper:
+        scale = bohr
+    else:
+        if celldm1 is None:
+            raise exceptions.ParseError(
+                "QE CELL_PARAMETERS in alat requires celldm(1) or A."
+            )
+        scale = bohr * celldm1
+    cell = (
+        np.array(
+            [
+                [float(x) for x in lines[idx + 1 + k].split()[:3]]
+                for k in range(3)
+            ],
+            dtype=np.float64,
+        )
+        * scale
+    )
+    return cell, idx + 4
+
+
+def _parse_qe_positions_card(
+    lines: list[str], idx: int
+) -> tuple[list[str], list[list[float]], str, int]:
+    """Parses a QE ``ATOMIC_POSITIONS`` block and its coordinate unit."""
+    upper = lines[idx].strip().upper()
+    pos_unit = "alat"
+    for unit_key in ("crystal", "angstrom", "bohr"):
+        if unit_key.upper() in upper:
+            pos_unit = unit_key
+            break
+    syms: list[str] = []
+    coords: list[list[float]] = []
+    cur = idx + 1
+    stops = ("K_POINTS", "CELL_", "ATOMIC_", "CONSTRAINTS")
+    while cur < len(lines):
+        row = lines[cur].strip()
+        if not row or row.upper().startswith(stops):
+            break
+        parts = row.split()
+        if len(parts) >= 4:
+            syms.append(_clean_qe_symbol(parts[0]))
+            coords.append([float(parts[1]), float(parts[2]), float(parts[3])])
+        cur += 1
+    return syms, coords, pos_unit, cur
+
+
 def read_qe_in(path: str | pathlib.Path) -> structure.AtomsData:
     """Reads a Quantum ESPRESSO ``pw.in`` input script into ``AtomsData``."""
     p = pathlib.Path(path)
     text = p.read_text(encoding="utf-8")
     lines = text.splitlines()
     bohr = elements.CODATA2022.bohr_to_angstrom
-    celldm1 = 1.0
-    m_cd = re.search(r"celldm\s*\(\s*1\s*\)\s*=\s*([0-9.eEdD+-]+)", text)
-    if m_cd:
-        celldm1 = float(m_cd.group(1).replace("d", "e").replace("D", "E"))
+    celldm1, ibrav = _parse_qe_celldm_and_ibrav(text, bohr)
 
     cell: np.ndarray | None = None
     syms: list[str] = []
@@ -57,52 +129,19 @@ def read_qe_in(path: str | pathlib.Path) -> structure.AtomsData:
     pos_unit = "alat"
     idx = 0
     while idx < len(lines):
-        line = lines[idx].strip()
-        upper = line.upper()
+        upper = lines[idx].strip().upper()
         if upper.startswith("CELL_PARAMETERS"):
-            scale = (
-                bohr * celldm1
-                if "ALAT" in upper or "(" not in upper
-                else (bohr if "BOHR" in upper else 1.0)
-            )
-            cell = (
-                np.array(
-                    [
-                        [float(x) for x in lines[idx + 1 + k].split()[:3]]
-                        for k in range(3)
-                    ],
-                    dtype=np.float64,
-                )
-                * scale
-            )
-            idx += 4
-            continue
-        if upper.startswith("ATOMIC_POSITIONS"):
-            if "CRYSTAL" in upper:
-                pos_unit = "crystal"
-            elif "ANGSTROM" in upper:
-                pos_unit = "angstrom"
-            elif "BOHR" in upper:
-                pos_unit = "bohr"
-            else:
-                pos_unit = "alat"
+            cell, idx = _parse_qe_cell_card(lines, idx, celldm1, bohr)
+        elif upper.startswith("ATOMIC_POSITIONS"):
+            syms, coords, pos_unit, idx = _parse_qe_positions_card(lines, idx)
+        else:
             idx += 1
-            while idx < len(lines):
-                row = lines[idx].strip()
-                if not row or row.upper().startswith(
-                    ("K_POINTS", "CELL_", "ATOMIC_", "CONSTRAINTS")
-                ):
-                    break
-                parts = row.split()
-                if len(parts) >= 4:
-                    syms.append(_clean_qe_symbol(parts[0]))
-                    coords.append(
-                        [float(parts[1]), float(parts[2]), float(parts[3])]
-                    )
-                idx += 1
-            continue
-        idx += 1
 
+    if cell is None and ibrav != 0:
+        raise exceptions.ParseError(
+            f"QE input specifies ibrav={ibrav} without CELL_PARAMETERS; use "
+            "explicit CELL_PARAMETERS or xm.read_via_ase(...)."
+        )
     if not syms:
         raise exceptions.ParseError(
             f"No ATOMIC_POSITIONS card in QE input: {p}"
@@ -122,6 +161,10 @@ def read_qe_in(path: str | pathlib.Path) -> structure.AtomsData:
     if pos_unit == "bohr":
         arr *= bohr
     elif pos_unit == "alat":
+        if celldm1 is None:
+            raise exceptions.ParseError(
+                "QE ATOMIC_POSITIONS (alat) requires celldm(1) or A."
+            )
         arr *= celldm1 * bohr
     return structure.AtomsData(
         symbols=syms,

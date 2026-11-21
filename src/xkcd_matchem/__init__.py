@@ -43,6 +43,7 @@ __all__ = [
     "ELEMENTS_BY_SYMBOL",
     "ELEMENTS_BY_Z",
     "ElementRecord",
+    "InteractiveView",
     "MatchemError",
     "MolecularOrbitals",
     "OKABE_ITO",
@@ -54,6 +55,7 @@ __all__ = [
     "Spectrum",
     "StructureError",
     "StyleError",
+    "ThemePreset",
     "Trajectory",
     "UnsupportedFormatError",
     "VolumetricGrid",
@@ -68,6 +70,7 @@ __all__ = [
     "data",
     "draw_callout",
     "draw_curved_arrow",
+    "export_interactive_html",
     "fetch_xkcd_script",
     "find_coordination_polyhedra",
     "from_ase",
@@ -88,6 +91,7 @@ __all__ = [
     "infer_bonds",
     "io",
     "layout",
+    "list_element_palettes",
     "list_formats",
     "list_presets",
     "list_samples",
@@ -117,14 +121,19 @@ __all__ = [
     "plot_volumetric_slice",
     "plot_xrd",
     "plots",
+    "register_element_palette",
+    "register_palette",
+    "register_preset",
     "render",
     "render_structure_2d",
     "render_structure_3d",
     "save",
     "save_figure",
     "style",
+    "style_existing_axes",
     "to_ase",
     "to_pymatgen",
+    "view_structure",
     "xkcd_style",
 ]
 
@@ -143,6 +152,7 @@ DensityOfStates = core.DensityOfStates
 ELEMENTS_BY_SYMBOL = data.ELEMENTS_BY_SYMBOL
 ELEMENTS_BY_Z = data.ELEMENTS_BY_Z
 ElementRecord = data.ElementRecord
+InteractiveView = render.InteractiveView
 MatchemError = core.MatchemError
 MolecularOrbitals = core.MolecularOrbitals
 OKABE_ITO = style.OKABE_ITO
@@ -154,6 +164,7 @@ ScatteringCoeffs = data.ScatteringCoeffs
 Spectrum = core.Spectrum
 StructureError = core.StructureError
 StyleError = core.StyleError
+ThemePreset = style.ThemePreset
 Trajectory = core.Trajectory
 UnsupportedFormatError = core.UnsupportedFormatError
 VolumetricGrid = core.VolumetricGrid
@@ -165,6 +176,7 @@ broaden_peaks = core.broaden_peaks
 compute_xrd = core.compute_xrd
 draw_callout = render.draw_callout
 draw_curved_arrow = render.draw_curved_arrow
+export_interactive_html = render.export_interactive_html
 fetch_xkcd_script = style.fetch_xkcd_script
 find_coordination_polyhedra = core.find_coordination_polyhedra
 from_ase = io.from_ase
@@ -183,6 +195,7 @@ get_palette = style.get_palette
 get_sample_path = data.get_sample_path
 get_vdw_radius = data.get_vdw_radius
 infer_bonds = core.infer_bonds
+list_element_palettes = style.list_element_palettes
 list_formats = io.list_formats
 list_presets = style.list_presets
 list_samples = data.list_samples
@@ -211,10 +224,15 @@ plot_slab = plots.plot_slab
 plot_spectrum = plots.plot_spectrum
 plot_volumetric_slice = plots.plot_volumetric_slice
 plot_xrd = plots.plot_xrd
+register_element_palette = style.register_element_palette
+register_palette = style.register_palette
+register_preset = style.register_preset
 render_structure_2d = render.render_structure_2d
 render_structure_3d = render.render_structure_3d
 save = io.save
 save_figure = layout.save_figure
+style_existing_axes = style.style_existing_axes
 to_ase = io.to_ase
 to_pymatgen = io.to_pymatgen
+view_structure = render.view_structure
 xkcd_style = style.xkcd_style

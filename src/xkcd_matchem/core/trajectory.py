@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 import dataclasses
 import math
 from typing import Any
@@ -48,28 +49,27 @@ class Trajectory:
     metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Normalizes 1D scalar series and pulls energies if stored."""
+        """Normalizes 1D scalar series, checks lengths, and pulls energies."""
         n_frames = len(self.frames)
-        if self.times is not None:
-            self.times = np.asarray(self.times, dtype=np.float64)
-            if self.times.shape != (n_frames,):
-                raise exceptions.StructureError(
-                    "times length must match frames count."
-                )
         if self.energies is None and n_frames > 0:
             extracted = [frame.energies.get("total") for frame in self.frames]
             if all(val is not None for val in extracted):
                 self.energies = np.array(extracted, dtype=np.float64)
-        elif self.energies is not None:
-            self.energies = np.asarray(self.energies, dtype=np.float64)
-            if self.energies.shape != (n_frames,):
+        for field_name in ("times", "energies", "temperatures", "pressures"):
+            val = getattr(self, field_name)
+            if val is None:
+                continue
+            arr = np.asarray(val, dtype=np.float64)
+            if arr.shape != (n_frames,):
                 raise exceptions.StructureError(
-                    "energies length must match frames count."
+                    f"{field_name} length {arr.shape} must match "
+                    f"frames count ({n_frames},)."
                 )
-        if self.temperatures is not None:
-            self.temperatures = np.asarray(self.temperatures, dtype=np.float64)
-        if self.pressures is not None:
-            self.pressures = np.asarray(self.pressures, dtype=np.float64)
+            if not np.all(np.isfinite(arr)):
+                raise exceptions.StructureError(
+                    f"{field_name} contains non-finite values."
+                )
+            setattr(self, field_name, arr)
 
     def __len__(self) -> int:
         """Returns the number of frames."""
@@ -79,22 +79,62 @@ class Trajectory:
         """Retrieves a single frame by index."""
         return self.frames[index]
 
-    def rmsd(self, ref_index: int = 0) -> np.ndarray:
-        """Computes Kabsch-aligned heavy-atom/all-atom RMSD relative to a frame.
+    def _unwrapped_positions(self, idx_arr: np.ndarray) -> list[np.ndarray]:
+        """Unwraps periodic coordinates cumulatively across frames."""
+        unwrapped = [self.frames[0].positions[idx_arr].copy()]
+        for k in range(1, len(self.frames)):
+            prev_raw = self.frames[k - 1].positions[idx_arr]
+            cur_frame = self.frames[k]
+            cur_raw = cur_frame.positions[idx_arr]
+            delta = cur_raw - prev_raw
+            if cur_frame.cell is not None and any(cur_frame.pbc):
+                delta = geometry.minimum_image_vector(
+                    delta, cur_frame.cell, cur_frame.pbc
+                )
+            unwrapped.append(unwrapped[-1] + delta)
+        return unwrapped
+
+    def rmsd(
+        self,
+        ref_index: int = 0,
+        indices: Sequence[int] | None = None,
+        unwrap: bool = True,
+    ) -> np.ndarray:
+        """Computes Kabsch-aligned RMSD relative to a reference frame.
 
         Args:
           ref_index: Reference frame index.
+          indices: Optional atom indices to select for alignment and RMSD.
+          unwrap: Whether to unwrap periodic displacements across frames first.
 
         Returns:
           1D float64 RMSD array in Angstrom of shape ``(n_frames,)``.
         """
         if not self.frames:
             return np.zeros((0,), dtype=np.float64)
-        ref = self.frames[ref_index].positions
+        n_atoms = len(self.frames[ref_index])
+        if indices is None:
+            idx_arr = np.arange(n_atoms, dtype=np.int64)
+        else:
+            idx_arr = np.asarray(list(indices), dtype=np.int64)
+            if (
+                idx_arr.size == 0
+                or np.any(idx_arr < 0)
+                or np.any(idx_arr >= n_atoms)
+            ):
+                raise exceptions.StructureError(
+                    "Invalid atom selection indices for RMSD."
+                )
+
+        if unwrap and all(len(f) == n_atoms for f in self.frames):
+            coords_list = self._unwrapped_positions(idx_arr)
+        else:
+            coords_list = [f.positions[idx_arr] for f in self.frames]
+
+        ref = coords_list[ref_index]
         ref_centered = ref - np.mean(ref, axis=0)
         out = np.zeros(len(self.frames), dtype=np.float64)
-        for idx, frame in enumerate(self.frames):
-            cur = frame.positions
+        for idx, cur in enumerate(coords_list):
             cur_centered = cur - np.mean(cur, axis=0)
             cov = cur_centered.T @ ref_centered
             u_mat, _, vt_mat = np.linalg.svd(cov)
@@ -128,32 +168,66 @@ class Trajectory:
             return vals * elements.CODATA2022.ev_to_kcal_mol
         raise exceptions.StructureError(f"Unsupported energy unit {unit!r}.")
 
+    def _periodic_shift_vectors(
+        self,
+        cell: np.ndarray,
+        r_max: float,
+    ) -> np.ndarray:
+        """Enumerates Cartesian lattice shifts enclosing a sphere ``r_max``."""
+        gram = cell @ cell.T
+        g_inv = np.linalg.inv(gram)
+        cell_diag = float(np.linalg.norm(cell[0] + cell[1] + cell[2]))
+        diag_g = np.maximum(np.diag(g_inv), 0.0)
+        bounds = [
+            min(
+                6,
+                int(
+                    math.ceil((r_max + cell_diag) * math.sqrt(float(dg)) + 1.0)
+                ),
+            )
+            for dg in diag_g
+        ]
+        ranges = [np.arange(-b, b + 1, dtype=np.int64) for b in bounds]
+        grids = np.meshgrid(*ranges, indexing="ij")
+        shifts = np.column_stack([g.ravel() for g in grids]).astype(np.float64)
+        return shifts @ cell
+
     def _frame_pair_distances(
         self,
         frame: structure.AtomsData,
         sym_a: str,
         sym_b: str,
         r_max: float,
-    ) -> tuple[list[float], int, int]:
-        """Collects valid A-B pair distances within ``r_max`` for one frame."""
+    ) -> tuple[list[float], int, float]:
+        """Collects periodic pair distances up to ``r_max`` across shells."""
         idx_a = [i for i, s in enumerate(frame.symbols) if s == sym_a]
         idx_b = [i for i, s in enumerate(frame.symbols) if s == sym_b]
         if not idx_a or not idx_b:
-            return [], 0, 0
+            return [], 0, 0.0
+        n_a = len(idx_a)
+        n_b = len(idx_b)
+        pair_count = float(n_a * (n_b - 1 if sym_a == sym_b else n_b))
+        if pair_count <= 0.0:
+            pair_count = float(n_a)
+
+        pos_a = frame.positions[idx_a]
+        pos_b = frame.positions[idx_b]
+        if frame.cell is None:
+            raise exceptions.StructureError("RDF frame requires a unit cell.")
+        shift_vecs = self._periodic_shift_vectors(frame.cell, r_max)
+
         dists: list[float] = []
-        for ia in idx_a:
-            for ib in idx_b:
-                if ia == ib:
-                    continue
-                vec = frame.positions[ib] - frame.positions[ia]
-                if frame.cell is not None and any(frame.pbc):
-                    vec = geometry.minimum_image_vector(
-                        vec, frame.cell, frame.pbc
-                    )
-                dist = float(np.linalg.norm(vec))
-                if 1e-6 < dist < r_max:
-                    dists.append(dist)
-        return dists, len(idx_a), len(idx_b) - (1 if sym_a == sym_b else 0)
+        same = sym_a == sym_b
+        for i_loc, ia in enumerate(idx_a):
+            for j_loc, ib in enumerate(idx_b):
+                cands = (pos_b[j_loc] - pos_a[i_loc])[None, :] + shift_vecs
+                d_vals = np.linalg.norm(cands, axis=1)
+                mask = d_vals < r_max
+                if same and ia == ib:
+                    mask &= d_vals > 1e-6
+                if np.any(mask):
+                    dists.extend(d_vals[mask].tolist())
+        return dists, n_a, pair_count
 
     def compute_rdf(
         self,
@@ -162,8 +236,12 @@ class Trajectory:
         n_bins: int = 80,
         start: int = 0,
         stop: int | None = None,
+        strict: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Computes the radial distribution function ``g(r)`` for a pair.
+        """Computes the radial distribution function ``g(r)`` for a 3D cell.
+
+        Uses exact spherical-shell volumes ``(4*pi/3)*(r_out^3 - r_in^3)`` and
+        evaluates periodic image shells up to ``r_max``.
 
         Args:
           pair: Tuple of element symbols ``(sym_a, sym_b)``.
@@ -171,12 +249,14 @@ class Trajectory:
           n_bins: Number of radial histogram bins.
           start: First frame index to include.
           stop: Exclusive last frame index to include.
+          strict: If True, reject ``r_max`` exceeding the Wigner-Seitz
+            minimum-image inradius.
 
         Returns:
           Tuple ``(r_centers, g_r)`` of 1D float64 arrays.
 
         Raises:
-          StructureError: If no frames match or ``r_max <= 0``.
+          StructureError: If frames lack a 3D periodic cell or violate bounds.
         """
         if r_max <= 0.0 or n_bins < 2:
             raise exceptions.StructureError("Invalid RDF binning parameters.")
@@ -189,25 +269,35 @@ class Trajectory:
             )
         edges = np.linspace(0.0, r_max, n_bins + 1)
         r_centers = 0.5 * (edges[:-1] + edges[1:])
-        shell_vols = 4.0 * math.pi * (r_centers**2) * (edges[1] - edges[0])
+        shell_vols = (4.0 * math.pi / 3.0) * (edges[1:] ** 3 - edges[:-1] ** 3)
         g_sum = np.zeros(n_bins, dtype=np.float64)
         norm_accum = 0.0
 
         for frame in selected:
-            dists, n_a, n_b = self._frame_pair_distances(
+            if (
+                frame.cell is None
+                or not all(frame.pbc)
+                or frame.volume() <= 0.0
+            ):
+                raise exceptions.StructureError(
+                    "RDF requires 3D periodic frames and positive volume."
+                )
+            if strict:
+                r_ws = geometry.max_min_image_radius(frame.cell, frame.pbc)
+                if r_max > r_ws + 1e-9:
+                    raise exceptions.StructureError(
+                        f"r_max={r_max:.2f} A exceeds minimum-image inradius "
+                        f"{r_ws:.2f} A; pass strict=False for multi-image RDF."
+                    )
+            dists, n_a, pair_count = self._frame_pair_distances(
                 frame, sym_a, sym_b, r_max
             )
             if n_a == 0:
                 continue
-            vol = frame.volume()
-            if vol <= 0.0:
-                span = np.ptp(frame.positions, axis=0) + 4.0
-                vol = float(np.prod(np.maximum(span, 4.0)))
-            rho = max(float(n_a * n_b), 1.0) / vol
+            rho = pair_count / frame.volume()
             norm_accum += 1.0
-            if np.all(shell_vols > 0.0):
-                hist_frame, _ = np.histogram(dists, bins=edges)
-                g_sum += hist_frame / (rho * shell_vols)
+            hist_frame, _ = np.histogram(dists, bins=edges)
+            g_sum += hist_frame / (rho * shell_vols)
 
         if norm_accum == 0.0:
             raise exceptions.StructureError(

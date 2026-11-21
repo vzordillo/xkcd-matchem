@@ -1,24 +1,50 @@
----
-jupytext:
-  text_representation:
-    extension: .md
-    format_name: myst
-kernelspec:
-  display_name: Python 3
-  language: python
-  name: python3
----
+# Interactive 3D xkcd Studio
 
-# Interactive Live Playground
+Explore crystals, slabs, polyhedra, and molecules interactively right inside your browser — **no Python backend or MyBinder spin-up required**.
 
-Every tutorial page in this Jupyter Book is live-enabled with **Thebe** (in-browser execution via MyBinder), **Binder**, and **Google Colab**.
+- **Drag** to orbit azimuth/elevation (`Shift + Drag` to roll, **Scroll** to zoom).
+- Switch between **Isometric**, **Perspective**, **Front**, **Side**, **Top**, and crystallographic **`a`, `b`, `c`, `a*`, `b*`, `c*`** viewpoints.
+- Build up to `3x3x3` supercells live, pick custom hex colors for **every chemical element** and the canvas background, tune the xkcd wiggle strength, or load your own `.xyz`, `POSCAR`, `.sdf`, or `.pdb` file.
+- Click **Copy Python** to grab the exact `xkcd_matchem` script matching your interactive view, or download **PNG** / **SVG**.
 
-Try editing the code snippet below after clicking the rocket icon -> **Live Code** in the top navigation bar, or launch one of the 10 step-by-step notebooks under **Tutorials**!
+<div style="margin: 1rem 0;">
+  <p>
+    <a href="_static/interactive_studio.html" target="_blank" rel="noopener"
+       style="display:inline-block;padding:8px 14px;border-radius:8px;background:#1d4ed8;color:#fff;text-decoration:none;font-weight:700;">
+      Open Full-Screen Interactive Studio
+    </a>
+  </p>
+  <iframe
+    src="_static/interactive_studio.html"
+    title="xkcd-matchem Interactive 3D Studio"
+    style="width:100%;height:760px;border:1px solid #d5dae4;border-radius:12px;background:#ffffff;"
+    loading="lazy">
+  </iframe>
+</div>
 
-```{code-cell} ipython3
+## Launching from Python or CLI
+
+In a Jupyter Notebook or script:
+
+```python
 import xkcd_matchem as xm
 
-print("xkcd-matchem version:", xm.__version__)
-print("Bundled samples:", len(xm.list_samples()))
-ax = xm.plot_crystal("nacl.cif", title="Rock-Salt NaCl (Fm-3m)")
+# Embed inline inside Jupyter or export a standalone offline HTML viewer:
+view = xm.view_structure(
+    "tio2_slab.poscar",
+    style="polyhedra",
+    polyhedra=("Ti", "O"),
+    supercell=(2, 2, 1),
+    palette={"Ti": "#4E79A7", "O": "#E15759"},
+)
+view  # renders inline via _repr_html_()
+
+# Open directly in your system browser:
+xm.view_structure("aspirin.xyz", backend="browser")
+```
+
+From your terminal:
+
+```bash
+xkcd-matchem view tio2_slab.poscar --supercell 2 2 1 --view perspective --colors Ti=#E07A5F O=#3D405B --backend browser
 ```

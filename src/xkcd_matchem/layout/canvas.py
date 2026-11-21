@@ -85,7 +85,7 @@ class Board:
         dpi: int = 180,
         title: str | None = None,
         subtitle: str | None = None,
-        preset: str = "classic",
+        preset: str | theme.ThemePreset = "classic",
     ) -> None:
         """Initializes the millimeter canvas and background overlay axes."""
         self.width_mm = float(width_mm)
@@ -141,24 +141,56 @@ class Board:
         title: str | None = None,
         facecolor: str = palettes.PASTEL_BG,
         edgecolor: str | None = None,
+        solid_header: bool = True,
+        header_color: str = "#3E6E8E",
     ) -> Container:
-        """Adds a dashed pastel section box behind child cards."""
-        edge = self.theme.ink_color if edgecolor is None else edgecolor
+        """Adds a section box behind child cards with solid or dashed header."""
+        edge = (
+            header_color
+            if solid_header
+            else (self.theme.ink_color if edgecolor is None else edgecolor)
+        )
+        fill = (
+            "#FFFFFF"
+            if solid_header and facecolor == palettes.PASTEL_BG
+            else facecolor
+        )
         with theme.xkcd_style(preset=self.preset):
             box = patches.FancyBboxPatch(
                 (x_mm, y_mm),
                 w_mm,
                 h_mm,
                 boxstyle="round,pad=0.6,rounding_size=2.5",
-                facecolor=facecolor,
+                facecolor=fill,
                 edgecolor=edge,
-                linestyle="--",
-                linewidth=1.3,
-                alpha=0.8,
+                linestyle="-" if solid_header else "--",
+                linewidth=1.8 if solid_header else 1.3,
+                alpha=0.95 if solid_header else 0.8,
                 zorder=1,
             )
             self.overlay.add_patch(box)
-            if title:
+            if title and solid_header:
+                header_patch = patches.FancyBboxPatch(
+                    (x_mm + 0.3, y_mm + 0.3),
+                    w_mm - 0.6,
+                    8.6,
+                    boxstyle="round,pad=0.3,rounding_size=1.8",
+                    facecolor=header_color,
+                    edgecolor="none",
+                    zorder=2,
+                )
+                self.overlay.add_patch(header_patch)
+                self.overlay.text(
+                    x_mm + 0.5 * w_mm,
+                    y_mm + 4.7,
+                    title,
+                    fontsize=12.0,
+                    color="#FFFFFF",
+                    va="center",
+                    ha="center",
+                    zorder=3,
+                )
+            elif title:
                 self.overlay.text(
                     x_mm + 4.0,
                     y_mm + 4.0,
@@ -175,7 +207,7 @@ class Board:
             w_mm=w_mm,
             h_mm=h_mm,
             title=title,
-            facecolor=facecolor,
+            facecolor=fill,
             edgecolor=edge,
         )
 
@@ -186,25 +218,33 @@ class Board:
         w_mm: float,
         h_mm: float,
         title: str | None = None,
+        subtitle: str | None = None,
         header_color: str = "#56B4E9",
+        header_band: bool = False,
         inner_pad_mm: tuple[float, float, float, float] | None = None,
     ) -> Card:
         """Adds a framed card and returns its child plotting ``Card.axes``.
+
+        Defaults to a clean borderless white card header (``header_band=False``)
+        and switches to a tinted top banner when ``header_band=True``.
 
         Args:
           x_mm: Left position in millimeters.
           y_mm: Top position in millimeters.
           w_mm: Card width in millimeters.
           h_mm: Card height in millimeters.
-          title: Optional header banner title.
-          header_color: Fill tint for the card header band.
+          title: Optional centered card title.
+          subtitle: Optional secondary subtitle line beneath ``title``.
+          header_color: Fill tint when ``header_band=True``.
+          header_band: Whether to draw a tinted header box behind ``title``.
           inner_pad_mm: ``(left, right, top, bottom)`` padding inside the card.
 
         Returns:
           ``Card`` whose ``.axes`` accepts ``xkcd_matchem`` plots.
         """
+        default_top = 17.0 if (title and subtitle) else (13.0 if title else 6.5)
         pad_l, pad_r, pad_t, pad_b = (
-            (19.5, 6.5, 14.5 if title else 7.0, 15.5)
+            (18.5, 6.5, default_top, 15.0)
             if inner_pad_mm is None
             else inner_pad_mm
         )
@@ -216,11 +256,11 @@ class Board:
                 boxstyle="round,pad=0.3,rounding_size=2.2",
                 facecolor=self.theme.axes_facecolor,
                 edgecolor=self.theme.ink_color,
-                linewidth=1.6,
+                linewidth=1.5,
                 zorder=2,
             )
             self.overlay.add_patch(card_box)
-            if title:
+            if title and header_band:
                 band = patches.FancyBboxPatch(
                     (x_mm + 0.8, y_mm + 0.8),
                     w_mm - 1.6,
@@ -241,6 +281,28 @@ class Board:
                     color=self.theme.ink_color,
                     va="center",
                     ha="left",
+                    zorder=4,
+                )
+            elif title:
+                self.overlay.text(
+                    x_mm + 0.5 * w_mm,
+                    y_mm + 4.8,
+                    title,
+                    fontsize=11.5,
+                    color=self.theme.ink_color,
+                    va="center",
+                    ha="center",
+                    zorder=4,
+                )
+            if subtitle:
+                self.overlay.text(
+                    x_mm + 0.5 * w_mm,
+                    y_mm + 10.2,
+                    subtitle,
+                    fontsize=9.2,
+                    color=palettes.MUTED_GRAY,
+                    va="center",
+                    ha="center",
                     zorder=4,
                 )
             ax_left = (x_mm + pad_l) / self.width_mm

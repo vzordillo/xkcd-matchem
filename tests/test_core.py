@@ -19,9 +19,12 @@ import numpy as np
 import pytest
 
 from xkcd_matchem.core import bonding
+from xkcd_matchem.core import electronic
+from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import geometry
 from xkcd_matchem.core import spectroscopy
 from xkcd_matchem.core import structure
+from xkcd_matchem.core import trajectory
 from xkcd_matchem.io import loader
 
 
@@ -36,6 +39,81 @@ def test_atoms_data_operations() -> None:
     supercell = si.repeat((2, 1, 1))
     assert len(supercell) == 16
     assert supercell.volume() == pytest.approx(2.0 * si.volume(), rel=1e-6)
+
+
+def test_atoms_validation_centering_and_repeat_properties() -> None:
+    cell = np.diag([5.0, 5.0, 12.0])
+    atoms = structure.AtomsData(
+        symbols=["Ti", "O"],
+        positions=np.array([[0.1, 0.1, 0.2], [2.5, 2.5, 2.2]]),
+        cell=cell,
+        pbc=(True, True, True),
+        bonds=[structure.Bond(i=0, j=1, order=1.0, shift=(1, 0, 0))],
+        charges=np.array([1.2, -0.6]),
+        velocities=np.array([[0.1, 0.0, 0.0], [0.0, -0.1, 0.0]]),
+        forces=np.array([[0.5, 0.0, 0.0], [-0.5, 0.0, 0.0]]),
+        energies={"total": -12.5},
+        atom_labels=["Ti1", "O1"],
+    )
+    centered = atoms.center_in_cell()
+    frac = centered.fractional_positions()
+    assert np.all((frac >= -1e-9) & (frac < 1.0 + 1e-9))
+
+    rep = atoms.repeat((2, 1, 1))
+    assert len(rep) == 4
+    assert len(rep.bonds) == 2
+    assert rep.energies == {}
+    assert np.allclose(rep.charges, [1.2, -0.6, 1.2, -0.6])
+    assert np.allclose(rep.velocities, np.tile(atoms.velocities, (2, 1)))
+    assert np.allclose(rep.forces, np.tile(atoms.forces, (2, 1)))
+    assert rep.atom_labels == ["Ti1", "O1", "Ti1", "O1"]
+
+    with pytest.raises(exceptions.StructureError):
+        structure.AtomsData(
+            symbols=["H"],
+            positions=np.array([[0.0, 0.0, 0.0]]),
+            cell=np.array([[1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 0.0, 1.0]]),
+            pbc=(True, True, True),
+        )
+    with pytest.raises(exceptions.StructureError):
+        structure.AtomsData(
+            symbols=["H"],
+            positions=np.array([[0.0, 0.0, 0.0]]),
+            charges=np.array([np.nan]),
+        )
+
+
+def test_skewed_minimum_image_and_camera_presets() -> None:
+    # Exact audit counterexample for skewed nonorthogonal cells.
+    skew_cell = np.array(
+        [[1.0, 0.0, 0.0], [0.9, 0.1, 0.0], [0.0, 0.0, 5.0]], dtype=np.float64
+    )
+    vec = np.array([0.49, 0.49, 0.0]) @ skew_cell
+    mic = geometry.minimum_image_vector(vec, skew_cell, (True, True, True))
+    # Closest lattice image is vec - b = (0.031, -0.051, 0.0) (norm ~ 0.0597 A).
+    assert np.allclose(mic, [0.031, -0.051, 0.0], atol=1e-6)
+    assert np.linalg.norm(mic) < 0.06
+    assert geometry.max_min_image_radius(np.diag([10.0, 8.0, 6.0])) == (
+        pytest.approx(3.0)
+    )
+
+    for name in (
+        "isometric",
+        "perspective",
+        "front",
+        "side",
+        "top",
+        "a",
+        "b",
+        "c",
+        "a*",
+        "b*",
+        "c*",
+    ):
+        cam = geometry.Camera.from_preset(name, cell=skew_cell)
+        assert isinstance(cam, geometry.Camera)
+    with pytest.raises(exceptions.StructureError):
+        geometry.Camera.from_preset("unknown_cam")
 
 
 def test_periodic_bonding_and_polyhedra() -> None:
@@ -79,3 +157,58 @@ def test_geometry_camera_and_miller_plane() -> None:
     assert sum(1 for _, _, is_back in edges if is_back) == 3
     poly = geometry.miller_plane_polygon(cell, (1, 1, 1))
     assert poly.shape == (3, 3)
+
+
+def test_trajectory_rdf_unwrapped_rmsd_and_electronic_fixes() -> None:
+    box = np.diag([10.0, 10.0, 10.0])
+    f0 = structure.AtomsData(
+        symbols=["Cu", "Cu"],
+        positions=np.array([[0.1, 5.0, 5.0], [0.5, 5.0, 5.0]]),
+        cell=box,
+        pbc=(True, True, True),
+    )
+    f1 = structure.AtomsData(
+        symbols=["Cu", "Cu"],
+        positions=np.array([[9.9, 5.0, 5.0], [0.5, 5.0, 5.0]]),
+        cell=box,
+        pbc=(True, True, True),
+    )
+    traj = trajectory.Trajectory(frames=[f0, f1])
+    rmsd_unwrapped = traj.rmsd(ref_index=0, indices=[0, 1], unwrap=True)
+    rmsd_raw = traj.rmsd(ref_index=0, indices=[0, 1], unwrap=False)
+    assert rmsd_unwrapped[1] == pytest.approx(0.1, abs=1e-6)
+    assert rmsd_raw[1] == pytest.approx(4.5, abs=1e-6)
+
+    with pytest.raises(exceptions.StructureError):
+        traj.compute_rdf(("Cu", "Cu"), r_max=6.5, n_bins=20, strict=True)
+    r_vals, g_vals = traj.compute_rdf(
+        ("Cu", "Cu"), r_max=6.5, n_bins=13, strict=False
+    )
+    assert np.any(g_vals > 0.0)
+    assert r_vals.shape == (13,)
+
+    # Metallic Fermi-crossing bands yield zero gap even when points skip zero.
+    metal = electronic.BandStructure(
+        k_distances=np.array([0.0, 1.0]),
+        eigenvalues=np.array([[-1.0, 1.0], [0.8, 1.5]]),
+        fermi_energy=0.0,
+    )
+    assert metal.band_gap() == 0.0
+    occ_semi = electronic.BandStructure(
+        k_distances=np.array([0.0, 1.0]),
+        eigenvalues=np.array([[1.0, 2.5], [1.2, 2.3]]),
+        occupations=np.array([[2.0, 0.0], [2.0, 0.0]]),
+    )
+    assert occ_semi.band_gap() == pytest.approx(1.1)
+
+    # Skewed VolumetricGrid slice preserves affine non-orthogonal shear.
+    voxels = np.array([[0.5, 0.0, 0.0], [0.25, 0.5, 0.0], [0.0, 0.0, 0.5]])
+    grid = electronic.VolumetricGrid(
+        origin=np.zeros(3),
+        voxel_vectors=voxels,
+        data=np.ones((4, 4, 4)),
+    )
+    uu, vv, plane, _ = grid.slice_mesh(axis="z")
+    assert plane.shape == (4, 4)
+    assert uu[0, 1] > 0.2
+    assert vv[0, 1] > 0.4

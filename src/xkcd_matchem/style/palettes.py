@@ -11,21 +11,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Perceptual and chemical color palettes for xkcd-matchem."""
+"""Default and user-customizable perceptual and chemical color palettes."""
 
 from __future__ import annotations
+
+from collections.abc import Mapping
+from collections.abc import Sequence
 
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.data import elements
 
 
-INK = "#1E1E1E"
-PAPER = "#FFFDF7"
+INK = "#111111"
+PAPER = "#FFFFFF"
+WARM_PAPER = "#FFFDF7"
 DARK_BOARD = "#181C24"
 DARK_CHALK = "#F2EFE9"
-MUTED_GRAY = "#6B7280"
+MUTED_GRAY = "#5A6270"
 LIGHT_GRID = "#E5E7EB"
 PASTEL_BG = "#F5F2EB"
+VACUUM_TINT = "#D3E6EE"
+SLAB_TINT = "#B9D5C9"
+GAP_TINT = "#F8DDC0"
 
 # Okabe & Ito (2002; mod. 2008) Color Universal Design (CUD) 8-color palette:
 # black, orange, sky blue, bluish green, yellow, blue, vermilion, purple.
@@ -51,30 +58,56 @@ OKABE_ITO_NAMED: dict[str, str] = {
     "reddish_purple": "#CC79A7",
 }
 
-# Warm hand-drawn palette tuned for contrast against #FFFDF7 paper and dark ink.
+# Crisp high-contrast hand-drawn defaults tuned for pure #FFFFFF white and ink.
 _XKCD_ELEMENT_OVERRIDES: dict[str, str] = {
-    "H": "#F7F5EF",
-    "C": "#6E737D",
-    "N": "#4B7BEC",
-    "O": "#E85A4F",
+    "H": "#F5F5F5",
+    "C": "#5A5F69",
+    "N": "#3B6FD8",
+    "O": "#E74C3C",
     "F": "#68D391",
-    "S": "#F6C945",
-    "Cl": "#38B2AC",
-    "Br": "#B84A39",
+    "S": "#E5C13B",
+    "Cl": "#2ECC71",
+    "Br": "#A04000",
     "I": "#8854D0",
-    "P": "#F59E0B",
-    "Si": "#D9A86C",
+    "P": "#F39C12",
+    "Si": "#D9A05B",
     "Fe": "#D97736",
-    "Cu": "#E08E55",
-    "Ti": "#9BA3AE",
-    "Mo": "#48A9A6",
+    "Cu": "#C0392B",
+    "Ti": "#7F8C9A",
+    "Mo": "#3E6E8E",
     "Au": "#F2C94C",
     "Li": "#A78BFA",
     "Na": "#7C6CE0",
     "K": "#9B59B6",
-    "Mg": "#6EE7B7",
+    "Mg": "#27AE60",
     "Ca": "#48BB78",
     "Al": "#B8C2CC",
+    "Cr": "#8E63CE",
+    "Ta": "#8E63CE",
+    "Zr": "#1ABC9C",
+    "Pt": "#5D6D7E",
+    "Ge": "#16A085",
+    "Se": "#F39C12",
+}
+
+_PASTEL_ELEMENT_OVERRIDES: dict[str, str] = {
+    "H": "#FAFAFA",
+    "C": "#8D99AE",
+    "N": "#8ECAE6",
+    "O": "#F4978E",
+    "F": "#B7E4C7",
+    "S": "#FFE082",
+    "Cl": "#95D5B2",
+    "Br": "#D4A373",
+    "I": "#CDB4DB",
+    "P": "#F9C784",
+    "Si": "#E9C46A",
+    "Fe": "#E7A977",
+    "Cu": "#E5989B",
+    "Ti": "#B8C0CC",
+    "Mo": "#9DB3C6",
+    "Zr": "#80CBC4",
+    "Cr": "#B8A9DC",
 }
 
 _COLORBLIND_FAMILY_COLORS: dict[str, str] = {
@@ -126,25 +159,104 @@ _NAMED_PALETTES: dict[str, tuple[str, ...]] = {
     ),
 }
 
+_CUSTOM_PALETTES: dict[str, tuple[str, ...]] = {}
+_CUSTOM_ELEMENT_PALETTES: dict[str, tuple[dict[str, str], str]] = {}
+_BUILTIN_ELEMENT_SCHEMES: tuple[str, ...] = (
+    "colorblind",
+    "jmol",
+    "pastel",
+    "xkcd",
+)
 
-def list_palettes() -> tuple[str, ...]:
-    """Returns available discrete series palette names."""
-    return tuple(sorted(_NAMED_PALETTES))
 
-
-def get_palette(name: str = "okabe_ito") -> tuple[str, ...]:
-    """Returns a named tuple of hex colors for multi-series plots.
+def register_palette(name: str, colors: Sequence[str]) -> None:
+    """Registers a custom discrete color series palette by name.
 
     Args:
-      name: Palette identifier (``"okabe_ito"``, ``"pastel"``, ``"vibrant"``).
-
-    Returns:
-      Tuple of ``#RRGGBB`` hex strings.
+      name: Case-insensitive palette key to register or update.
+      colors: Non-empty sequence of Matplotlib-compatible color strings.
 
     Raises:
-      StyleError: If ``name`` is not a recognized palette.
+      StyleError: If ``name`` is blank or ``colors`` is empty.
     """
-    key = name.lower()
+    key = name.strip().lower()
+    if not key:
+        raise exceptions.StyleError("Palette name cannot be empty.")
+    color_tuple = tuple(str(col) for col in colors)
+    if not color_tuple:
+        raise exceptions.StyleError(
+            f"Palette {name!r} must contain at least one color."
+        )
+    _CUSTOM_PALETTES[key] = color_tuple
+
+
+def register_element_palette(
+    name: str,
+    colors: Mapping[str, str],
+    base: str = "xkcd",
+) -> None:
+    """Registers a named custom chemical-element color scheme.
+
+    Args:
+      name: Scheme identifier passed later as ``palette=...`` or ``scheme=...``.
+      colors: Mapping from element symbol (case-insensitive) to color string.
+      base: Fallback built-in scheme for elements omitted from ``colors``.
+
+    Raises:
+      StyleError: If ``name`` is empty or ``base`` is invalid.
+    """
+    key = name.strip().lower()
+    if not key:
+        raise exceptions.StyleError("Element palette name cannot be empty.")
+    base_key = base.strip().lower()
+    if (
+        base_key not in _BUILTIN_ELEMENT_SCHEMES
+        and base_key not in _CUSTOM_ELEMENT_PALETTES
+    ):
+        supported = ", ".join(list_element_palettes())
+        raise exceptions.StyleError(
+            f"Unknown base element palette {base!r}. Available: {supported}"
+        )
+    normalized: dict[str, str] = {}
+    for sym, col in colors.items():
+        rec = elements.get_element(sym)
+        normalized[rec.symbol] = str(col)
+    _CUSTOM_ELEMENT_PALETTES[key] = (normalized, base_key)
+
+
+def list_palettes() -> tuple[str, ...]:
+    """Returns built-in and custom discrete series palette names."""
+    return tuple(sorted(set(_NAMED_PALETTES) | set(_CUSTOM_PALETTES)))
+
+
+def list_element_palettes() -> tuple[str, ...]:
+    """Returns built-in and custom chemical-element color scheme names."""
+    return tuple(
+        sorted(set(_BUILTIN_ELEMENT_SCHEMES) | set(_CUSTOM_ELEMENT_PALETTES))
+    )
+
+
+def get_palette(name: str | Sequence[str] = "okabe_ito") -> tuple[str, ...]:
+    """Resolves a named or inline sequence discrete color palette.
+
+    Args:
+      name: Registered palette identifier or an inline sequence of hex/named
+        colors.
+
+    Returns:
+      Tuple of color strings for multi-series plots.
+
+    Raises:
+      StyleError: If ``name`` is unknown or an empty sequence.
+    """
+    if isinstance(name, Sequence) and not isinstance(name, str):
+        custom = tuple(str(col) for col in name)
+        if not custom:
+            raise exceptions.StyleError("Custom palette sequence is empty.")
+        return custom
+    key = str(name).lower()
+    if key in _CUSTOM_PALETTES:
+        return _CUSTOM_PALETTES[key]
     if key not in _NAMED_PALETTES:
         supported = ", ".join(list_palettes())
         raise exceptions.StyleError(
@@ -155,32 +267,56 @@ def get_palette(name: str = "okabe_ito") -> tuple[str, ...]:
 
 def get_element_color(
     symbol: str,
-    scheme: str = "xkcd",
+    scheme: str | Mapping[str, str] = "xkcd",
+    fallback: str = "xkcd",
 ) -> str:
-    """Resolves the display fill hex color for a chemical element.
+    """Resolves the display fill color for a chemical element.
 
     Args:
       symbol: Chemical element symbol (case-insensitive, e.g. ``"Mo"``).
-      scheme: Element coloring scheme: ``"xkcd"``, ``"jmol"``, or
-        ``"colorblind"``.
+      scheme: Scheme name (``"xkcd"``, ``"jmol"``, ``"colorblind"``,
+        ``"pastel"``, or registered custom name) or inline ``{symbol: color}``
+        mapping overriding defaults.
+      fallback: Fallback scheme name when an inline mapping omits ``symbol``.
 
     Returns:
-      Hex color string ``#RRGGBB``.
+      Color string such as ``"#RRGGBB"``.
 
     Raises:
       StyleError: If ``scheme`` is unrecognized or the symbol is invalid.
     """
     record = elements.get_element(symbol)
+    if isinstance(scheme, Mapping):
+        for probe in (record.symbol, record.symbol.lower(), symbol):
+            if probe in scheme:
+                return str(scheme[probe])
+        return get_element_color(record.symbol, scheme=fallback)
+
     key = scheme.lower()
+    if key in _CUSTOM_ELEMENT_PALETTES:
+        overrides, base_scheme = _CUSTOM_ELEMENT_PALETTES[key]
+        if record.symbol in overrides:
+            return overrides[record.symbol]
+        return get_element_color(record.symbol, scheme=base_scheme)
+
+    result: str | None = None
     if key == "jmol":
-        return record.jmol_color
-    if key == "xkcd":
-        return _XKCD_ELEMENT_OVERRIDES.get(record.symbol, record.jmol_color)
-    if key == "colorblind":
-        if record.symbol in _COLORBLIND_ELEMENT_OVERRIDES:
-            return _COLORBLIND_ELEMENT_OVERRIDES[record.symbol]
-        return _COLORBLIND_FAMILY_COLORS.get(record.family, "#56B4E9")
+        result = record.jmol_color
+    elif key == "xkcd":
+        result = _XKCD_ELEMENT_OVERRIDES.get(record.symbol, record.jmol_color)
+    elif key == "pastel":
+        result = _PASTEL_ELEMENT_OVERRIDES.get(
+            record.symbol,
+            _XKCD_ELEMENT_OVERRIDES.get(record.symbol, record.jmol_color),
+        )
+    elif key == "colorblind":
+        result = _COLORBLIND_ELEMENT_OVERRIDES.get(
+            record.symbol,
+            _COLORBLIND_FAMILY_COLORS.get(record.family, "#56B4E9"),
+        )
+    if result is not None:
+        return result
+    supported = ", ".join(list_element_palettes())
     raise exceptions.StyleError(
-        f"Unknown element color scheme {scheme!r}. "
-        "Expected 'xkcd', 'jmol', or 'colorblind'."
+        f"Unknown element color scheme {scheme!r}. Available: {supported}"
     )

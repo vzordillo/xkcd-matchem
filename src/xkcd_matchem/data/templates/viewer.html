@@ -1,0 +1,1542 @@
+<!--
+Copyright 2026 xkcd-matchem contributors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>xkcd-matchem 3D Studio</title>
+<style>
+__XM_FONT_CSS__
+:root {
+  --ui-bg: #f7f8fb;
+  --ui-card: #ffffff;
+  --ui-border: #d5dae4;
+  --ui-ink: #16181d;
+  --ui-muted: #586070;
+  --ui-accent: #1d4ed8;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Patrick Hand", system-ui, -apple-system, sans-serif;
+  background: var(--ui-bg);
+  color: var(--ui-ink);
+}
+.xm-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 305px;
+  gap: 12px;
+  padding: 12px;
+  min-height: 640px;
+}
+@media (max-width: 900px) {
+  .xm-shell { grid-template-columns: 1fr; }
+}
+.xm-stage-card {
+  background: var(--ui-card);
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 540px;
+}
+.xm-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ui-border);
+  background: #fbfcfe;
+}
+.xm-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+}
+.xm-subtitle {
+  font-size: 0.92rem;
+  color: var(--ui-muted);
+}
+.xm-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.xm-btn {
+  font-family: inherit;
+  font-size: 0.92rem;
+  padding: 4px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--ui-border);
+  background: #ffffff;
+  color: var(--ui-ink);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.xm-btn:hover { background: #eef2ff; border-color: #93c5fd; }
+.xm-btn.active {
+  background: #1d4ed8;
+  color: #ffffff;
+  border-color: #1d4ed8;
+}
+.xm-canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 440px;
+  display: flex;
+  align-items: stretch;
+}
+canvas#xm-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+  touch-action: none;
+}
+canvas#xm-canvas:active { cursor: grabbing; }
+.xm-hint {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  font-size: 0.85rem;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #374151;
+  pointer-events: none;
+}
+.xm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--ui-border);
+  background: #fbfcfe;
+  align-items: center;
+}
+.xm-status {
+  margin-left: auto;
+  font-size: 0.9rem;
+  color: var(--ui-accent);
+}
+.xm-panel {
+  background: var(--ui-card);
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  overflow-y: auto;
+  max-height: 760px;
+}
+.xm-group {
+  border-bottom: 1px dashed #e2e6ef;
+  padding-bottom: 9px;
+}
+.xm-group:last-child { border-bottom: none; padding-bottom: 0; }
+.xm-group-title {
+  font-size: 1.02rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.xm-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+  font-size: 0.94rem;
+}
+.xm-row select,
+.xm-row input[type="number"] {
+  font-family: inherit;
+  font-size: 0.92rem;
+  padding: 3px 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  background: #ffffff;
+}
+.xm-row input[type="range"] { flex: 1; max-width: 155px; }
+.xm-supercell {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.xm-supercell label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  padding: 3px 6px;
+}
+.xm-supercell input {
+  width: 42px;
+  border: none;
+  font-family: inherit;
+  font-size: 0.95rem;
+  text-align: center;
+}
+.xm-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.xm-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 0.9rem;
+}
+.xm-swatch input[type="color"] {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+.xm-codebox {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.74rem;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--ui-border);
+  background: #f8fafc;
+  resize: vertical;
+  min-height: 76px;
+}
+</style>
+</head>
+<body>
+<div class="xm-shell">
+  <div class="xm-stage-card">
+    <div class="xm-topbar">
+      <div>
+        <div class="xm-title" id="xm-struct-title">xkcd-matchem 3D Studio</div>
+        <div class="xm-subtitle" id="xm-struct-meta">Interactive structure sandbox</div>
+      </div>
+      <div class="xm-preset-row" id="xm-view-buttons">
+        <button class="xm-btn" data-view="isometric">Iso</button>
+        <button class="xm-btn" data-view="perspective">Persp</button>
+        <button class="xm-btn" data-view="front">Front</button>
+        <button class="xm-btn" data-view="side">Side</button>
+        <button class="xm-btn" data-view="top">Top</button>
+        <button class="xm-btn" data-view="a">a</button>
+        <button class="xm-btn" data-view="b">b</button>
+        <button class="xm-btn" data-view="c">c</button>
+        <button class="xm-btn" data-view="a*">a*</button>
+        <button class="xm-btn" data-view="b*">b*</button>
+        <button class="xm-btn" data-view="c*">c*</button>
+      </div>
+    </div>
+    <div class="xm-canvas-wrap">
+      <canvas id="xm-canvas"></canvas>
+      <div class="xm-hint" id="xm-camera-readout">
+        Drag: orbit | Shift+Drag: roll | Wheel: zoom
+      </div>
+    </div>
+    <div class="xm-actions">
+      <button class="xm-btn" id="xm-copy-py">Copy Python</button>
+      <button class="xm-btn" id="xm-dl-png">Download PNG</button>
+      <button class="xm-btn" id="xm-dl-svg">Download SVG</button>
+      <label class="xm-btn" for="xm-file-input">Open Structure File</label>
+      <input id="xm-file-input" type="file" accept=".xyz,.poscar,.vasp,.cif,.pdb,.sdf,.mol" style="display:none" />
+      <span class="xm-status" id="xm-status"></span>
+    </div>
+  </div>
+
+  <div class="xm-panel">
+    <div class="xm-group" id="xm-sample-group" style="display:none;">
+      <div class="xm-group-title">Bundled Samples</div>
+      <div class="xm-row">
+        <label for="xm-sample-select">Structure</label>
+        <select id="xm-sample-select"></select>
+      </div>
+    </div>
+
+    <div class="xm-group">
+      <div class="xm-group-title">Appearance</div>
+      <div class="xm-row">
+        <label for="xm-style">Style</label>
+        <select id="xm-style">
+          <option value="ball_and_stick">ball_and_stick</option>
+          <option value="spacefill">spacefill</option>
+          <option value="stick">stick</option>
+          <option value="polyhedra">polyhedra</option>
+        </select>
+      </div>
+      <div class="xm-row">
+        <label for="xm-palette">Element Palette</label>
+        <select id="xm-palette">
+          <option value="xkcd">xkcd</option>
+          <option value="jmol">jmol</option>
+          <option value="pastel">pastel</option>
+          <option value="colorblind">colorblind</option>
+        </select>
+      </div>
+      <div class="xm-row">
+        <label>Background</label>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <button class="xm-btn" data-bg="#FFFFFF" title="Pure white">White</button>
+          <button class="xm-btn" data-bg="#FAF6EE" title="Warm paper">Paper</button>
+          <button class="xm-btn" data-bg="#181A1F" title="Chalkboard">Chalk</button>
+          <input type="color" id="xm-bg-color" value="#ffffff" />
+        </div>
+      </div>
+      <div class="xm-row">
+        <label for="xm-cell-mode">Cell Box</label>
+        <select id="xm-cell-mode">
+          <option value="box">Base + Edges + Axes</option>
+          <option value="wireframe">Wireframe + Axes</option>
+          <option value="clean">Clean Wireframe</option>
+          <option value="off">Hidden</option>
+        </select>
+      </div>
+      <div class="xm-row">
+        <label><input type="checkbox" id="xm-center-cell" checked /> Center in cell</label>
+        <label><input type="checkbox" id="xm-legend" checked /> Inline legend</label>
+      </div>
+    </div>
+
+    <div class="xm-group">
+      <div class="xm-group-title">Camera &amp; Wiggle</div>
+      <div class="xm-row">
+        <label for="xm-persp">Perspective</label>
+        <input id="xm-persp" type="range" min="0" max="1.2" step="0.05" value="0" />
+        <span id="xm-persp-val">0.00</span>
+      </div>
+      <div class="xm-row">
+        <label for="xm-zoom">Zoom</label>
+        <input id="xm-zoom" type="range" min="0.5" max="2.2" step="0.05" value="1.0" />
+        <span id="xm-zoom-val">1.00</span>
+      </div>
+      <div class="xm-row">
+        <label for="xm-scale">Atom Scale</label>
+        <input id="xm-scale" type="range" min="0.6" max="1.6" step="0.05" value="1.0" />
+        <span id="xm-scale-val">1.00</span>
+      </div>
+      <div class="xm-row">
+        <label for="xm-wiggle">xkcd Wiggle</label>
+        <input id="xm-wiggle" type="range" min="0" max="2.5" step="0.1" value="0.9" />
+        <span id="xm-wiggle-val">0.9</span>
+      </div>
+    </div>
+
+    <div class="xm-group" id="xm-supercell-group">
+      <div class="xm-group-title">Supercell</div>
+      <div class="xm-supercell">
+        <label>na <input id="xm-na" type="number" min="1" max="3" value="1" /></label>
+        <label>nb <input id="xm-nb" type="number" min="1" max="3" value="1" /></label>
+        <label>nc <input id="xm-nc" type="number" min="1" max="3" value="1" /></label>
+      </div>
+    </div>
+
+    <div class="xm-group">
+      <div class="xm-group-title">Custom Element Colors</div>
+      <div class="xm-swatches" id="xm-swatches"></div>
+    </div>
+
+    <div class="xm-group">
+      <div class="xm-group-title">Reproducible Python Snippet</div>
+      <textarea class="xm-codebox" id="xm-py-preview" readonly></textarea>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const PAYLOAD = __XM_PAYLOAD__;
+  const ELEM_TABLE = PAYLOAD.elements_table || {};
+  const PALETTES = PAYLOAD.palettes || {};
+
+  const samples = PAYLOAD.samples && PAYLOAD.samples.length
+    ? PAYLOAD.samples
+    : [PAYLOAD.active];
+  let currentSample = samples[0];
+  let baseData = cloneStruct(currentSample);
+
+  const state = {
+    azimuth: (currentSample.camera && currentSample.camera.azimuth) ?? -118,
+    elevation: (currentSample.camera && currentSample.camera.elevation) ?? 24,
+    roll: (currentSample.camera && currentSample.camera.roll) ?? 0,
+    perspective: (currentSample.camera && currentSample.camera.perspective) ?? 0,
+    zoom: (currentSample.camera && currentSample.camera.zoom) ?? 1.0,
+    style: currentSample.style || "ball_and_stick",
+    palette: currentSample.palette_name || "xkcd",
+    customColors: Object.assign({}, currentSample.custom_colors || {}),
+    background: currentSample.background || "#FFFFFF",
+    cellMode: resolveInitialCellMode(currentSample.show_cell),
+    centerInCell: true,
+    showLegend: true,
+    scale: currentSample.scale || 1.0,
+    wiggle: 0.9,
+    supercell: [1, 1, 1],
+  };
+
+  const canvas = document.getElementById("xm-canvas");
+  const ctx = canvas.getContext("2d");
+
+  function resolveInitialCellMode(val) {
+    if (val === false || val === "off" || val === "none") return "off";
+    if (val === "wireframe" || val === "clean") return val;
+    return "box";
+  }
+
+  function cloneStruct(src) {
+    return JSON.parse(JSON.stringify(src));
+  }
+
+  function dot3(a, b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  }
+
+  function cross3(a, b) {
+    return [
+      a[1] * b[2] - a[2] * b[1],
+      a[2] * b[0] - a[0] * b[2],
+      a[0] * b[1] - a[1] * b[0],
+    ];
+  }
+
+  function norm3(a) {
+    return Math.hypot(a[0], a[1], a[2]);
+  }
+
+  function inv3x3(m) {
+    const a = m[0][0], b = m[0][1], c = m[0][2];
+    const d = m[1][0], e = m[1][1], f = m[1][2];
+    const g = m[2][0], h = m[2][1], i = m[2][2];
+    const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g;
+    const D = -(b * i - c * h), E = a * i - c * g, F = -(a * h - b * g);
+    const G = b * f - c * e, H = -(a * f - c * d), I = a * e - b * d;
+    const det = a * A + b * B + c * C;
+    if (Math.abs(det) < 1e-12) return null;
+    const invDet = 1 / det;
+    return [
+      [A * invDet, D * invDet, G * invDet],
+      [B * invDet, E * invDet, H * invDet],
+      [C * invDet, F * invDet, I * invDet],
+    ];
+  }
+
+  function matVec3T(m, v) {
+    // v @ inv(m) or row vec * m
+    return [
+      v[0] * m[0][0] + v[1] * m[1][0] + v[2] * m[2][0],
+      v[0] * m[0][1] + v[1] * m[1][1] + v[2] * m[2][1],
+      v[0] * m[0][2] + v[1] * m[1][2] + v[2] * m[2][2],
+    ];
+  }
+
+  function isDarkBg(hex) {
+    const c = hex.replace("#", "");
+    if (c.length !== 6) return false;
+    const r = parseInt(c.slice(0, 2), 16) / 255;
+    const g = parseInt(c.slice(2, 4), 16) / 255;
+    const b = parseInt(c.slice(4, 6), 16) / 255;
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.42;
+  }
+
+  function elementColor(sym) {
+    if (state.customColors[sym]) return state.customColors[sym];
+    const pal = PALETTES[state.palette] || PALETTES.xkcd || {};
+    if (pal[sym]) return pal[sym];
+    const rec = ELEM_TABLE[sym];
+    return rec ? (rec.color || "#B8C4D4") : "#B8C4D4";
+  }
+
+  function visualRadius(sym) {
+    const rec = ELEM_TABLE[sym] || { cov: 0.77, vdw: 1.7 };
+    const st = state.style;
+    const sc = state.scale;
+    if (st === "spacefill") return rec.vdw * 0.82 * sc;
+    if (st === "stick") return 0.14 * sc;
+    if (st === "polyhedra") return Math.max(0.18, rec.cov * 0.26) * sc;
+    return Math.max(0.24, Math.min(0.58, 0.18 + 0.27 * rec.cov)) * sc;
+  }
+
+  function buildActiveSceneData() {
+    const hasCell = Boolean(baseData.cell);
+    const [na, nb, nc] = hasCell ? state.supercell : [1, 1, 1];
+    let cell = hasCell
+      ? [
+          [baseData.cell[0][0] * na, baseData.cell[0][1] * na, baseData.cell[0][2] * na],
+          [baseData.cell[1][0] * nb, baseData.cell[1][1] * nb, baseData.cell[1][2] * nb],
+          [baseData.cell[2][0] * nc, baseData.cell[2][1] * nc, baseData.cell[2][2] * nc],
+        ]
+      : null;
+
+    let rawPos = baseData.positions.map((p) => p.slice());
+    if (hasCell && state.centerInCell) {
+      const inv = inv3x3(baseData.cell);
+      if (inv) {
+        const fracs = rawPos.map((p) => {
+          const f = matVec3T(inv, p);
+          return baseData.pbc.map((per, ax) =>
+            per ? ((f[ax] % 1) + 1) % 1 : f[ax]
+          );
+        });
+        const mean = [0, 1, 2].map((ax) => {
+          if (!baseData.pbc[ax]) return 0;
+          let sum = 0;
+          for (const f of fracs) sum += f[ax];
+          return sum / Math.max(fracs.length, 1);
+        });
+        rawPos = fracs.map((f) => {
+          const shifted = f.map((val, ax) => {
+            if (!baseData.pbc[ax]) return val;
+            let s = val + (0.5 - mean[ax]);
+            return ((s % 1) + 1) % 1;
+          });
+          return matVec3T(baseData.cell, shifted);
+        });
+      }
+    }
+
+    const symbols = [];
+    const positions = [];
+    if (hasCell && (na > 1 || nb > 1 || nc > 1)) {
+      for (let ia = 0; ia < na; ia++) {
+        for (let ib = 0; ib < nb; ib++) {
+          for (let ic = 0; ic < nc; ic++) {
+            const shift = [
+              ia * baseData.cell[0][0] + ib * baseData.cell[1][0] + ic * baseData.cell[2][0],
+              ia * baseData.cell[0][1] + ib * baseData.cell[1][1] + ic * baseData.cell[2][1],
+              ia * baseData.cell[0][2] + ib * baseData.cell[1][2] + ic * baseData.cell[2][2],
+            ];
+            for (let k = 0; k < baseData.symbols.length; k++) {
+              symbols.push(baseData.symbols[k]);
+              positions.push([
+                rawPos[k][0] + shift[0],
+                rawPos[k][1] + shift[1],
+                rawPos[k][2] + shift[2],
+              ]);
+            }
+          }
+        }
+      }
+    } else {
+      for (let k = 0; k < baseData.symbols.length; k++) {
+        symbols.push(baseData.symbols[k]);
+        positions.push(rawPos[k]);
+      }
+    }
+
+    // Recompute or reuse bonds cleanly
+    let bonds = [];
+    if (na === 1 && nb === 1 && nc === 1 && baseData.bonds && baseData.bonds.length) {
+      bonds = baseData.bonds;
+    } else {
+      bonds = inferBondsJS(symbols, positions, cell, baseData.pbc);
+    }
+
+    let polyhedra = [];
+    if (na === 1 && nb === 1 && nc === 1 && baseData.polyhedra) {
+      polyhedra = baseData.polyhedra;
+    }
+    return { symbols, positions, cell, pbc: baseData.pbc, bonds, polyhedra };
+  }
+
+  function inferBondsJS(symbols, positions, cell, pbc) {
+    const n = symbols.length;
+    const bonds = [];
+    const maxAtomsForAuto = 220;
+    if (n > maxAtomsForAuto) return bonds;
+    const inv = cell ? inv3x3(cell) : null;
+    const shifts = [];
+    const rx = cell && pbc[0] ? [-1, 0, 1] : [0];
+    const ry = cell && pbc[1] ? [-1, 0, 1] : [0];
+    const rz = cell && pbc[2] ? [-1, 0, 1] : [0];
+    for (const sx of rx) {
+      for (const sy of ry) {
+        for (const sz of rz) shifts.push([sx, sy, sz]);
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      const ri = (ELEM_TABLE[symbols[i]] || { cov: 0.77 }).cov;
+      for (let j = i + 1; j < n; j++) {
+        const rj = (ELEM_TABLE[symbols[j]] || { cov: 0.77 }).cov;
+        const cutoff = 1.2 * (ri + rj);
+        const dx0 = positions[j][0] - positions[i][0];
+        const dy0 = positions[j][1] - positions[i][1];
+        const dz0 = positions[j][2] - positions[i][2];
+        if (!cell || !inv) {
+          const d = Math.hypot(dx0, dy0, dz0);
+          if (d > 0.35 && d <= cutoff) bonds.push([i, j, 1.0, [0, 0, 0]]);
+          continue;
+        }
+        const df = matVec3T(inv, [dx0, dy0, dz0]);
+        const baseShift = df.map((val, ax) => (pbc[ax] ? -Math.round(val) : 0));
+        let bestD = Infinity;
+        let bestShift = [0, 0, 0];
+        for (const sh of shifts) {
+          const candSh = [
+            baseShift[0] + sh[0],
+            baseShift[1] + sh[1],
+            baseShift[2] + sh[2],
+          ];
+          const dv = matVec3T(cell, candSh);
+          const d = Math.hypot(dx0 + dv[0], dy0 + dv[1], dz0 + dv[2]);
+          if (d < bestD) {
+            bestD = d;
+            bestShift = candSh;
+          }
+        }
+        if (bestD > 0.35 && bestD <= cutoff) {
+          bonds.push([i, j, 1.0, bestShift]);
+        }
+      }
+    }
+    return bonds;
+  }
+
+  function rotationBasis() {
+    const az = (state.azimuth * Math.PI) / 180;
+    const el = (state.elevation * Math.PI) / 180;
+    const rl = (state.roll * Math.PI) / 180;
+    const forward = [
+      Math.cos(el) * Math.cos(az),
+      Math.cos(el) * Math.sin(az),
+      Math.sin(el),
+    ];
+    let worldUp = [0, 0, 1];
+    if (Math.abs(dot3(forward, worldUp)) > 0.999) worldUp = [0, 1, 0];
+    let right = cross3(worldUp, forward);
+    const rn = norm3(right) || 1;
+    right = right.map((x) => x / rn);
+    let up = cross3(forward, right);
+    const un = norm3(up) || 1;
+    up = up.map((x) => x / un);
+    if (rl !== 0) {
+      const cr = Math.cos(rl), sr = Math.sin(rl);
+      const nr = [
+        cr * right[0] + sr * up[0],
+        cr * right[1] + sr * up[1],
+        cr * right[2] + sr * up[2],
+      ];
+      const nu = [
+        -sr * right[0] + cr * up[0],
+        -sr * right[1] + cr * up[1],
+        -sr * right[2] + cr * up[2],
+      ];
+      right = nr;
+      up = nu;
+    }
+    return [right, up, forward];
+  }
+
+  function projectList(pts, pivot, basis) {
+    const [right, up, forward] = basis;
+    const rotated = pts.map((p) => {
+      const d = [p[0] - pivot[0], p[1] - pivot[1], p[2] - pivot[2]];
+      return [dot3(d, right), dot3(d, up), dot3(d, forward)];
+    });
+    let span = 1.0;
+    for (const r of rotated) {
+      span = Math.max(span, Math.abs(r[0]), Math.abs(r[1]), Math.abs(r[2]));
+    }
+    return rotated.map((r) => {
+      let x = r[0] * state.zoom;
+      let y = r[1] * state.zoom;
+      if (state.perspective > 0) {
+        const denom = Math.max(1 - state.perspective * (r[2] / span) * 0.15, 0.25);
+        x /= denom;
+        y /= denom;
+      }
+      return [x, y, r[2]];
+    });
+  }
+
+  function wiggledSegment(p0, p1, amp, seed) {
+    if (amp <= 0.02) return [p0, p1];
+    const steps = 10;
+    const dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;
+    const pts = [];
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps;
+      const env = Math.sin(Math.PI * t);
+      const off = amp * env * Math.sin(t * 9.5 + seed * 3.17);
+      pts.push([p0[0] + dx * t + nx * off, p0[1] + dy * t + ny * off]);
+    }
+    return pts;
+  }
+
+  function renderFrame() {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(rect.width, 320);
+    const height = Math.max(rect.height, 360);
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const dark = isDarkBg(state.background);
+    const ink = dark ? "#F5F5F0" : "#111111";
+    ctx.fillStyle = state.background;
+    ctx.fillRect(0, 0, width, height);
+
+    const scene = buildActiveSceneData();
+    const { symbols, positions, cell, bonds, polyhedra } = scene;
+    if (!positions.length) return;
+
+    const pivot = [0, 0, 0];
+    if (cell && state.cellMode !== "off") {
+      pivot[0] = 0.5 * (cell[0][0] + cell[1][0] + cell[2][0]);
+      pivot[1] = 0.5 * (cell[0][1] + cell[1][1] + cell[2][1]);
+      pivot[2] = 0.5 * (cell[0][2] + cell[1][2] + cell[2][2]);
+    } else {
+      for (const p of positions) {
+        pivot[0] += p[0]; pivot[1] += p[1]; pivot[2] += p[2];
+      }
+      pivot[0] /= positions.length;
+      pivot[1] /= positions.length;
+      pivot[2] /= positions.length;
+    }
+
+    const basis = rotationBasis();
+    const proj = projectList(positions, pivot, basis);
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < proj.length; i++) {
+      const r = visualRadius(symbols[i]);
+      minX = Math.min(minX, proj[i][0] - r * 1.4);
+      maxX = Math.max(maxX, proj[i][0] + r * 1.4);
+      minY = Math.min(minY, proj[i][1] - r * 1.4);
+      maxY = Math.max(maxY, proj[i][1] + r * 1.4);
+    }
+
+    let cellCorners = null;
+    if (cell && state.cellMode !== "off") {
+      const rawC = [];
+      for (let i = 0; i < 2; i++) {
+        for (let j = 0; j < 2; j++) {
+          for (let k = 0; k < 2; k++) {
+            rawC.push([
+              i * cell[0][0] + j * cell[1][0] + k * cell[2][0],
+              i * cell[0][1] + j * cell[1][1] + k * cell[2][1],
+              i * cell[0][2] + j * cell[1][2] + k * cell[2][2],
+            ]);
+          }
+        }
+      }
+      cellCorners = projectList(rawC, pivot, basis);
+      for (const c of cellCorners) {
+        minX = Math.min(minX, c[0] - 0.6);
+        maxX = Math.max(maxX, c[0] + 0.6);
+        minY = Math.min(minY, c[1] - 0.6);
+        maxY = Math.max(maxY, c[1] + 0.6);
+      }
+    }
+
+    const legendPad = state.showLegend ? 38 : 14;
+    const availW = width - 48;
+    const availH = height - 40 - legendPad;
+    const spanX = Math.max(maxX - minX, 2.0);
+    const spanY = Math.max(maxY - minY, 2.0);
+    const pxPerA = Math.min(availW / spanX, availH / spanY);
+    const midX = 0.5 * (minX + maxX);
+    const midY = 0.5 * (minY + maxY);
+    const cx = width * 0.5;
+    const cy = (height - legendPad) * 0.5;
+    const toScreen = (xy) => [
+      cx + (xy[0] - midX) * pxPerA,
+      cy - (xy[1] - midY) * pxPerA,
+    ];
+
+    // Unit-cell base plane and back dashed edges
+    const cellEdgesIdx = [
+      [0, 1], [0, 2], [0, 4], [1, 3], [1, 5], [2, 3],
+      [2, 6], [3, 7], [4, 5], [4, 6], [5, 7], [6, 7],
+    ];
+    let backCornerIdx = 0;
+    if (cellCorners) {
+      for (let i = 1; i < 8; i++) {
+        if (cellCorners[i][2] < cellCorners[backCornerIdx][2]) backCornerIdx = i;
+      }
+      if (state.cellMode === "box") {
+        const baseIdx = [0, 4, 6, 2]; // (0,0,0), (1,0,0), (1,1,0), (0,1,0)
+        ctx.beginPath();
+        baseIdx.forEach((ci, idx) => {
+          const p = toScreen(cellCorners[ci]);
+          if (idx === 0) ctx.moveTo(p[0], p[1]);
+          else ctx.lineTo(p[0], p[1]);
+        });
+        ctx.closePath();
+        ctx.fillStyle = dark ? "rgba(180,190,210,0.12)" : "rgba(236,238,244,0.65)";
+        ctx.fill();
+      }
+      for (let eIdx = 0; eIdx < cellEdgesIdx.length; eIdx++) {
+        const [u, v] = cellEdgesIdx[eIdx];
+        if (u !== backCornerIdx && v !== backCornerIdx) continue;
+        drawStrokeWiggle(
+          toScreen(cellCorners[u]),
+          toScreen(cellCorners[v]),
+          dark ? "#9ca3af" : "#777777",
+          1.35,
+          true,
+          state.wiggle * 0.6,
+          eIdx + 1
+        );
+      }
+    }
+
+    // Painter's queue
+    const items = [];
+    for (let idx = 0; idx < bonds.length; idx++) {
+      const [i, j, order, shift] = bonds[idx];
+      if (i >= proj.length || j >= proj.length) continue;
+      const isInternal = shift[0] === 0 && shift[1] === 0 && shift[2] === 0;
+      if (isInternal || !cell) {
+        const mid = [0.5 * (proj[i][0] + proj[j][0]), 0.5 * (proj[i][1] + proj[j][1])];
+        items.push({ depth: proj[i][2] - 0.06, kind: "half", p0: proj[i], p1: mid, col: elementColor(symbols[i]), order, seed: idx + 1 });
+        items.push({ depth: proj[j][2] - 0.06, kind: "half", p0: proj[j], p1: mid, col: elementColor(symbols[j]), order, seed: idx + 100 });
+      } else {
+        const sv = [
+          shift[0] * cell[0][0] + shift[1] * cell[1][0] + shift[2] * cell[2][0],
+          shift[0] * cell[0][1] + shift[1] * cell[1][1] + shift[2] * cell[2][1],
+          shift[0] * cell[0][2] + shift[1] * cell[1][2] + shift[2] * cell[2][2],
+        ];
+        const pi = positions[i], pj = positions[j];
+        const stubA = [pi[0] + 0.42 * (pj[0] + sv[0] - pi[0]), pi[1] + 0.42 * (pj[1] + sv[1] - pi[1]), pi[2] + 0.42 * (pj[2] + sv[2] - pi[2])];
+        const stubB = [pj[0] + 0.42 * (pi[0] - sv[0] - pj[0]), pj[1] + 0.42 * (pi[1] - sv[1] - pj[1]), pj[2] + 0.42 * (pi[2] - sv[2] - pj[2])];
+        const sProj = projectList([stubA, stubB], pivot, basis);
+        items.push({ depth: proj[i][2] - 0.06, kind: "half", p0: proj[i], p1: sProj[0], col: elementColor(symbols[i]), order, seed: idx + 1 });
+        items.push({ depth: proj[j][2] - 0.06, kind: "half", p0: proj[j], p1: sProj[1], col: elementColor(symbols[j]), order, seed: idx + 100 });
+      }
+    }
+
+    if (state.style === "polyhedra" && polyhedra && polyhedra.length) {
+      for (const poly of polyhedra) {
+        const vProj = projectList(poly.vertices, pivot, basis);
+        const col = elementColor(poly.center_symbol);
+        for (const [f0, f1, f2] of poly.faces) {
+          const md = (vProj[f0][2] + vProj[f1][2] + vProj[f2][2]) / 3 - 0.03;
+          items.push({ depth: md, kind: "tri", pts: [vProj[f0], vProj[f1], vProj[f2]], col });
+        }
+      }
+    }
+
+    for (let i = 0; i < proj.length; i++) {
+      items.push({ depth: proj[i][2], kind: "atom", p: proj[i], sym: symbols[i], idx: i });
+    }
+    items.sort((a, b) => a.depth - b.depth);
+
+    const stickHalfPx = Math.max(2.0, Math.min(6.0, 0.095 * pxPerA));
+    const outlineW = Math.max(1.1, Math.min(2.4, 0.042 * pxPerA));
+
+    for (const item of items) {
+      if (item.kind === "tri") {
+        const s = item.pts.map(toScreen);
+        ctx.beginPath();
+        ctx.moveTo(s[0][0], s[0][1]);
+        ctx.lineTo(s[1][0], s[1][1]);
+        ctx.lineTo(s[2][0], s[2][1]);
+        ctx.closePath();
+        ctx.fillStyle = hexToRgba(item.col, 0.42);
+        ctx.fill();
+        ctx.strokeStyle = ink;
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+      } else if (item.kind === "half") {
+        if (state.style === "spacefill") continue;
+        drawHalfBond(toScreen(item.p0), toScreen(item.p1), item.col, ink, stickHalfPx, item.order, item.seed);
+      } else {
+        drawAtom(toScreen(item.p), visualRadius(item.sym) * pxPerA, elementColor(item.sym), ink, outlineW, item.idx + 1);
+      }
+    }
+
+    // Front unit cell edges + outside a, b, c labels
+    if (cellCorners) {
+      for (let eIdx = 0; eIdx < cellEdgesIdx.length; eIdx++) {
+        const [u, v] = cellEdgesIdx[eIdx];
+        if (u === backCornerIdx || v === backCornerIdx) continue;
+        drawStrokeWiggle(toScreen(cellCorners[u]), toScreen(cellCorners[v]), ink, 1.65, false, state.wiggle * 0.6, eIdx + 20);
+      }
+      if (state.cellMode !== "clean") {
+        const axes = [
+          [cellCorners[0], cellCorners[4], "a"],
+          [cellCorners[0], cellCorners[2], "b"],
+          [cellCorners[0], cellCorners[1], "c"],
+        ];
+        ctx.font = 'bold 17px "Patrick Hand", sans-serif';
+        ctx.fillStyle = ink;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        for (const [c0, c1, label] of axes) {
+          const p0 = toScreen(c0), p1 = toScreen(c1);
+          const dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+          const l = Math.hypot(dx, dy) || 1;
+          ctx.fillText(label, p1[0] + (dx / l) * 14, p1[1] + (dy / l) * 14);
+        }
+      }
+    }
+
+    if (state.showLegend) {
+      drawInlineLegend(symbols, width, height - 18, ink);
+    }
+    updateMetaUI(symbols, cell);
+  }
+
+  function drawStrokeWiggle(p0, p1, color, lw, dashed, amp, seed) {
+    const pts = wiggledSegment(p0, p1, amp, seed);
+    ctx.save();
+    ctx.beginPath();
+    if (dashed) ctx.setLineDash([6, 5]);
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw;
+    ctx.lineCap = "round";
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawHalfBond(s0, s1, fillCol, ink, halfPx, order, seed) {
+    const dx = s1[0] - s0[0], dy = s1[1] - s0[1];
+    const len = Math.hypot(dx, dy);
+    if (len < 1) return;
+    const offsets = order >= 2.5 ? [-0.95, 0, 0.95] : order >= 1.5 ? [-0.65, 0.65] : [0];
+    const nx = -dy / len, ny = dx / len;
+    const scaleW = order >= 2.5 ? 0.45 : order >= 1.5 ? 0.55 : 1.0;
+    for (const off of offsets) {
+      const ox = nx * off * halfPx, oy = ny * off * halfPx;
+      const a = [s0[0] + ox, s0[1] + oy], b = [s1[0] + ox, s1[1] + oy];
+      const pts = wiggledSegment(a, b, state.wiggle * 0.45, seed);
+      ctx.save();
+      ctx.lineCap = "butt";
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 2 * halfPx * scaleW + 2.4;
+      ctx.stroke();
+      ctx.strokeStyle = fillCol;
+      ctx.lineWidth = Math.max(1.5, 2 * halfPx * scaleW - 0.8);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawAtom(center, radius, fillCol, ink, outlineW, seed) {
+    const [cx, cy] = center;
+    const steps = 28;
+    ctx.beginPath();
+    for (let k = 0; k <= steps; k++) {
+      const th = (2 * Math.PI * k) / steps;
+      const wr = radius + state.wiggle * 0.65 * Math.sin(3 * th + seed * 1.7);
+      const px = cx + wr * Math.cos(th);
+      const py = cy + wr * Math.sin(th);
+      if (k === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = fillCol;
+    ctx.fill();
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = outlineW;
+    ctx.stroke();
+
+    // Pure white specular dot
+    ctx.beginPath();
+    ctx.arc(cx - radius * 0.34, cy - radius * 0.34, Math.max(1.5, radius * 0.16), 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.fill();
+  }
+
+  function drawInlineLegend(symbols, width, y, ink) {
+    const seen = [];
+    for (const s of symbols) if (!seen.includes(s)) seen.push(s);
+    const step = Math.min(72, Math.max(46, (width - 40) / Math.max(seen.length, 1)));
+    const startX = width * 0.5 - ((seen.length - 1) * step) * 0.5;
+    ctx.font = '15px "Patrick Hand", sans-serif';
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    seen.forEach((sym, i) => {
+      const x = startX + i * step;
+      ctx.beginPath();
+      ctx.arc(x - 10, y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = elementColor(sym);
+      ctx.fill();
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 1.25;
+      ctx.stroke();
+      ctx.fillStyle = ink;
+      ctx.fillText(sym, x + 2, y + 1);
+    });
+  }
+
+  function hexToRgba(hex, alpha) {
+    const c = hex.replace("#", "");
+    if (c.length !== 6) return `rgba(180,180,220,${alpha})`;
+    const r = parseInt(c.slice(0, 2), 16);
+    const g = parseInt(c.slice(2, 4), 16);
+    const b = parseInt(c.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  function syncSwatches(symbols) {
+    const wrap = document.getElementById("xm-swatches");
+    const unique = [];
+    for (const s of symbols) if (!unique.includes(s)) unique.push(s);
+    const prevKey = wrap.dataset.syms || "";
+    const key = unique.join(",") + "|" + state.palette;
+    if (prevKey === key) return;
+    wrap.dataset.syms = key;
+    wrap.innerHTML = "";
+    unique.forEach((sym) => {
+      const pill = document.createElement("label");
+      pill.className = "xm-swatch";
+      const inp = document.createElement("input");
+      inp.type = "color";
+      inp.value = elementColor(sym);
+      inp.addEventListener("input", () => {
+        state.customColors[sym] = inp.value.toUpperCase();
+        renderFrame();
+      });
+      const txt = document.createElement("span");
+      txt.textContent = sym;
+      pill.appendChild(inp);
+      pill.appendChild(txt);
+      wrap.appendChild(pill);
+    });
+  }
+
+  function buildPythonSnippet() {
+    const sampleName = currentSample.source_sample || currentSample.name || "structure.cif";
+    const palExpr = Object.keys(state.customColors).length
+      ? JSON.stringify(buildEffectiveColorDict())
+      : JSON.stringify(state.palette);
+    const [na, nb, nc] = state.supercell;
+    const repeatLine = (na > 1 || nb > 1 || nc > 1)
+      ? `atoms = atoms.repeat((${na}, ${nb}, ${nc}))\n` : "";
+    const fn = baseData.cell ? "plot_crystal" : "plot_molecule";
+    const plotCall =
+      `xm.${fn}(atoms, style=${JSON.stringify(state.style)}, palette=${palExpr}, camera=cam)`;
+    const bgNorm = state.background.toUpperCase();
+    const callBlock = bgNorm !== "#FFFFFF"
+      ? `with xm.xkcd_style("classic", background=${JSON.stringify(bgNorm)}):\n    ax = ${plotCall}`
+      : `ax = ${plotCall}`;
+    return (
+      `import xkcd_matchem as xm\n\n` +
+      `atoms = xm.load(${JSON.stringify(sampleName)})\n` +
+      repeatLine +
+      `cam = xm.Camera(azimuth=${state.azimuth.toFixed(1)}, elevation=${state.elevation.toFixed(1)}, ` +
+      `roll=${state.roll.toFixed(1)}, perspective=${state.perspective.toFixed(2)}, zoom=${state.zoom.toFixed(2)})\n` +
+      callBlock
+    );
+  }
+
+  function buildEffectiveColorDict() {
+    const out = {};
+    for (const s of baseData.symbols) out[s] = elementColor(s);
+    return out;
+  }
+
+  function updateMetaUI(symbols, cell) {
+    const counts = {};
+    for (const s of symbols) counts[s] = (counts[s] || 0) + 1;
+    const formula = Object.keys(counts).sort().map((s) => counts[s] > 1 ? `${s}${counts[s]}` : s).join("");
+    document.getElementById("xm-struct-title").textContent = currentSample.name || formula || "xkcd-matchem";
+    document.getElementById("xm-struct-meta").textContent =
+      `${formula} | ${symbols.length} atoms | ${cell ? "Periodic" : "Molecule"}`;
+    document.getElementById("xm-camera-readout").textContent =
+      `az=${state.azimuth.toFixed(1)} deg | el=${state.elevation.toFixed(1)} deg | zoom=${state.zoom.toFixed(2)} | Drag: orbit`;
+    document.getElementById("xm-supercell-group").style.display = cell ? "block" : "none";
+    document.getElementById("xm-py-preview").value = buildPythonSnippet();
+    syncSwatches(symbols);
+  }
+
+  function applyViewPreset(name) {
+    document.querySelectorAll("#xm-view-buttons .xm-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.view === name);
+    });
+    if (name === "isometric") {
+      state.azimuth = -118; state.elevation = 24; state.roll = 0; state.perspective = 0;
+    } else if (name === "perspective") {
+      state.azimuth = -118; state.elevation = 24; state.roll = 0; state.perspective = 0.65;
+    } else if (name === "front") {
+      state.azimuth = -90; state.elevation = 0; state.roll = 0;
+    } else if (name === "side") {
+      state.azimuth = 0; state.elevation = 0; state.roll = 0;
+    } else if (name === "top") {
+      state.azimuth = -90; state.elevation = 89.9; state.roll = 0;
+    } else {
+      const idx = { a: 0, b: 1, c: 2 }[name.replace("*", "")];
+      const cell = baseData.cell || [[1,0,0],[0,1,0],[0,0,1]];
+      let vec = cell[idx];
+      if (name.endsWith("*")) {
+        const inv = inv3x3(cell);
+        if (inv) vec = [inv[0][idx], inv[1][idx], inv[2][idx]];
+      }
+      const n = norm3(vec) || 1;
+      state.elevation = (Math.asin(Math.max(-1, Math.min(1, vec[2] / n))) * 180) / Math.PI;
+      state.azimuth = (Math.atan2(vec[1], vec[0]) * 180) / Math.PI;
+      state.roll = 0;
+    }
+    document.getElementById("xm-persp").value = state.perspective;
+    document.getElementById("xm-persp-val").textContent = state.perspective.toFixed(2);
+    renderFrame();
+  }
+
+  function exportSVGString() {
+    const rect = canvas.getBoundingClientRect();
+    const w = Math.max(Math.round(rect.width), 640);
+    const h = Math.max(Math.round(rect.height), 480);
+    const scene = buildActiveSceneData();
+    const { symbols, positions, cell, bonds, polyhedra } = scene;
+    const dark = isDarkBg(state.background);
+    const ink = dark ? "#F5F5F0" : "#111111";
+    const pivot = [0, 0, 0];
+    if (cell && state.cellMode !== "off") {
+      for (let d = 0; d < 3; d++) pivot[d] = 0.5 * (cell[0][d] + cell[1][d] + cell[2][d]);
+    } else {
+      for (const p of positions) { pivot[0] += p[0]; pivot[1] += p[1]; pivot[2] += p[2]; }
+      pivot[0] /= Math.max(positions.length, 1);
+      pivot[1] /= Math.max(positions.length, 1);
+      pivot[2] /= Math.max(positions.length, 1);
+    }
+    const basis = rotationBasis();
+    const proj = projectList(positions, pivot, basis);
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    proj.forEach((p, i) => {
+      const r = visualRadius(symbols[i]);
+      minX = Math.min(minX, p[0] - r * 1.4); maxX = Math.max(maxX, p[0] + r * 1.4);
+      minY = Math.min(minY, p[1] - r * 1.4); maxY = Math.max(maxY, p[1] + r * 1.4);
+    });
+    let cellCorners = null;
+    if (cell && state.cellMode !== "off") {
+      const rawC = [];
+      for (let i = 0; i < 2; i++) {
+        for (let j = 0; j < 2; j++) {
+          for (let k = 0; k < 2; k++) {
+            rawC.push([
+              i * cell[0][0] + j * cell[1][0] + k * cell[2][0],
+              i * cell[0][1] + j * cell[1][1] + k * cell[2][1],
+              i * cell[0][2] + j * cell[1][2] + k * cell[2][2],
+            ]);
+          }
+        }
+      }
+      cellCorners = projectList(rawC, pivot, basis);
+      for (const c of cellCorners) {
+        minX = Math.min(minX, c[0] - 0.6); maxX = Math.max(maxX, c[0] + 0.6);
+        minY = Math.min(minY, c[1] - 0.6); maxY = Math.max(maxY, c[1] + 0.6);
+      }
+    }
+    const legendPad = state.showLegend ? 38 : 14;
+    const pxPerA = Math.min((w - 48) / Math.max(maxX - minX, 2), (h - 40 - legendPad) / Math.max(maxY - minY, 2));
+    const midX = 0.5 * (minX + maxX), midY = 0.5 * (minY + maxY);
+    const sc = (xy) => [w * 0.5 + (xy[0] - midX) * pxPerA, (h - legendPad) * 0.5 - (xy[1] - midY) * pxPerA];
+    const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`];
+    parts.push(`<rect width="${w}" height="${h}" fill="${state.background}"/>`);
+
+    const cellEdgesIdx = [
+      [0, 1], [0, 2], [0, 4], [1, 3], [1, 5], [2, 3],
+      [2, 6], [3, 7], [4, 5], [4, 6], [5, 7], [6, 7],
+    ];
+    let backCornerIdx = 0;
+    if (cellCorners) {
+      for (let i = 1; i < 8; i++) {
+        if (cellCorners[i][2] < cellCorners[backCornerIdx][2]) backCornerIdx = i;
+      }
+      if (state.cellMode === "box") {
+        const ptsStr = [0, 4, 6, 2].map((ci) => sc(cellCorners[ci]).map((v) => v.toFixed(1)).join(",")).join(" ");
+        const fillCol = dark ? "rgba(180,190,210,0.12)" : "rgba(236,238,244,0.65)";
+        parts.push(`<polygon points="${ptsStr}" fill="${fillCol}" stroke="none"/>`);
+      }
+      const dashCol = dark ? "#9ca3af" : "#777777";
+      for (const [u, v] of cellEdgesIdx) {
+        if (u !== backCornerIdx && v !== backCornerIdx) continue;
+        const p0 = sc(cellCorners[u]), p1 = sc(cellCorners[v]);
+        parts.push(`<line x1="${p0[0].toFixed(1)}" y1="${p0[1].toFixed(1)}" x2="${p1[0].toFixed(1)}" y2="${p1[1].toFixed(1)}" stroke="${dashCol}" stroke-width="1.35" stroke-dasharray="6,5" stroke-linecap="round"/>`);
+      }
+    }
+
+    const stickW = Math.max(2, Math.min(6, 0.095 * pxPerA)) * 2;
+    const q = [];
+    if (state.style !== "spacefill") {
+      bonds.forEach(([i, j, order, shift]) => {
+        if (i >= proj.length || j >= proj.length) return;
+        const isInternal = shift[0] === 0 && shift[1] === 0 && shift[2] === 0;
+        if (isInternal || !cell) {
+          const mid = [0.5 * (proj[i][0] + proj[j][0]), 0.5 * (proj[i][1] + proj[j][1])];
+          q.push({ d: proj[i][2] - 0.06, t: "b", a: sc(proj[i]), b: sc(mid), c: elementColor(symbols[i]), order });
+          q.push({ d: proj[j][2] - 0.06, t: "b", a: sc(proj[j]), b: sc(mid), c: elementColor(symbols[j]), order });
+        } else {
+          const sv = [
+            shift[0] * cell[0][0] + shift[1] * cell[1][0] + shift[2] * cell[2][0],
+            shift[0] * cell[0][1] + shift[1] * cell[1][1] + shift[2] * cell[2][1],
+            shift[0] * cell[0][2] + shift[1] * cell[1][2] + shift[2] * cell[2][2],
+          ];
+          const pi = positions[i], pj = positions[j];
+          const sProj = projectList([
+            [pi[0] + 0.42 * (pj[0] + sv[0] - pi[0]), pi[1] + 0.42 * (pj[1] + sv[1] - pi[1]), pi[2] + 0.42 * (pj[2] + sv[2] - pi[2])],
+            [pj[0] + 0.42 * (pi[0] - sv[0] - pj[0]), pj[1] + 0.42 * (pi[1] - sv[1] - pj[1]), pj[2] + 0.42 * (pi[2] - sv[2] - pj[2])],
+          ], pivot, basis);
+          q.push({ d: proj[i][2] - 0.06, t: "b", a: sc(proj[i]), b: sc(sProj[0]), c: elementColor(symbols[i]), order });
+          q.push({ d: proj[j][2] - 0.06, t: "b", a: sc(proj[j]), b: sc(sProj[1]), c: elementColor(symbols[j]), order });
+        }
+      });
+    }
+    if (state.style === "polyhedra" && polyhedra && polyhedra.length) {
+      for (const poly of polyhedra) {
+        const vProj = projectList(poly.vertices, pivot, basis);
+        const col = elementColor(poly.center_symbol);
+        for (const [f0, f1, f2] of poly.faces) {
+          const md = (vProj[f0][2] + vProj[f1][2] + vProj[f2][2]) / 3 - 0.03;
+          q.push({ d: md, t: "tri", pts: [sc(vProj[f0]), sc(vProj[f1]), sc(vProj[f2])], c: col });
+        }
+      }
+    }
+    proj.forEach((p, i) => q.push({ d: p[2], t: "a", c: sc(p), r: visualRadius(symbols[i]) * pxPerA, fill: elementColor(symbols[i]) }));
+    q.sort((x, y) => x.d - y.d);
+    for (const it of q) {
+      if (it.t === "tri") {
+        const ptsStr = it.pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+        parts.push(`<polygon points="${ptsStr}" fill="${it.c}" fill-opacity="0.42" stroke="${ink}" stroke-width="1.0"/>`);
+      } else if (it.t === "b") {
+        parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${ink}" stroke-width="${(stickW + 2.4).toFixed(1)}" stroke-linecap="butt"/>`);
+        parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${it.c}" stroke-width="${Math.max(1.5, stickW - 0.8).toFixed(1)}" stroke-linecap="butt"/>`);
+      } else {
+        parts.push(`<circle cx="${it.c[0].toFixed(1)}" cy="${it.c[1].toFixed(1)}" r="${it.r.toFixed(1)}" fill="${it.fill}" stroke="${ink}" stroke-width="1.6"/>`);
+        parts.push(`<circle cx="${(it.c[0] - it.r * 0.34).toFixed(1)}" cy="${(it.c[1] - it.r * 0.34).toFixed(1)}" r="${Math.max(1.5, it.r * 0.16).toFixed(1)}" fill="#ffffff" fill-opacity="0.92"/>`);
+      }
+    }
+    if (cellCorners) {
+      for (const [u, v] of cellEdgesIdx) {
+        if (u === backCornerIdx || v === backCornerIdx) continue;
+        const p0 = sc(cellCorners[u]), p1 = sc(cellCorners[v]);
+        parts.push(`<line x1="${p0[0].toFixed(1)}" y1="${p0[1].toFixed(1)}" x2="${p1[0].toFixed(1)}" y2="${p1[1].toFixed(1)}" stroke="${ink}" stroke-width="1.65" stroke-linecap="round"/>`);
+      }
+      if (state.cellMode !== "clean") {
+        for (const [c0, c1, label] of [[cellCorners[0], cellCorners[4], "a"], [cellCorners[0], cellCorners[2], "b"], [cellCorners[0], cellCorners[1], "c"]]) {
+          const p0 = sc(c0), p1 = sc(c1);
+          const dx = p1[0] - p0[0], dy = p1[1] - p0[1], l = Math.hypot(dx, dy) || 1;
+          parts.push(`<text x="${(p1[0] + (dx / l) * 14).toFixed(1)}" y="${(p1[1] + (dy / l) * 14).toFixed(1)}" fill="${ink}" font-family="Patrick Hand, sans-serif" font-size="17" font-weight="bold" text-anchor="middle" dominant-baseline="central">${label}</text>`);
+        }
+      }
+    }
+    if (state.showLegend) {
+      const seen = [];
+      for (const s of symbols) if (!seen.includes(s)) seen.push(s);
+      const step = Math.min(72, Math.max(46, (w - 40) / Math.max(seen.length, 1)));
+      const startX = w * 0.5 - ((seen.length - 1) * step) * 0.5;
+      const ly = h - 18;
+      seen.forEach((sym, i) => {
+        const lx = startX + i * step;
+        parts.push(`<circle cx="${(lx - 10).toFixed(1)}" cy="${ly.toFixed(1)}" r="7" fill="${elementColor(sym)}" stroke="${ink}" stroke-width="1.25"/>`);
+        parts.push(`<text x="${(lx + 2).toFixed(1)}" y="${(ly + 1).toFixed(1)}" fill="${ink}" font-family="Patrick Hand, sans-serif" font-size="15" dominant-baseline="central">${sym}</text>`);
+      });
+    }
+    parts.push("</svg>");
+    return parts.join("\n");
+  }
+
+  function parseCifUncertainty(val) {
+    return parseFloat(String(val || "").replace(/\([^)]*\)/g, ""));
+  }
+
+  function parseCifUploaded(name, text) {
+    const clean = text.replace(/^\s*#.*$/gm, " ");
+    const tokens = [];
+    const rx = /'([^']*)'|"([^"]*)"|(\S+)/g;
+    let m;
+    while ((m = rx.exec(clean)) !== null) tokens.push(m[1] ?? m[2] ?? m[3]);
+    const scalars = {};
+    const loops = [];
+    let i = 0;
+    while (i < tokens.length) {
+      const low = tokens[i].toLowerCase();
+      if (low === "loop_") {
+        i++;
+        const hdr = [];
+        while (i < tokens.length && tokens[i].startsWith("_")) hdr.push(tokens[i++].toLowerCase());
+        const rows = [];
+        while (i < tokens.length && tokens[i].toLowerCase() !== "loop_" && !tokens[i].startsWith("_") && !tokens[i].toLowerCase().startsWith("data_")) {
+          if (hdr.length === 0 || i + hdr.length > tokens.length) { i++; continue; }
+          rows.push(tokens.slice(i, i + hdr.length));
+          i += hdr.length;
+        }
+        loops.push([hdr, rows]);
+      } else if (tokens[i].startsWith("_") && i + 1 < tokens.length) {
+        scalars[low] = tokens[i + 1];
+        i += 2;
+      } else { i++; }
+    }
+    const a = parseCifUncertainty(scalars["_cell_length_a"]);
+    const b = parseCifUncertainty(scalars["_cell_length_b"]);
+    const c = parseCifUncertainty(scalars["_cell_length_c"]);
+    const al = (parseCifUncertainty(scalars["_cell_angle_alpha"] || "90") * Math.PI) / 180;
+    const be = (parseCifUncertainty(scalars["_cell_angle_beta"] || "90") * Math.PI) / 180;
+    const ga = (parseCifUncertainty(scalars["_cell_angle_gamma"] || "90") * Math.PI) / 180;
+    const sinGa = Math.max(Math.sin(ga), 1e-12);
+    const cx = c * Math.cos(be);
+    const cy = (c * (Math.cos(al) - Math.cos(be) * Math.cos(ga))) / sinGa;
+    const cz = Math.sqrt(Math.max(0, c * c - cx * cx - cy * cy));
+    const cell = [[a, 0, 0], [b * Math.cos(ga), b * sinGa, 0], [cx, cy, cz]];
+    const syms = [], pos = [];
+    for (const [hdr, rows] of loops) {
+      const ix = hdr.indexOf("_atom_site_fract_x"), iy = hdr.indexOf("_atom_site_fract_y"), iz = hdr.indexOf("_atom_site_fract_z");
+      if (ix < 0 || iy < 0 || iz < 0) continue;
+      const it = hdr.indexOf("_atom_site_type_symbol"), il = hdr.indexOf("_atom_site_label");
+      for (const r of rows) {
+        const rawSym = it >= 0 ? r[it] : (il >= 0 ? r[il] : "X");
+        const symMatch = rawSym.match(/^[A-Za-z]{1,2}/);
+        syms.push(symMatch ? symMatch[0][0].toUpperCase() + symMatch[0].slice(1).toLowerCase() : "X");
+        const fr = [parseCifUncertainty(r[ix]), parseCifUncertainty(r[iy]), parseCifUncertainty(r[iz])];
+        pos.push(matVec3T(cell, fr));
+      }
+    }
+    if (!syms.length || !Number.isFinite(a)) throw new Error("Could not extract CIF unit cell and fractional sites.");
+    return { name, symbols: syms, positions: pos, cell, pbc: [true, true, true], bonds: [] };
+  }
+
+  function parseUploadedFile(name, text) {
+    const low = name.toLowerCase();
+    const lines = text.replace(/\r/g, "").split("\n");
+    if (low.endsWith(".xyz")) {
+      const n = parseInt(lines[0].trim(), 10);
+      const syms = [], pos = [];
+      for (let i = 2; i < 2 + n && i < lines.length; i++) {
+        const p = lines[i].trim().split(/\s+/);
+        if (p.length >= 4) { syms.push(p[0]); pos.push([+p[1], +p[2], +p[3]]); }
+      }
+      return { name, symbols: syms, positions: pos, cell: null, pbc: [false, false, false], bonds: [] };
+    }
+    if (low.endsWith(".poscar") || low.endsWith(".vasp") || low === "poscar" || low === "contcar") {
+      let scale = parseFloat(lines[1].trim());
+      const cell = [2, 3, 4].map((idx) => lines[idx].trim().split(/\s+/).slice(0, 3).map(Number));
+      const det = Math.abs(cell[0][0]*(cell[1][1]*cell[2][2]-cell[1][2]*cell[2][1]) - cell[0][1]*(cell[1][0]*cell[2][2]-cell[1][2]*cell[2][0]) + cell[0][2]*(cell[1][0]*cell[2][1]-cell[1][1]*cell[2][0]));
+      if (scale < 0) scale = Math.cbrt((-scale) / det);
+      const lat = cell.map((r) => r.map((v) => v * scale));
+      const elems = lines[5].trim().split(/\s+/);
+      const counts = lines[6].trim().split(/\s+/).map(Number);
+      let cur = 7;
+      if (lines[cur].trim()[0].toLowerCase() === "s") cur++;
+      const mode = lines[cur++].trim()[0].toLowerCase();
+      const syms = [], pos = [];
+      elems.forEach((el, ei) => {
+        for (let k = 0; k < counts[ei]; k++) {
+          const vals = lines[cur++].trim().split(/\s+/).slice(0, 3).map(Number);
+          syms.push(el);
+          if (mode === "d") pos.push(matVec3T(lat, vals));
+          else pos.push(vals.map((v) => v * scale));
+        }
+      });
+      return { name, symbols: syms, positions: pos, cell: lat, pbc: [true, true, true], bonds: [] };
+    }
+    if (low.endsWith(".sdf") || low.endsWith(".mol")) {
+      const cLine = lines[3];
+      const na = parseInt(cLine.slice(0, 3).trim(), 10);
+      const nb = parseInt(cLine.slice(3, 6).trim(), 10);
+      const syms = [], pos = [], bonds = [];
+      for (let i = 0; i < na; i++) {
+        const l = lines[4 + i];
+        pos.push([parseFloat(l.slice(0, 10)), parseFloat(l.slice(10, 20)), parseFloat(l.slice(20, 30))]);
+        syms.push(l.slice(31, 34).trim());
+      }
+      for (let b = 0; b < nb; b++) {
+        const l = lines[4 + na + b];
+        bonds.push([parseInt(l.slice(0, 3), 10) - 1, parseInt(l.slice(3, 6), 10) - 1, parseInt(l.slice(6, 9), 10) || 1, [0, 0, 0]]);
+      }
+      return { name, symbols: syms, positions: pos, cell: null, pbc: [false, false, false], bonds };
+    }
+    if (low.endsWith(".pdb")) {
+      const syms = [], pos = [];
+      for (const l of lines) {
+        if (l.startsWith("ATOM") || l.startsWith("HETATM")) {
+          pos.push([parseFloat(l.slice(30, 38)), parseFloat(l.slice(38, 46)), parseFloat(l.slice(46, 54))]);
+          const el = l.slice(76, 78).trim() || l.slice(12, 16).trim().replace(/[^A-Za-z]/g, "").slice(0, 1);
+          syms.push(el);
+        }
+      }
+      return { name, symbols: syms, positions: pos, cell: null, pbc: [false, false, false], bonds: [] };
+    }
+    if (low.endsWith(".cif")) {
+      return parseCifUploaded(name, text);
+    }
+    throw new Error("Supported browser formats: .xyz, .poscar/.vasp, .cif, .sdf/.mol, .pdb");
+  }
+
+  // Event wiring
+  let dragging = false, lastX = 0, lastY = 0;
+  canvas.addEventListener("pointerdown", (e) => {
+    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    if (e.shiftKey) state.roll += dx * 0.45;
+    else {
+      state.azimuth -= dx * 0.55;
+      state.elevation = Math.max(-89.9, Math.min(89.9, state.elevation + dy * 0.45));
+    }
+    renderFrame();
+  });
+  canvas.addEventListener("pointerup", () => { dragging = false; });
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    state.zoom = Math.max(0.4, Math.min(3.0, state.zoom * (e.deltaY < 0 ? 1.07 : 0.93)));
+    document.getElementById("xm-zoom").value = state.zoom.toFixed(2);
+    document.getElementById("xm-zoom-val").textContent = state.zoom.toFixed(2);
+    renderFrame();
+  }, { passive: false });
+
+  document.querySelectorAll("#xm-view-buttons .xm-btn").forEach((btn) => {
+    btn.addEventListener("click", () => applyViewPreset(btn.dataset.view));
+  });
+  document.getElementById("xm-style").value = state.style;
+  document.getElementById("xm-style").addEventListener("change", (e) => {
+    state.style = e.target.value; renderFrame();
+  });
+  document.getElementById("xm-palette").value = state.palette;
+  document.getElementById("xm-palette").addEventListener("change", (e) => {
+    state.palette = e.target.value;
+    state.customColors = {};
+    renderFrame();
+  });
+  document.querySelectorAll("[data-bg]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.background = btn.dataset.bg;
+      document.getElementById("xm-bg-color").value = state.background;
+      renderFrame();
+    });
+  });
+  document.getElementById("xm-bg-color").value = state.background;
+  document.getElementById("xm-bg-color").addEventListener("input", (e) => {
+    state.background = e.target.value.toUpperCase(); renderFrame();
+  });
+  document.getElementById("xm-cell-mode").value = state.cellMode;
+  document.getElementById("xm-cell-mode").addEventListener("change", (e) => {
+    state.cellMode = e.target.value; renderFrame();
+  });
+  document.getElementById("xm-center-cell").addEventListener("change", (e) => {
+    state.centerInCell = e.target.checked; renderFrame();
+  });
+  document.getElementById("xm-legend").addEventListener("change", (e) => {
+    state.showLegend = e.target.checked; renderFrame();
+  });
+  document.getElementById("xm-persp").addEventListener("input", (e) => {
+    state.perspective = parseFloat(e.target.value);
+    document.getElementById("xm-persp-val").textContent = state.perspective.toFixed(2);
+    renderFrame();
+  });
+  document.getElementById("xm-zoom").addEventListener("input", (e) => {
+    state.zoom = parseFloat(e.target.value);
+    document.getElementById("xm-zoom-val").textContent = state.zoom.toFixed(2);
+    renderFrame();
+  });
+  document.getElementById("xm-scale").addEventListener("input", (e) => {
+    state.scale = parseFloat(e.target.value);
+    document.getElementById("xm-scale-val").textContent = state.scale.toFixed(2);
+    renderFrame();
+  });
+  document.getElementById("xm-wiggle").addEventListener("input", (e) => {
+    state.wiggle = parseFloat(e.target.value);
+    document.getElementById("xm-wiggle-val").textContent = state.wiggle.toFixed(1);
+    renderFrame();
+  });
+  ["xm-na", "xm-nb", "xm-nc"].forEach((id, idx) => {
+    document.getElementById(id).addEventListener("change", (e) => {
+      state.supercell[idx] = Math.max(1, Math.min(3, parseInt(e.target.value, 10) || 1));
+      renderFrame();
+    });
+  });
+
+  if (samples.length > 1) {
+    const grp = document.getElementById("xm-sample-group");
+    const sel = document.getElementById("xm-sample-select");
+    grp.style.display = "block";
+    samples.forEach((smp, i) => {
+      const opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = smp.name || `Sample ${i + 1}`;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", (e) => {
+      currentSample = samples[parseInt(e.target.value, 10)];
+      baseData = cloneStruct(currentSample);
+      state.supercell = [1, 1, 1];
+      document.getElementById("xm-na").value = 1;
+      document.getElementById("xm-nb").value = 1;
+      document.getElementById("xm-nc").value = 1;
+      if (currentSample.style) {
+        state.style = currentSample.style;
+        document.getElementById("xm-style").value = state.style;
+      }
+      renderFrame();
+    });
+  }
+
+  document.getElementById("xm-file-input").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const txt = await file.text();
+      currentSample = parseUploadedFile(file.name, txt);
+      baseData = cloneStruct(currentSample);
+      state.supercell = [1, 1, 1];
+      renderFrame();
+      document.getElementById("xm-status").textContent = `Loaded ${file.name}`;
+    } catch (err) {
+      document.getElementById("xm-status").textContent = err.message;
+    }
+  });
+
+  document.getElementById("xm-copy-py").addEventListener("click", async () => {
+    const code = buildPythonSnippet();
+    if (navigator.clipboard) await navigator.clipboard.writeText(code);
+    document.getElementById("xm-status").textContent = "Copied Python snippet!";
+    setTimeout(() => (document.getElementById("xm-status").textContent = ""), 2200);
+  });
+
+  document.getElementById("xm-dl-png").addEventListener("click", () => {
+    const link = document.createElement("a");
+    link.download = `${(currentSample.name || "structure").replace(/[^a-zA-Z0-9_-]/g, "_")}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  });
+
+  document.getElementById("xm-dl-svg").addEventListener("click", () => {
+    const blob = new Blob([exportSVGString()], { type: "image/svg+xml" });
+    const link = document.createElement("a");
+    link.download = `${(currentSample.name || "structure").replace(/[^a-zA-Z0-9_-]/g, "_")}.svg`;
+    link.href = URL.createObjectURL(blob);
+    link.click();
+  });
+
+  window.addEventListener("resize", renderFrame);
+  renderFrame();
+})();
+</script>
+</body>
+</html>

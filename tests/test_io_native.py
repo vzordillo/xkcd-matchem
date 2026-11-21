@@ -26,6 +26,7 @@ from xkcd_matchem.core import spectroscopy
 from xkcd_matchem.core import structure
 from xkcd_matchem.core import trajectory
 from xkcd_matchem.io import loader
+from xkcd_matchem.io.native import cif
 from xkcd_matchem.io.native import cp2k
 from xkcd_matchem.io.native import gaussian
 from xkcd_matchem.io.native import gromacs
@@ -166,3 +167,113 @@ def test_additional_native_formats(tmp_path: pathlib.Path) -> None:
     unknown_file.write_text("unrecognized content\n", encoding="utf-8")
     with pytest.raises(exceptions.UnsupportedFormatError):
         loader.load(unknown_file)
+
+
+def test_p0_vasp_lammps_qe_and_cif_fixes(tmp_path: pathlib.Path) -> None:
+    # 1. VASP POSCAR Cartesian scaling & negative-volume scaling
+    poscar_cart = tmp_path / "cart.poscar"
+    poscar_cart.write_text(
+        "Scaled cart\n2.0\n1 0 0\n0 1 0\n0 0 1\nH\n1\nCartesian\n0.5 0 0\n",
+        encoding="utf-8",
+    )
+    atoms_cart = vasp.read_poscar(poscar_cart)
+    assert np.allclose(atoms_cart.positions[0], [1.0, 0.0, 0.0])
+
+    poscar_vol = tmp_path / "vol.poscar"
+    poscar_vol.write_text(
+        "Neg vol\n-125.0\n1 0 0\n0 1 0\n0 0 1\nSi\n1\nDirect\n0 0 0\n",
+        encoding="utf-8",
+    )
+    assert vasp.read_poscar(poscar_vol).volume() == pytest.approx(125.0)
+
+    poscar_zero = tmp_path / "zero.poscar"
+    poscar_zero.write_text(
+        "Bad\n0.0\n1 0 0\n0 1 0\n0 0 1\nH\n1\nDirect\n0 0 0\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(exceptions.ParseError):
+        vasp.read_poscar(poscar_zero)
+
+    # 2. VASP EIGENVAL reciprocal cell-metric weighting
+    eig = tmp_path / "EIGENVAL"
+    eig.write_text(
+        "2 2 1 1\n0 0 0\n1.0\nCAR\nSi\n2 2 2\n\n"
+        "0.0 0.0 0.0 0.5\n1 1.0\n2 2.0\n\n"
+        "0.5 0.0 0.0 0.5\n1 1.2\n2 2.5\n",
+        encoding="utf-8",
+    )
+    bs_hex = vasp.read_eigenval(eig, cell=np.diag([3.0, 3.0, 12.0]))
+    assert bs_hex.k_distances[-1] == pytest.approx(np.pi / 3.0, rel=1e-5)
+
+    # 3. LAMMPS data styles, ambiguous 6-col error, and triclinic lammpstrj
+    lmp_bond = tmp_path / "bond.data"
+    lmp_bond.write_text(
+        "Bond style\n1 atoms\n1 atom types\n"
+        "0 10 xlo xhi\n0 10 ylo yhi\n0 10 zlo zhi\n\n"
+        "Masses\n\n1 28.085\n\nAtoms # bond\n\n1 1 1 2.0 3.0 4.0\n",
+        encoding="utf-8",
+    )
+    assert lammps.read_lammps_data(lmp_bond).formula() == "Si"
+
+    lmp_ambig = tmp_path / "ambig.data"
+    lmp_ambig.write_text(
+        "Ambiguous\n1 atoms\n1 atom types\n"
+        "0 10 xlo xhi\n0 10 ylo yhi\n0 10 zlo zhi\n\n"
+        "Masses\n\n1 12.011\n\nAtoms\n\n1 1 0.0 2.0 3.0 4.0\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(exceptions.ParseError):
+        lammps.read_lammps_data(lmp_ambig)
+    assert (
+        lammps.read_lammps_data(
+            lmp_ambig, atom_style="charge", type_map={1: "Fe"}
+        ).formula()
+        == "Fe"
+    )
+
+    trj_tri = tmp_path / "tri.lammpstrj"
+    trj_tri.write_text(
+        "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\n"
+        "ITEM: BOX BOUNDS xy xz yz pp pp pp\n"
+        "0.0 12.0 2.0\n0.0 10.0 0.0\n0.0 10.0 0.0\n"
+        "ITEM: ATOMS id type x y z\n1 1 1.0 1.0 1.0\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(exceptions.ParseError):
+        lammps.read_lammpstrj(trj_tri)
+    traj_tri = lammps.read_lammpstrj(trj_tri, type_map={1: "Fe"})
+    assert traj_tri[0].cell[1, 0] == pytest.approx(2.0)
+    assert traj_tri[0].cell[0, 0] == pytest.approx(10.0)
+
+    # 4. QE nonzero ibrav error + A=alat support
+    qe_bad = tmp_path / "bad.pwi"
+    qe_bad.write_text(
+        "&SYSTEM\n ibrav=2, celldm(1)=10.2 /\nATOMIC_POSITIONS alat\nSi 0 0 0\n"
+    )
+    with pytest.raises(exceptions.ParseError):
+        qe.read_qe_in(qe_bad)
+
+    qe_alat = tmp_path / "alat.pwi"
+    qe_alat.write_text(
+        "&SYSTEM\n A = 4.0 /\nCELL_PARAMETERS alat\n1 0 0\n0 1 0\n0 0 1\n"
+        "ATOMIC_POSITIONS alat\nAl 0.0 0.0 0.0\n"
+    )
+    assert qe.read_qe_in(qe_alat).volume() == pytest.approx(64.0)
+
+    # 5. CIF mixed occupancy preservation and _atom_site_occupancy
+    cif_mix = tmp_path / "mix.cif"
+    cif_mix.write_text(
+        "data_mix\n"
+        "_cell_length_a 4.0\n_cell_length_b 4.0\n_cell_length_c 4.0\n"
+        "loop_\n_space_group_symop_operation_xyz\n'x, y, z'\n"
+        "loop_\n_atom_site_label\n_atom_site_type_symbol\n"
+        "_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n"
+        "_atom_site_occupancy\n"
+        "Fe1 Fe 0.0 0.0 0.0 0.6\n"
+        "Mn1 Mn 0.0 0.0 0.0 0.4\n",
+        encoding="utf-8",
+    )
+    mix_atoms = cif.read_cif(cif_mix)
+    assert len(mix_atoms) == 2
+    assert mix_atoms.formula() == "FeMn"
+    assert mix_atoms.metadata["occupancies"] == pytest.approx([0.6, 0.4])

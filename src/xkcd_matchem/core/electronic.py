@@ -43,10 +43,11 @@ class BandStructure:
     fermi_energy: float = 0.0
     k_labels: list[str] = dataclasses.field(default_factory=list)
     k_ticks: list[float] = dataclasses.field(default_factory=list)
+    occupations: np.ndarray | None = None
     metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Normalizes eigenvalues to shape ``(n_spin, n_k, n_bands)``."""
+        """Normalizes eigenvalues and optional occupations to 3D float64."""
         self.k_distances = np.asarray(self.k_distances, dtype=np.float64)
         eig = np.asarray(self.eigenvalues, dtype=np.float64)
         if eig.ndim == 2:
@@ -60,6 +61,15 @@ class BandStructure:
                 "k_distances length must match eigenvalue k-point dimension."
             )
         self.eigenvalues = eig
+        if self.occupations is not None:
+            occ = np.asarray(self.occupations, dtype=np.float64)
+            if occ.ndim == 2:
+                occ = occ[None, :, :]
+            if occ.shape != eig.shape:
+                raise exceptions.StructureError(
+                    "occupations shape must match eigenvalues shape."
+                )
+            self.occupations = occ
 
     @property
     def spin_polarized(self) -> bool:
@@ -71,8 +81,24 @@ class BandStructure:
         return self.eigenvalues - self.fermi_energy
 
     def band_gap(self) -> float:
-        """Estimates the electronic band gap across all bands around ``E_F``."""
+        """Estimates the band gap from occupations or Fermi-level crossing."""
+        if self.occupations is not None:
+            occ_mask = self.occupations > 0.5
+            unocc_mask = ~occ_mask
+            if np.any((self.occupations > 1e-3) & (self.occupations < 0.999)):
+                return 0.0
+            if not np.any(occ_mask) or not np.any(unocc_mask):
+                return 0.0
+            vbm = float(np.max(self.eigenvalues[occ_mask]))
+            cbm = float(np.min(self.eigenvalues[unocc_mask]))
+            return max(0.0, cbm - vbm)
+
         shifted = self.shifted_eigenvalues()
+        for spin_idx in range(shifted.shape[0]):
+            for band_idx in range(shifted.shape[2]):
+                col = shifted[spin_idx, :, band_idx]
+                if np.min(col) < -1e-4 and np.max(col) > 1e-4:
+                    return 0.0
         occupied = shifted[shifted <= 1e-6]
         unoccupied = shifted[shifted > 1e-6]
         if occupied.size == 0 or unoccupied.size == 0:
@@ -213,19 +239,7 @@ class VolumetricGrid:
         axis: str = "z",
         index: int | None = None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Extracts a 2D slice across an orthogonal or affine grid axis.
-
-        Args:
-          axis: Slice axis ``"x"``, ``"y"``, or ``"z"``.
-          index: Plane index along ``axis``; defaults to midpoint.
-
-        Returns:
-          Tuple ``(u_coords, v_coords, plane_values)`` with 1D spatial axes
-          in Angstrom and a 2D slice of shape ``(nu, nv)``.
-
-        Raises:
-          StructureError: If ``axis`` is invalid or ``index`` out of bounds.
-        """
+        """Extracts 1D voxel-length axes and 2D slice array along ``axis``."""
         axis_map = {"x": 0, "y": 1, "z": 2}
         key = axis.lower()
         if key not in axis_map:
@@ -251,3 +265,57 @@ class VolumetricGrid:
         u = self.origin[0] + np.arange(self.data.shape[0]) * lengths[0]
         v = self.origin[1] + np.arange(self.data.shape[1]) * lengths[1]
         return u, v, self.data[:, :, sl_idx]
+
+    def slice_mesh(
+        self,
+        axis: str = "z",
+        index: int | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Extracts an affine-accurate 2D slice mesh and orthonormal basis.
+
+        Projects each grid point's true 3D Cartesian coordinate onto a
+        2D orthonormal basis spanning the slice plane so non-orthogonal voxel
+        vectors render without geometric skew distortion.
+
+        Returns:
+          Tuple ``(uu, vv, plane_values, basis_2x3)`` where ``uu``, ``vv``, and
+          ``plane_values`` all have shape ``(n1, n2)``.
+        """
+        axis_map = {"x": 0, "y": 1, "z": 2}
+        key = axis.lower()
+        if key not in axis_map:
+            raise exceptions.StructureError(
+                f"Invalid slice axis {axis!r}. Expected 'x', 'y', or 'z'."
+            )
+        ax_idx = axis_map[key]
+        n_along = self.data.shape[ax_idx]
+        sl_idx = n_along // 2 if index is None else int(index)
+        if not 0 <= sl_idx < n_along:
+            raise exceptions.StructureError(
+                f"Slice index {sl_idx} out of range [0, {n_along})."
+            )
+        pair_axes = [i for i in (0, 1, 2) if i != ax_idx]
+        a1, a2 = pair_axes[0], pair_axes[1]
+        v1 = self.voxel_vectors[a1]
+        v2 = self.voxel_vectors[a2]
+        e_u = v1 / max(float(np.linalg.norm(v1)), 1e-12)
+        v2_orth = v2 - float(np.dot(v2, e_u)) * e_u
+        e_v = v2_orth / max(float(np.linalg.norm(v2_orth)), 1e-12)
+        basis = np.vstack([e_u, e_v])
+
+        n1, n2 = self.data.shape[a1], self.data.shape[a2]
+        g1, g2 = np.meshgrid(
+            np.arange(n1, dtype=np.float64),
+            np.arange(n2, dtype=np.float64),
+            indexing="ij",
+        )
+        base = self.origin + sl_idx * self.voxel_vectors[ax_idx]
+        pts = (
+            base[None, None, :]
+            + g1[:, :, None] * v1[None, None, :]
+            + g2[:, :, None] * v2[None, None, :]
+        )
+        uu = pts @ e_u
+        vv = pts @ e_v
+        plane = np.take(self.data, sl_idx, axis=ax_idx)
+        return uu, vv, plane, basis

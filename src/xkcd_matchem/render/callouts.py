@@ -15,11 +15,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import math
 
 from matplotlib import axes as maxes
 from matplotlib import patches
 from matplotlib import pyplot as plt
+import matplotlib.transforms
 import numpy as np
 
 from xkcd_matchem.core import geometry
@@ -212,24 +214,27 @@ def annotate_angle(
 def draw_element_legend(
     ax: maxes.Axes,
     symbols: list[str],
-    scheme: str = "xkcd",
-    loc: str = "lower right",
+    scheme: str | Mapping[str, str] = "xkcd",
+    loc: str = "lower center",
+    style: str = "inline",
 ) -> None:
-    """Adds a compact hand-drawn legend showing element color swatches."""
+    """Adds a clean inline circular legend or an optional boxed legend."""
     seen: list[str] = []
     for sym in symbols:
         if sym not in seen:
             seen.append(sym)
-    handles = [
-        patches.Patch(
-            facecolor=palettes.get_element_color(sym, scheme=scheme),
-            edgecolor=palettes.INK,
-            linewidth=1.2,
-            label=sym,
-        )
-        for sym in seen
-    ]
-    if handles:
+    if not seen:
+        return
+    if style == "box":
+        handles = [
+            patches.Patch(
+                facecolor=palettes.get_element_color(sym, scheme=scheme),
+                edgecolor=palettes.INK,
+                linewidth=1.2,
+                label=sym,
+            )
+            for sym in seen
+        ]
         ax.legend(
             handles=handles,
             loc=loc,
@@ -237,4 +242,62 @@ def draw_element_legend(
             ncol=min(len(handles), 4),
             fontsize=9.0,
             framealpha=0.9,
+        )
+        return
+
+    ink = str(plt.rcParams.get("axes.edgecolor", palettes.INK))
+    y_ax = 0.945 if "upper" in loc.lower() else 0.055
+    n_el = len(seen)
+    step = min(0.18, 0.78 / max(n_el, 1))
+    x0 = 0.5 - 0.5 * (n_el - 1) * step
+    hi_trans = matplotlib.transforms.offset_copy(
+        ax.transAxes,
+        fig=ax.figure,
+        x=-1.6,
+        y=1.6,
+        units="points",
+    )
+    txt_trans = matplotlib.transforms.offset_copy(
+        ax.transAxes,
+        fig=ax.figure,
+        x=8.5,
+        y=-0.3,
+        units="points",
+    )
+    for k, sym in enumerate(seen):
+        x_ax = x0 + k * step - 0.015
+        col = palettes.get_element_color(sym, scheme=scheme)
+        ax.scatter(
+            [x_ax],
+            [y_ax],
+            s=115.0,
+            facecolor=col,
+            edgecolor=ink,
+            linewidth=1.35,
+            transform=ax.transAxes,
+            clip_on=False,
+            zorder=900.0,
+        )
+        ax.scatter(
+            [x_ax],
+            [y_ax],
+            s=12.0,
+            facecolor="#FFFFFF",
+            edgecolor="none",
+            alpha=0.85,
+            transform=hi_trans,
+            clip_on=False,
+            zorder=901.0,
+        )
+        ax.text(
+            x_ax,
+            y_ax,
+            sym,
+            ha="left",
+            va="center",
+            fontsize=10.5,
+            color=ink,
+            transform=txt_trans,
+            clip_on=False,
+            zorder=901.0,
         )

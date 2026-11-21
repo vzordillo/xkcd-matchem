@@ -29,18 +29,26 @@ from xkcd_matchem.io import registry
 
 def _parse_poscar_header(
     lines: list[str],
-) -> tuple[str, np.ndarray, list[str], bool, int]:
+) -> tuple[str, np.ndarray, float, list[str], bool, int]:
     """Parses the common VASP 4/5 header lines through coordinate mode."""
     if len(lines) < 8:
         raise exceptions.ParseError("VASP POSCAR header is too short.")
     comment = lines[0].strip()
     scale_val = float(lines[1].strip().split()[0])
+    if abs(scale_val) < 1e-12:
+        raise exceptions.ParseError(
+            "VASP POSCAR scaling factor cannot be zero."
+        )
     raw_cell = np.array(
         [[float(x) for x in lines[k].split()[:3]] for k in range(2, 5)],
         dtype=np.float64,
     )
+    raw_vol = abs(float(np.linalg.det(raw_cell)))
+    if raw_vol < 1e-12:
+        raise exceptions.ParseError(
+            "VASP POSCAR lattice matrix has zero determinant."
+        )
     if scale_val < 0.0:
-        raw_vol = abs(float(np.linalg.det(raw_cell)))
         scale = (-scale_val / raw_vol) ** (1.0 / 3.0)
     else:
         scale = scale_val
@@ -70,14 +78,16 @@ def _parse_poscar_header(
         idx += 1
     mode = lines[idx].strip().lower()
     is_cartesian = mode.startswith(("c", "k"))
-    return comment, cell, symbols, is_cartesian, idx + 1
+    return comment, cell, scale, symbols, is_cartesian, idx + 1
 
 
 def read_poscar(path: str | pathlib.Path) -> structure.AtomsData:
     """Reads a VASP 4/5 ``POSCAR`` or ``CONTCAR`` structure file."""
     p = pathlib.Path(path)
     lines = p.read_text(encoding="utf-8").splitlines()
-    comment, cell, symbols, is_cart, start_row = _parse_poscar_header(lines)
+    comment, cell, scale, symbols, is_cart, start_row = _parse_poscar_header(
+        lines
+    )
     n_atoms = len(symbols)
     if start_row + n_atoms > len(lines):
         raise exceptions.ParseError(
@@ -90,7 +100,7 @@ def read_poscar(path: str | pathlib.Path) -> structure.AtomsData:
     if is_cart:
         return structure.AtomsData(
             symbols=symbols,
-            positions=coords,
+            positions=coords * scale,
             cell=cell,
             pbc=(True, True, True),
             metadata={"comment": comment, "source": str(p)},
@@ -138,7 +148,7 @@ def read_xdatcar(path: str | pathlib.Path) -> trajectory.Trajectory:
     """Reads a multi-configuration VASP ``XDATCAR`` MD/relaxation trajectory."""
     p = pathlib.Path(path)
     lines = p.read_text(encoding="utf-8").splitlines()
-    comment, cell, symbols, _, cursor = _parse_poscar_header(lines)
+    comment, cell, _, symbols, _, cursor = _parse_poscar_header(lines)
     n_atoms = len(symbols)
     frames: list[structure.AtomsData] = []
     idx = cursor - 1
@@ -201,8 +211,21 @@ def read_doscar(path: str | pathlib.Path) -> electronic.DensityOfStates:
     )
 
 
-def read_eigenval(path: str | pathlib.Path) -> electronic.BandStructure:
-    """Reads band eigenvalues from a VASP ``EIGENVAL`` file."""
+def read_eigenval(
+    path: str | pathlib.Path,
+    cell: np.ndarray | None = None,
+) -> electronic.BandStructure:
+    """Reads band eigenvalues from a VASP ``EIGENVAL`` file.
+
+    Args:
+      path: Path to ``EIGENVAL``.
+      cell: Optional ``(3, 3)`` real-space lattice matrix in Angstrom used to
+        convert fractional k-points into physical reciprocal-space distances
+        ``B = 2 * pi * inv(A).T``.
+
+    Returns:
+      Parsed ``BandStructure`` with explicit ``k_coordinate_mode`` metadata.
+    """
     p = pathlib.Path(path)
     lines = p.read_text(encoding="utf-8").splitlines()
     if len(lines) < 8:
@@ -226,11 +249,19 @@ def read_eigenval(path: str | pathlib.Path) -> electronic.BandStructure:
                 eig[1, ik, ib] = vals[2]
             cursor += 1
     diffs = np.diff(k_coords, axis=0)
+    if cell is not None:
+        b_mat = (
+            2.0 * np.pi * np.linalg.inv(np.asarray(cell, dtype=np.float64)).T
+        )
+        diffs = diffs @ b_mat
+        k_mode = "reciprocal_angstrom_inv"
+    else:
+        k_mode = "fractional"
     k_dist = np.concatenate([[0.0], np.cumsum(np.linalg.norm(diffs, axis=1))])
     return electronic.BandStructure(
         k_distances=k_dist,
         eigenvalues=eig,
-        metadata={"source": str(p)},
+        metadata={"source": str(p), "k_coordinate_mode": k_mode},
     )
 
 
@@ -238,7 +269,9 @@ def read_chgcar(path: str | pathlib.Path) -> electronic.VolumetricGrid:
     """Reads a VASP ``CHGCAR`` or ``LOCPOT`` 3D volumetric grid file."""
     p = pathlib.Path(path)
     lines = p.read_text(encoding="utf-8").splitlines()
-    comment, cell, symbols, is_cart, start_row = _parse_poscar_header(lines)
+    comment, cell, scale, symbols, is_cart, start_row = _parse_poscar_header(
+        lines
+    )
     n_atoms = len(symbols)
     coords = np.array(
         [
@@ -250,7 +283,7 @@ def read_chgcar(path: str | pathlib.Path) -> electronic.VolumetricGrid:
     atoms = (
         structure.AtomsData(
             symbols=symbols,
-            positions=coords,
+            positions=coords * scale,
             cell=cell,
             pbc=(True, True, True),
         )

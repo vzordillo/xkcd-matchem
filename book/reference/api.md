@@ -1,103 +1,109 @@
-# API Reference
+# Python API Reference
 
-This API reference is auto-generated directly from the Google-style docstrings in `xkcd_matchem`.
+All primary classes and plotting functions are exported directly from the top-level package `import xkcd_matchem as xm`.
 
-## Data Tables & Physical Constants
+## Top-Level Package (`xkcd_matchem`)
 
 ```{eval-rst}
-.. automodule:: xkcd_matchem.data.elements
-   :members:
-   :undoc-members:
-
-.. automodule:: xkcd_matchem.data.scattering
-   :members:
-   :undoc-members:
-
-.. automodule:: xkcd_matchem.data.samples_registry
-   :members:
+.. automodule:: xkcd_matchem
+   :no-members:
 ```
 
-## Styling, Fonts & Palettes
+## Themes, Palettes & Fonts (`xkcd_matchem.style`)
+
+- Presets & themes: `PRESETS`, `ThemePreset`, `list_presets()`, `get_preset()`, `register_preset()`, `xkcd_style()`, `build_rc_params()`, `apply_xkcd_spines()`, `style_existing_axes()`
+- Palettes & elements: `get_palette()`, `register_palette()`, `list_palettes()`, `get_element_color()`, `register_element_palette()`, `list_element_palettes()`
+- Fonts: `list_bundled_fonts()`, `get_bundled_font_path()`, `ensure_fonts_registered()`, `fetch_xkcd_script()`
 
 ```{eval-rst}
 .. automodule:: xkcd_matchem.style.theme
    :members:
+```
 
+```{eval-rst}
 .. automodule:: xkcd_matchem.style.palettes
-   :members:
-
-.. automodule:: xkcd_matchem.style.fonts
    :members:
 ```
 
-## Core Containers & Algorithms
+## Core Data Models & Geometry (`xkcd_matchem.core`)
 
 ```{eval-rst}
 .. automodule:: xkcd_matchem.core.structure
    :members:
+```
 
+```{eval-rst}
 .. automodule:: xkcd_matchem.core.geometry
    :members:
+```
 
-.. automodule:: xkcd_matchem.core.bonding
-   :members:
-
+```{eval-rst}
 .. automodule:: xkcd_matchem.core.electronic
    :members:
+```
 
-.. automodule:: xkcd_matchem.core.spectroscopy
-   :members:
-
+```{eval-rst}
 .. automodule:: xkcd_matchem.core.trajectory
    :members:
 ```
 
-## Unified I/O & Optional Adapters
+## High-Level Plotters (`xkcd_matchem.plots`)
 
 ```{eval-rst}
-.. automodule:: xkcd_matchem.io.loader
-   :members:
-
-.. automodule:: xkcd_matchem.io.registry
+.. automodule:: xkcd_matchem.plots.structure
    :members:
 ```
 
-## Renderers, Plots & Poster Layout
+```{eval-rst}
+.. automodule:: xkcd_matchem.plots.electronic
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.plots.spectroscopy
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.plots.reactions
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.plots.trajectory
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.plots.thermo
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.plots.charts
+   :members:
+```
+
+## Interactive 3D Studio & Renderers (`xkcd_matchem.render`)
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.render.interactive
+   :members:
+```
 
 ```{eval-rst}
 .. automodule:: xkcd_matchem.render.structure3d
    :members:
+```
 
+```{eval-rst}
 .. automodule:: xkcd_matchem.render.structure2d
    :members:
+```
 
-.. automodule:: xkcd_matchem.render.callouts
-   :members:
+## Opt-In Poster Layout (`xkcd_matchem.layout`)
 
-.. automodule:: xkcd_matchem.plots.structure
-   :members:
-
-.. automodule:: xkcd_matchem.plots.electronic
-   :members:
-
-.. automodule:: xkcd_matchem.plots.spectroscopy
-   :members:
-
-.. automodule:: xkcd_matchem.plots.reactions
-   :members:
-
-.. automodule:: xkcd_matchem.plots.trajectory
-   :members:
-
-.. automodule:: xkcd_matchem.plots.thermo
-   :members:
-
-.. automodule:: xkcd_matchem.plots.charts
-   :members:
-
+```{eval-rst}
 .. automodule:: xkcd_matchem.layout.canvas
-   :members:
-
-.. automodule:: xkcd_matchem.layout.export
    :members:
 ```

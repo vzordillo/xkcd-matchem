@@ -33,7 +33,7 @@ def plot_parity(
     unit: str = "eV",
     show_metrics: bool = True,
     color: str = "#0072B2",
-    preset: str = "classic",
+    preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots predicted vs reference parity scatter with MAE, RMSE, and R^2."""
@@ -42,13 +42,16 @@ def plot_parity(
     lo = min(float(np.min(yt)), float(np.min(yp)))
     hi = max(float(np.max(yt)), float(np.max(yp)))
     pad = 0.08 * max(hi - lo, 1.0)
+    preset_obj = theme.get_preset(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(5.0, 4.8))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
         ax.plot(
             [lo - pad, hi + pad],
             [lo - pad, hi + pad],
-            color=palettes.INK,
+            color=preset_obj.ink_color,
             linestyle="--",
             lw=1.5,
             label="y = x",
@@ -58,7 +61,7 @@ def plot_parity(
             yp,
             s=52,
             facecolor=color,
-            edgecolor=palettes.INK,
+            edgecolor=preset_obj.ink_color,
             linewidth=1.1,
             alpha=0.82,
             zorder=4,
@@ -84,7 +87,7 @@ def plot_parity(
                 fontsize=9.5,
                 bbox={
                     "boxstyle": "round,pad=0.3",
-                    "facecolor": palettes.PAPER,
+                    "facecolor": preset_obj.axes_facecolor,
                     "edgecolor": color,
                 },
             )
@@ -93,7 +96,7 @@ def plot_parity(
         ax.set_xlabel(f"Reference ({unit})")
         ax.set_ylabel(f"Predicted ({unit})")
         ax.set_aspect("equal")
-        theme.apply_xkcd_spines(ax)
+        theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
     return ax
@@ -106,23 +109,27 @@ def plot_bar_comparison(
     errors: Sequence[float] | np.ndarray | None = None,
     ylabel: str = "Value",
     annotate_values: bool = True,
-    preset: str = "classic",
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
-    """Plots a hand-drawn categorical bar comparison with Okabe-Ito fills."""
+    """Plots a hand-drawn categorical bar comparison with customizable fill."""
     vals = np.asarray(values, dtype=np.float64)
-    series = palettes.get_palette("okabe_ito")
+    series = palettes.get_palette(palette)
     colors = [series[(i + 1) % len(series)] for i in range(len(labels))]
+    ink_col = theme.get_preset(preset).ink_color
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.2, 4.2))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
         xs = np.arange(len(labels))
         bars = ax.bar(
             xs,
             vals,
             yerr=errors,
             color=colors,
-            edgecolor=palettes.INK,
+            edgecolor=ink_col,
             linewidth=1.5,
             width=0.62,
             capsize=4.0,
@@ -141,7 +148,7 @@ def plot_bar_comparison(
         ax.set_xticks(xs)
         ax.set_xticklabels(labels)
         ax.set_ylabel(ylabel)
-        theme.apply_xkcd_spines(ax)
+        theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
     return ax
@@ -151,22 +158,25 @@ def plot_pipeline_diagram(
     steps: Sequence[tuple[str, str]],
     ax: maxes.Axes | None = None,
     orientation: str = "horizontal",
-    preset: str = "classic",
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
-    """Plots a multi-stage scientific workflow flowchart with hand-drawn boxes.
+    """Plots a multi-stage workflow flowchart with hand-drawn rounded boxes.
 
     Args:
       steps: Sequence of ``(stage_title, stage_detail)`` pairs.
       ax: Optional target ``Axes``.
       orientation: ``"horizontal"`` or ``"vertical"``.
-      preset: Visual theme preset name.
+      palette: Series palette name or custom sequence of colors.
+      preset: Visual theme preset name or ``ThemePreset``.
       title: Optional title above the flowchart.
 
     Returns:
       Matplotlib ``Axes`` containing the flowchart.
     """
-    series = palettes.get_palette("okabe_ito")
+    series = palettes.get_palette(palette)
+    ink_col = theme.get_preset(preset).ink_color
     n_steps = len(steps)
     is_horiz = orientation.lower() == "horizontal"
     with theme.xkcd_style(preset=preset):
@@ -177,6 +187,8 @@ def plot_pipeline_diagram(
                 else (4.6, max(4.0, 1.4 * n_steps))
             )
             _, ax = plt.subplots(figsize=figsize)
+        else:
+            theme.style_existing_axes(ax, preset=preset)
         for idx, (heading, detail) in enumerate(steps):
             col = series[(idx + 1) % len(series)]
             cx = idx * 1.4 if is_horiz else 0.0
@@ -188,7 +200,7 @@ def plot_pipeline_diagram(
                 h,
                 boxstyle="round,pad=0.06,rounding_size=0.12",
                 facecolor=col,
-                edgecolor=palettes.INK,
+                edgecolor=ink_col,
                 linewidth=1.6,
                 alpha=0.25,
                 zorder=2,
@@ -201,7 +213,7 @@ def plot_pipeline_diagram(
                 ha="center",
                 va="center",
                 fontsize=10.5,
-                color=palettes.INK,
+                color=ink_col,
                 zorder=4,
             )
             ax.text(
@@ -227,7 +239,7 @@ def plot_pipeline_diagram(
                     xytext=p0,
                     arrowprops={
                         "arrowstyle": "->",
-                        "color": palettes.INK,
+                        "color": ink_col,
                         "lw": 1.8,
                     },
                     zorder=5,

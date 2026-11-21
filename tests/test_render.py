@@ -15,14 +15,18 @@
 
 from __future__ import annotations
 
+import pathlib
+
 import matplotlib
 from matplotlib import pyplot as plt
 import pytest
 
 from xkcd_matchem.core import exceptions
+from xkcd_matchem.core import geometry
 from xkcd_matchem.io import loader
 from xkcd_matchem.plots import structure as struct_plots
 from xkcd_matchem.render import callouts
+from xkcd_matchem.render import interactive
 from xkcd_matchem.render import structure2d
 from xkcd_matchem.render import structure3d
 
@@ -62,10 +66,54 @@ def test_render_2d_crystal_slab_and_polyhedra() -> None:
     assert len(ax_crys.patches) > 0
     plt.close(ax_crys.figure)
 
-    ax_slab = struct_plots.plot_slab("tio2_slab.poscar")
+    ax_slab = struct_plots.plot_slab("tio2_slab.poscar", view="side")
     assert len(ax_slab.patches) > 0
     plt.close(ax_slab.figure)
+
+    ax_slab_iso = struct_plots.plot_slab("tio2_slab.poscar", view="isometric")
+    assert len(ax_slab_iso.patches) > 0
+    plt.close(ax_slab_iso.figure)
+
+    ax_custom = struct_plots.plot_crystal(
+        "si_diamond.cif",
+        camera=geometry.Camera.from_preset("perspective"),
+        palette={"Si": "#E07A5F"},
+    )
+    assert len(ax_custom.patches) > 0
+    plt.close(ax_custom.figure)
 
     ax_poly = struct_plots.plot_coordination("tio2_slab.poscar", "Ti", "O")
     assert len(ax_poly.patches) > 0
     plt.close(ax_poly.figure)
+
+
+def test_interactive_studio_and_exports(tmp_path: pathlib.Path) -> None:
+    matplotlib.use("Agg")
+    payload = interactive.serialize_structure(
+        "tio2_slab.poscar",
+        style="polyhedra",
+        polyhedra=("Ti", "O"),
+        palette={"Ti": "#264653"},
+    )
+    assert payload["custom_colors"]["Ti"] == "#264653"
+    assert payload["polyhedra"]
+
+    view = interactive.view_structure("aspirin.xyz", backend="html")
+    assert isinstance(view, interactive.InteractiveView)
+    assert "<iframe srcdoc=" in view._repr_html_()
+
+    html_out = tmp_path / "studio.html"
+    exported = interactive.export_interactive_html(
+        "tio2_slab.poscar",
+        html_out,
+        include_bundled_samples=True,
+    )
+    assert exported.is_file()
+    assert "__XM_PAYLOAD__" not in exported.read_text(encoding="utf-8")
+
+    ax_mpl = interactive.view_structure("aspirin.xyz", backend="matplotlib")
+    assert len(ax_mpl.patches) > 0
+    plt.close(ax_mpl.figure)
+
+    with pytest.raises(exceptions.StructureError):
+        interactive.view_structure("aspirin.xyz", backend="invalid_backend")

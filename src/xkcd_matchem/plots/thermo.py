@@ -72,7 +72,8 @@ def plot_phase_diagram_2d(
     labels: Sequence[str] | None = None,
     ax: maxes.Axes | None = None,
     xlabel: str = "Mole Fraction x_B",
-    preset: str = "classic",
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots a binary A-B convex hull formation-energy phase diagram."""
@@ -82,17 +83,24 @@ def plot_phase_diagram_2d(
     hull_sorted = sorted(lower_indices, key=lambda idx: float(xs[idx]))
     hull_x = xs[hull_sorted]
     hull_y = ys[hull_sorted]
+    series = palettes.get_palette(palette)
+    hull_col = series[5 % len(series)]
+    stable_col = series[3 % len(series)]
+    above_col = series[6 % len(series)]
+    preset_obj = theme.get_preset(preset)
 
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.2, 4.4))
-        ax.plot(hull_x, hull_y, color="#0072B2", lw=2.3, label="Convex Hull")
+        else:
+            theme.style_existing_axes(ax, preset=preset)
+        ax.plot(hull_x, hull_y, color=hull_col, lw=2.3, label="Convex Hull")
         ax.scatter(
             hull_x,
             hull_y,
             s=85,
-            facecolor="#009E73",
-            edgecolor=palettes.INK,
+            facecolor=stable_col,
+            edgecolor=preset_obj.ink_color,
             linewidth=1.5,
             zorder=6,
             label="Stable",
@@ -104,8 +112,8 @@ def plot_phase_diagram_2d(
                 ys[unstable],
                 s=75,
                 marker="D",
-                facecolor=palettes.PAPER,
-                edgecolor="#D55E00",
+                facecolor=preset_obj.axes_facecolor,
+                edgecolor=above_col,
                 linewidth=1.6,
                 zorder=5,
                 label="Above Hull",
@@ -115,7 +123,7 @@ def plot_phase_diagram_2d(
                 ax.plot(
                     [xs[k], xs[k]],
                     [y_hull, ys[k]],
-                    color="#D55E00",
+                    color=above_col,
                     linestyle=":",
                     lw=1.3,
                 )
@@ -145,13 +153,8 @@ def plot_phase_diagram_2d(
         )
         ax.set_xlabel(xlabel)
         ax.set_ylabel("Formation Energy (eV/atom)")
-        ax.legend(
-            loc="upper center",
-            ncol=2,
-            frameon=True,
-            fontsize=8.5,
-        )
-        theme.apply_xkcd_spines(ax)
+        ax.legend(loc="upper center", ncol=2, frameon=True, fontsize=8.5)
+        theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
     return ax
@@ -162,21 +165,28 @@ def plot_eos(
     energies: Sequence[float] | np.ndarray,
     ax: maxes.Axes | None = None,
     fit_birch_murnaghan: bool = True,
-    preset: str = "classic",
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots energy vs volume with an optional 3rd-order Birch-Murnaghan fit."""
     vs = np.asarray(volumes, dtype=np.float64)
     es = np.asarray(energies, dtype=np.float64)
+    series = palettes.get_palette(palette)
+    pts_col = series[1 % len(series)]
+    fit_col = series[5 % len(series)]
+    preset_obj = theme.get_preset(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.0, 4.3))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
         ax.scatter(
             vs,
             es,
             s=70,
-            facecolor="#E69F00",
-            edgecolor=palettes.INK,
+            facecolor=pts_col,
+            edgecolor=preset_obj.ink_color,
             linewidth=1.5,
             zorder=5,
             label="DFT Points",
@@ -190,7 +200,7 @@ def plot_eos(
             v_fine = np.linspace(float(np.min(vs)), float(np.max(vs)), 160)
             e_fine = _birch_murnaghan(v_fine, *popt)
             ax.plot(
-                v_fine, e_fine, color="#0072B2", lw=2.2, label="Birch-Murnaghan"
+                v_fine, e_fine, color=fit_col, lw=2.2, label="Birch-Murnaghan"
             )
             b0_gpa = float(popt[2]) * _EV_PER_A3_TO_GPA
             summary = f"V0 = {popt[1]:.2f} A^3\nB0 = {b0_gpa:.1f} GPa"
@@ -204,8 +214,8 @@ def plot_eos(
                 fontsize=9.0,
                 bbox={
                     "boxstyle": "round,pad=0.3",
-                    "facecolor": palettes.PAPER,
-                    "edgecolor": "#0072B2",
+                    "facecolor": preset_obj.axes_facecolor,
+                    "edgecolor": fit_col,
                 },
             )
         e_span = max(float(np.ptp(es)), 1e-3)
@@ -215,13 +225,8 @@ def plot_eos(
         )
         ax.set_xlabel("Cell Volume (A^3)")
         ax.set_ylabel("Total Energy (eV)")
-        ax.legend(
-            loc="upper center",
-            ncol=2,
-            frameon=True,
-            fontsize=8.5,
-        )
-        theme.apply_xkcd_spines(ax)
+        ax.legend(loc="upper center", ncol=2, frameon=True, fontsize=8.5)
+        theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
     return ax
@@ -233,14 +238,18 @@ def plot_pourbaix(
     ph_range: tuple[float, float] = (0.0, 14.0),
     potential_range: tuple[float, float] = (-1.2, 2.0),
     show_water_window: bool = True,
-    preset: str = "classic",
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots a schematic or DFT Pourbaix pH vs E_SHE stability diagram."""
-    series = palettes.get_palette("okabe_ito")
+    series = palettes.get_palette(palette)
+    ink_col = theme.get_preset(preset).ink_color
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.2, 4.8))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
         for idx, (label, vertices) in enumerate(regions):
             pts = np.asarray(vertices, dtype=np.float64)
             col = series[(idx + 1) % len(series)]
@@ -248,7 +257,7 @@ def plot_pourbaix(
                 pts,
                 closed=True,
                 facecolor=col,
-                edgecolor=palettes.INK,
+                edgecolor=ink_col,
                 linewidth=1.7,
                 alpha=0.28,
                 zorder=2,
@@ -262,7 +271,7 @@ def plot_pourbaix(
                 ha="center",
                 va="center",
                 fontsize=10.5,
-                color=palettes.INK,
+                color=ink_col,
                 zorder=4,
             )
         p_span = max(potential_range[1] - potential_range[0], 0.5)
@@ -274,7 +283,7 @@ def plot_pourbaix(
             ax.plot(
                 phs,
                 -0.05916 * phs,
-                color="#0072B2",
+                color=series[5 % len(series)],
                 linestyle="--",
                 lw=1.6,
                 label="H2/H+",
@@ -282,22 +291,17 @@ def plot_pourbaix(
             ax.plot(
                 phs,
                 1.229 - 0.05916 * phs,
-                color="#D55E00",
+                color=series[6 % len(series)],
                 linestyle="--",
                 lw=1.6,
                 label="O2/H2O",
             )
-            ax.legend(
-                loc="upper center",
-                ncol=2,
-                frameon=True,
-                fontsize=8.5,
-            )
+            ax.legend(loc="upper center", ncol=2, frameon=True, fontsize=8.5)
         ax.set_xlim(ph_range)
         ax.set_ylim(potential_range[0], y_hi)
         ax.set_xlabel("pH")
         ax.set_ylabel("Potential vs SHE (V)")
-        theme.apply_xkcd_spines(ax)
+        theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
     return ax

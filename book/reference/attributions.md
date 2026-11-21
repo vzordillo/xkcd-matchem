@@ -1,4 +1,22 @@
-# Scientific Sources & Attributions
+# Citation & Scientific Attributions
+
+## How to Cite `xkcd-matchem`
+
+If `xkcd-matchem` helps you build a poster, lecture slide, tutorial, or scicomm figure, please cite it using the repository `CITATION.cff` metadata:
+
+> Ordillo, V. (2026). *xkcd-matchem: An xkcd-Style Visualization Suite for Chemistry and Materials Science Communication* (Version 0.1.0) [Computer software]. https://github.com/vzordillo/xkcd-matchem
+
+```bibtex
+@software{ordillo2026xkcdmatchem,
+  author  = {Ordillo, Viejay},
+  title   = {{xkcd-matchem}: An xkcd-Style Visualization Suite for Chemistry and Materials Science Communication},
+  year    = {2026},
+  version = {0.1.0},
+  url     = {https://github.com/vzordillo/xkcd-matchem}
+}
+```
+
+## Scientific Data Sources & Attributions
 
 Every physical constant, atomic property, X-ray form factor, and color scheme in `xkcd-matchem` was cross-referenced directly against its verified primary publication or official dataset.
 

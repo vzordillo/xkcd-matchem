@@ -1,6 +1,6 @@
 title: xkcd-matchem
-author: xkcd-matchem Contributors
-copyright: "2026 xkcd-matchem Contributors (Docs: CC BY 4.0 | Code: Apache-2.0)"
+author: Viejay Ordillo
+copyright: "2026 Viejay Ordillo & xkcd-matchem Contributors (Docs: CC BY 4.0 | Code: Apache-2.0)"
 
 execute:
   execute_notebooks: force
@@ -16,8 +16,6 @@ repository:
 launch_buttons:
   notebook_interface: jupyterlab
   colab_url: "https://colab.research.google.com"
-  binderhub_url: "https://mybinder.org"
-  thebe: true
 
 html:
   use_repository_button: true
@@ -42,7 +40,6 @@ sphinx:
     - sphinx.ext.viewcode
     - sphinx_design
     - sphinx_copybutton
-    - sphinx_thebe
   config:
     html_theme: sphinx_book_theme
     autodoc_member_order: bysource

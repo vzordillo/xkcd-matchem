@@ -6,14 +6,16 @@ parts:
       - file: installation
       - file: gallery
       - file: playground
-  - caption: Tutorials
+  - caption: Basic Usage
     chapters:
       - file: tutorials/01_quickstart_and_themes
       - file: tutorials/02_molecules_3d_and_2d
       - file: tutorials/03_crystals_slabs_and_polyhedra
       - file: tutorials/04_electronic_structure_bands_dos
-      - file: tutorials/05_orbitals_and_volumetric_cubes
       - file: tutorials/06_spectroscopy_and_powder_xrd
+  - caption: Advanced Usage
+    chapters:
+      - file: tutorials/05_orbitals_and_volumetric_cubes
       - file: tutorials/07_reaction_pathways_and_neb
       - file: tutorials/08_md_trajectories_and_rdf
       - file: tutorials/09_thermodynamics_and_ml_parity

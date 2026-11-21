@@ -40,11 +40,13 @@ def save_figure(
     """
     out = pathlib.Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
+    fig.patch.set_sketch_params(0.0, 0.0, 0.0)
     fig.savefig(
         out,
         dpi=dpi,
         transparent=transparent,
         facecolor=fig.get_facecolor(),
+        edgecolor=fig.get_facecolor(),
         bbox_inches="tight",
         pad_inches=0.08,
     )

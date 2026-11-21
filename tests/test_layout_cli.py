@@ -30,8 +30,14 @@ def test_board_layout_and_exports(tmp_path: pathlib.Path) -> None:
     matplotlib.use("Agg")
     board = canvas.Board(240.0, 140.0, title="Board Test", subtitle="Sub")
     board.add_container(6.0, 24.0, 228.0, 110.0, title="Panels")
+    board.add_container(
+        8.0, 26.0, 224.0, 106.0, title="Solid", solid_header=True
+    )
+    n_after_container = len(board.overlay.patches)
     c1 = board.add_card(10.0, 32.0, 105.0, 96.0, title="Crystal")
-    c2 = board.add_card(125.0, 32.0, 105.0, 96.0, title="XRD")
+    assert len(board.overlay.patches) == n_after_container + 1
+    c2 = board.add_card(125.0, 32.0, 105.0, 96.0, title="XRD", header_band=True)
+    assert len(board.overlay.patches) == n_after_container + 3
     struct_plots.plot_crystal("nacl.cif", ax=c1.axes)
     spec_plots.plot_xrd("nacl.cif", ax=c2.axes)
     board.add_badge(205.0, 15.0, "v0.1.0")
@@ -49,8 +55,49 @@ def test_cli_commands(tmp_path: pathlib.Path) -> None:
     assert cli.main(["formats"]) == 0
     assert cli.main(["info", "aspirin.xyz"]) == 0
     out_mol = tmp_path / "cli_mol.png"
-    assert cli.main(["render", "aspirin.xyz", "-o", str(out_mol)]) == 0
+    assert (
+        cli.main(
+            [
+                "render",
+                "tio2_slab.poscar",
+                "-o",
+                str(out_mol),
+                "--supercell",
+                "2",
+                "1",
+                "1",
+                "--colors",
+                "Ti=#264653",
+            ]
+        )
+        == 0
+    )
     assert out_mol.is_file()
+    out_view = tmp_path / "cli_view.html"
+    assert (
+        cli.main(
+            [
+                "view",
+                "mos2_2h.poscar",
+                "-o",
+                str(out_view),
+                "--supercell",
+                "2",
+                "1",
+                "1",
+                "--view",
+                "perspective",
+                "--colors",
+                "Mo=#2A9D8F",
+                "S=#E9C46A",
+            ]
+        )
+        == 0
+    )
+    assert out_view.is_file()
+    text_out = out_view.read_text(encoding="utf-8")
+    assert "Mo4S8" in text_out
+    assert "#2A9D8F" in text_out
     out_xrd = tmp_path / "cli_xrd.png"
     assert cli.main(["xrd", "nacl.cif", "-o", str(out_xrd)]) == 0
     assert out_xrd.is_file()

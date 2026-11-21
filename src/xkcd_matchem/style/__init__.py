@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Styling, font management, and color palette utilities."""
+"""Styling, font management, and customizable color palette utilities."""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ __all__ = [
     "PAPER",
     "PRESETS",
     "ThemePreset",
+    "WARM_PAPER",
     "apply_xkcd_spines",
     "build_rc_params",
     "ensure_fonts_registered",
@@ -37,9 +38,14 @@ __all__ = [
     "get_palette",
     "get_preset",
     "list_bundled_fonts",
+    "list_element_palettes",
     "list_palettes",
     "list_presets",
+    "register_element_palette",
+    "register_palette",
+    "register_preset",
     "resolve_font_chain",
+    "style_existing_axes",
     "xkcd_style",
 ]
 
@@ -50,6 +56,7 @@ OKABE_ITO = palettes.OKABE_ITO
 PAPER = palettes.PAPER
 PRESETS = theme.PRESETS
 ThemePreset = theme.ThemePreset
+WARM_PAPER = palettes.WARM_PAPER
 apply_xkcd_spines = theme.apply_xkcd_spines
 build_rc_params = theme.build_rc_params
 ensure_fonts_registered = fonts.ensure_fonts_registered
@@ -59,7 +66,12 @@ get_element_color = palettes.get_element_color
 get_palette = palettes.get_palette
 get_preset = theme.get_preset
 list_bundled_fonts = fonts.list_bundled_fonts
+list_element_palettes = palettes.list_element_palettes
 list_palettes = palettes.list_palettes
 list_presets = theme.list_presets
+register_element_palette = palettes.register_element_palette
+register_palette = palettes.register_palette
+register_preset = theme.register_preset
 resolve_font_chain = fonts.resolve_font_chain
+style_existing_axes = theme.style_existing_axes
 xkcd_style = theme.xkcd_style

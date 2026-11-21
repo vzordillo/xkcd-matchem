@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 import pathlib
 
 from matplotlib import axes as maxes
@@ -36,18 +37,23 @@ def plot_spectrum(
     annotate_peaks: int = 5,
     color: str | None = None,
     fill_under: bool = True,
-    preset: str = "classic",
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots a broadened 1D spectrum (IR, Raman, UV-Vis, NMR, or XVG curve)."""
-    series = palettes.get_palette("okabe_ito")
-    line_col = series[5] if color is None else color
+    series = palettes.get_palette(palette)
+    line_col = series[5 % len(series)] if color is None else color
+    stick_col = series[6 % len(series)]
+    ink_col = theme.get_preset(preset).ink_color
     should_invert = (
         spectrum.kind.lower() in ("ir", "nmr") if invert_x is None else invert_x
     )
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.4, 4.0))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
         ax.plot(spectrum.x, spectrum.y, color=line_col, lw=2.0)
         if fill_under:
             ax.fill_between(
@@ -62,7 +68,7 @@ def plot_spectrum(
                     pk.position,
                     0.0,
                     pk.intensity * scale * 0.9,
-                    color=series[6],
+                    color=stick_col,
                     lw=1.3,
                     alpha=0.85,
                 )
@@ -82,13 +88,13 @@ def plot_spectrum(
                     textcoords="offset points",
                     ha="center",
                     fontsize=8.5,
-                    color=palettes.INK,
+                    color=ink_col,
                 )
         ax.set_xlabel(spectrum.x_label)
         ax.set_ylabel(spectrum.y_label)
         if should_invert:
             ax.invert_xaxis()
-        theme.apply_xkcd_spines(ax)
+        theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
     return ax
@@ -101,7 +107,9 @@ def plot_xrd(
     two_theta_range: tuple[float, float] = (10.0, 90.0),
     fwhm: float = 0.4,
     label_peaks: int = 5,
-    preset: str = "classic",
+    color: str | None = None,
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
     """Computes (if crystal given) and plots a hand-drawn powder XRD pattern."""
@@ -121,16 +129,21 @@ def plot_xrd(
             two_theta_range=two_theta_range,
             fwhm=fwhm,
         )
+    series = palettes.get_palette(palette)
+    line_col = series[5 % len(series)] if color is None else color
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.8, 4.2))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
         ax = plot_spectrum(
             spec,
             ax=ax,
             invert_x=False,
             show_sticks=True,
             annotate_peaks=label_peaks,
-            color="#0072B2",
+            color=line_col,
+            palette=palette,
             preset=preset,
             title=title,
         )

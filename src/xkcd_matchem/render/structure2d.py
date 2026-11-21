@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from matplotlib import axes as maxes
 from matplotlib import patches
 from matplotlib import pyplot as plt
@@ -152,7 +154,7 @@ def render_structure_2d(
     atoms: structure.AtomsData,
     ax: maxes.Axes | None = None,
     show_hydrogens: str = "polar",
-    palette: str = "xkcd",
+    palette: str | Mapping[str, str] = "xkcd",
     bond_scale: float = 1.20,
     pad: float = 0.75,
 ) -> maxes.Axes:
@@ -219,7 +221,16 @@ def render_structure_2d(
         elif h_cnt > 1:
             label = f"{sym}H{h_cnt}"
         col = palettes.get_element_color(sym, scheme=palette)
-        text_col = ink if col.upper() in ("#FFFFFF", "#F7F5EF") else col
+        hex_c = col.lstrip("#")
+        bright = False
+        if len(hex_c) == 6:
+            r, g, b = (
+                int(hex_c[0:2], 16) / 255.0,
+                int(hex_c[2:4], 16) / 255.0,
+                int(hex_c[4:6], 16) / 255.0,
+            )
+            bright = (0.2126 * r + 0.7152 * g + 0.0722 * b) > 0.70
+        text_col = ink if bright else col
         if sym == "C":
             text_col = ink
             label = "CH3" if len(neighbors[idx]) == 1 else "C"

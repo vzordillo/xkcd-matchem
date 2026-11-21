@@ -1,67 +1,53 @@
 # Visual Gallery
 
-Explore hand-drawn visualizations generated directly from the bundled chemistry and materials examples in `src/xkcd_matchem/data/samples/`.
+All gallery figures and animated GIFs below are regenerated directly by `scripts/generate_gallery.py` with open `#FFFFFF` (or dark chalkboard) canvases, unified `Patrick Hand` typography, and depth-sorted 3D scenes.
 
-## 1. Molecules in 3D, Spacefill & 2D Skeletal Form
+## Animated Motion & Theme Explorer
 
-```{figure} _static/gallery/molecules_3d_2d.png
-:width: 95%
+| 3D Coordination Polyhedra Orbit | Climbing-Image NEB Pathway | Live Style & Palette Switching |
+| :---: | :---: | :---: |
+| ![TiO2 coordination polyhedra orbit](_static/gallery/crystal_orbit.gif) | ![SN2 NEB reaction animation](_static/gallery/neb_reaction.gif) | ![Theme and color scheme switcher](_static/gallery/theme_switcher.gif) |
 
-Aspirin (`aspirin.xyz`) rendered in depth-sorted ball-and-stick, van der Waals spacefill, and PCA-aligned 2D skeletal styles.
-```
+## Full Multi-Domain Showcase
 
-## 2. Crystals, Miller Planes, Polyhedra & Powder XRD
+![Hero showcase](_static/gallery/hero_showcase.png)
 
-```{figure} _static/gallery/crystal_polyhedra_xrd.png
-:width: 95%
+## Molecules: 3D Ball-and-Stick, Spacefill & 2D Skeletal
 
-Diamond Si with a `(111)` Miller slice, 2x2x1 2H-MoS2 supercell with dashed back unit-cell edges, and Cu K-alpha1 powder XRD computed from Cromer-Mann LA-3816 form factors.
-```
+![Molecular renderers](_static/gallery/molecules_3d_2d.png)
 
-## 3. Electronic Band Structure, DOS, MOs & Volumetric CUBE
+## Crystals, Slabs, Miller Planes & Powder XRD
 
-```{figure} _static/gallery/bands_dos.png
-:width: 85%
+Notice the clean shaded `TiO2 (110)` slab side profile alongside a diamond Si `(111)` plane and simulated $\text{Cu K}\alpha_1$ diffraction trace:
 
-Synchronized Silicon band dispersion and vertical density of states from Quantum ESPRESSO outputs.
-```
+![Crystals slabs polyhedra and XRD](_static/gallery/crystal_polyhedra_xrd.png)
 
-```{figure} _static/gallery/mo_and_cube.png
-:width: 88%
+## Electronic Band Structure & Density of States
 
-ORCA benzene molecular orbital energy ladder paired with a 2D contour slice through a Gaussian `.cube` grid.
-```
+![Silicon bands and DOS](_static/gallery/bands_dos.png)
 
-## 4. Spectroscopy & Reaction / NEB Pathways
+## Molecular Orbitals & Volumetric Charge Density
 
-```{figure} _static/gallery/spectroscopy.png
-:width: 90%
+![MOs and CUBE](_static/gallery/mo_and_cube.png)
 
-Gaussian H2O IR spectrum (inverted wavenumber axis) and ORCA benzene TD-DFT UV-Vis absorption curve.
-```
+## IR & UV-Vis Spectra (Exploratory Sketches)
 
-```{figure} _static/gallery/reaction_neb.png
-:width: 90%
+![IR and UV-Vis spectroscopy](_static/gallery/spectroscopy.png)
 
-Discrete stationary-state catalytic reaction diagram alongside an SN2 Cl- + CH3Cl NEB minimum-energy path (`sn2_neb.xyz`).
-```
+## Reaction Energy Profiles & Climbing-Image NEB
 
-## 5. MD Trajectories, Thermodynamics & Screening Posters
+![Reaction profile and NEB](_static/gallery/reaction_neb.png)
 
-```{figure} _static/gallery/md_trajectory_rdf.png
-:width: 90%
+## Molecular Dynamics RMSD & Radial Distribution
 
-Cu LAMMPS trajectory RMSD with running mean alongside a GROMACS `.xvg` liquid water O-O radial distribution function.
-```
+![MD trajectory and RDF](_static/gallery/md_trajectory_rdf.png)
 
-```{figure} _static/gallery/thermo_hull_eos.png
-:width: 95%
+## Convex Hull, Equations of State & ML Parity
 
-Binary convex hull stability diagram, third-order Birch-Murnaghan EOS fit, and ML parity scatter with MAE/RMSE/R^2 metrics.
-```
+![Thermodynamics hull EOS and parity](_static/gallery/thermo_hull_eos.png)
 
-```{figure} _static/gallery/poster_board.png
-:width: 95%
+## Opt-In Poster Composition (`Board`, `Container`, `Card`, `Badge`)
 
-Full 4-card graphical poster composed in millimeters using `Board`, `Container`, `Card`, and `Badge` with the `poster` preset.
-```
+When building a conference or lab group poster, opt into `xm.Board` with millimeter coordinates:
+
+![Poster board example](_static/gallery/poster_board.png)

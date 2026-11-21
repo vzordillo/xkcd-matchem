@@ -1,32 +1,30 @@
-# xkcd-matchem
+# xkcd-matchem: An xkcd-Style Visualization Suite for Chemistry and Materials Science Communication
 
-**Hand-drawn xkcd-style visualization for molecules, crystals, electronic structure, spectroscopy, and materials chemistry.**
+**`xkcd-matchem`** gives you a much more fun — yet crisp and clean-looking — **xkcd-style** way to look at your molecules, crystals, surfaces, electronic bands, diffraction patterns, reaction barriers, and MD trajectories.
 
-```{figure} _static/gallery/hero_showcase.png
-:name: hero-showcase
-:width: 100%
+## From a Poster Idea to Everyday SciComm
 
-Six-panel xkcd-matchem showcase rendered purely with NumPy, SciPy, and Matplotlib using bundled SIL OFL 1.1 handwritten fonts.
-```
+Like many researchers, I have always loved reading xkcd comics and admired how comic-style fonts and expressive sketch graphics can make science click. While preparing a poster recently, I wanted my molecules and materials plots to feel lively and approachable without looking cluttered. What started as a small helper for that poster grew into `xkcd-matchem`: an open visualization suite for fellow students, researchers, and scientists to explore as part of their **science communication (scicomm)**, group talks, lectures, and posters!
 
-`xkcd-matchem` turns computational chemistry and materials science files directly into expressive, hand-drawn publication figures with **zero mandatory domain dependencies** beyond `numpy`, `matplotlib`, and `scipy`.
+![xkcd-matchem showcase](_static/gallery/hero_showcase.png)
 
-::::{grid} 2
-:gutter: 3
+| 3D Coordination Polyhedra Orbit | Climbing-Image NEB Pathway | Live Style & Palette Switching |
+| :---: | :---: | :---: |
+| ![TiO2 coordination polyhedra orbit](_static/gallery/crystal_orbit.gif) | ![SN2 NEB reaction animation](_static/gallery/neb_reaction.gif) | ![Theme and color scheme switcher](_static/gallery/theme_switcher.gif) |
 
-:::{grid-item-card} Zero-Dependency Native I/O
-Parse XYZ/extXYZ, VASP (`POSCAR`/`XDATCAR`/`DOSCAR`/`EIGENVAL`/`CHGCAR`), CIF (with symmetry ops), PDB, SDF/MOL/MOL2, Gaussian `.cube`/`.log`/`.gjf`/`.fchk`, ORCA `.inp`/`.out`, Quantum ESPRESSO, LAMMPS, GROMACS, and CP2K/xTB directly out of the box.
+:::{note}
+**Design Philosophy: Clean Presets Out of the Box, Everything Customizable.**
+Every plotting function in `xkcd-matchem` works cleanly in one line using balanced white-canvas defaults (`classic` preset, unified `Patrick Hand` typography, borderless structure scenes). Whenever you want a signature look for your poster, class, or talk, every color, element swatch, camera angle, background tint, wiggle strength, and theme preset is open for customization.
 :::
 
-:::{grid-item-card} Crystallography & Quantum Plots
-Painter's-algorithm 3D spheres & two-tone bonds, periodic bond stubs, `ConvexHull` coordination polyhedra, Miller planes, bands + DOS, MO ladders, volumetric CUBE slices, pure-NumPy powder XRD, NEB barriers, RDFs, binary hulls, and Birch-Murnaghan EOS fits.
+:::{warning}
+**Playful Exploration & SciComm vs. Journal Archival Plots**
+xkcd-style wiggly lines make intuition-building, slides, tutorials, and posters far more engaging. However, intentional stroke jitter can soften tiny peak shoulders or numerical grid details — standard straight-line Matplotlib plots remain the right tool for archival journal figures and quantitative peak fitting.
 :::
 
-:::{grid-item-card} Colorblind-Safe & Legible Fonts
-Okabe-Ito CUD series palettes, Jmol & hand-drawn element schemes, and bundled **Patrick Hand** and **Comic Neue** (SIL OFL 1.1) paired with DejaVu Sans so units, Greek letters, and minus signs render without missing glyphs.
-:::
+## How This Book Is Organized
 
-:::{grid-item-card} Physical-mm Poster Boards
-Compose multi-panel graphical abstracts and slide decks in millimeters using `Board`, `Container`, `Card`, and `Badge` with vector SVG and embedded-font PDF export.
-:::
-::::
+1. **[Getting Started](installation.md)** — Install the package (plus optional ASE/pymatgen/RDKit/cclib/Pillow adapters), browse the visual gallery and animated GIFs, or launch the **offline Interactive 3D Studio**.
+2. **Basic Usage (Tutorials 01, 02, 03, 04, 06)** — Step-by-step hands-on notebooks showing clean default presets for molecules, crystals, slabs, polyhedra, band structures, DOS, spectra, and powder XRD.
+3. **Advanced Usage (Tutorials 05, 07, 08, 09, 10)** — Customize themes and element palettes, combine Volumetric Cubes with MOs, chart NEB reaction pathways, analyze triclinic MD trajectories & RDFs, fit Birch-Murnaghan EOS curves, compose millimeter posters with opt-in `Board`, and bridge to ASE/pymatgen/RDKit/cclib.
+4. **[Reference](reference/supported_formats.md)** — Exact native file format contracts, scientific validations, complete Python API, citation info, and CODATA/Cromer-Mann/SIL OFL attributions.

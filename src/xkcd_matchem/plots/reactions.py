@@ -47,17 +47,24 @@ def plot_reaction_profile(
     unit: str = "eV",
     barriers: bool = True,
     smooth_connect: bool = True,
-    color: str = "#0072B2",
-    preset: str = "classic",
+    color: str | None = None,
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots a stationary-state reaction energy diagram with barriers."""
     y_vals = np.asarray(energies, dtype=np.float64)
     n_pts = len(y_vals)
     span = max(float(np.ptp(y_vals)), 0.5)
+    series = palettes.get_palette(palette)
+    line_col = series[5 % len(series)] if color is None else color
+    barrier_col = series[6 % len(series)]
+    preset_obj = theme.get_preset(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.4, 4.2))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
         xs = np.arange(n_pts, dtype=np.float64)
         if smooth_connect and n_pts >= 2:
             for k in range(n_pts - 1):
@@ -66,13 +73,15 @@ def plot_reaction_profile(
                 sy = y_vals[k] + (y_vals[k + 1] - y_vals[k]) * (
                     3.0 * t * t - 2.0 * t * t * t
                 )
-                ax.plot(sx, sy, color=color, linestyle="--", lw=1.4, alpha=0.8)
+                ax.plot(
+                    sx, sy, color=line_col, linestyle="--", lw=1.4, alpha=0.8
+                )
 
         for k in range(n_pts):
             ax.plot(
                 [xs[k] - 0.22, xs[k] + 0.22],
                 [y_vals[k], y_vals[k]],
-                color=color,
+                color=line_col,
                 lw=3.2,
                 solid_capstyle="round",
             )
@@ -88,7 +97,7 @@ def plot_reaction_profile(
                 ha="center",
                 va="bottom" if above else "top",
                 fontsize=9.2,
-                color=palettes.INK,
+                color=preset_obj.ink_color,
             )
 
         if barriers and n_pts >= 3:
@@ -101,14 +110,14 @@ def plot_reaction_profile(
                     xytext=(xs[peak_idx], y_vals[0]),
                     arrowprops={
                         "arrowstyle": "<->",
-                        "color": "#D55E00",
+                        "color": barrier_col,
                         "lw": 1.6,
                     },
                 )
                 ax.plot(
                     [xs[0] + 0.22, xs[peak_idx] + 0.10],
                     [y_vals[0], y_vals[0]],
-                    color="#D55E00",
+                    color=barrier_col,
                     linestyle=":",
                     lw=1.1,
                 )
@@ -116,13 +125,13 @@ def plot_reaction_profile(
                     xs[peak_idx],
                     0.5 * (y_vals[0] + y_vals[peak_idx]),
                     f"Ea = {e_act:.2f} {unit}",
-                    color="#D55E00",
+                    color=barrier_col,
                     ha="center",
                     va="center",
                     fontsize=9.0,
                     bbox={
                         "boxstyle": "round,pad=0.18",
-                        "facecolor": palettes.PAPER,
+                        "facecolor": preset_obj.axes_facecolor,
                         "edgecolor": "none",
                         "alpha": 0.9,
                     },
@@ -137,7 +146,7 @@ def plot_reaction_profile(
         ax.set_xticks([])
         ax.set_xlabel("Reaction Coordinate")
         ax.set_ylabel(f"Relative Energy ({unit})")
-        theme.apply_xkcd_spines(ax)
+        theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
     return ax
@@ -148,8 +157,9 @@ def plot_neb(
     ax: maxes.Axes | None = None,
     unit: str = "eV",
     annotate_ts: bool = True,
-    color: str = "#D55E00",
-    preset: str = "classic",
+    color: str | None = None,
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots a continuous spline-interpolated NEB reaction barrier curve."""
@@ -159,24 +169,30 @@ def plot_neb(
         raw = np.asarray(source, dtype=np.float64)
         energies = raw - raw[0]
 
+    series = palettes.get_palette(palette)
+    line_col = series[6 % len(series)] if color is None else color
+    ts_col = series[5 % len(series)]
+    preset_obj = theme.get_preset(preset)
     n_img = len(energies)
     xi = np.linspace(0.0, 1.0, n_img)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.4, 4.2))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
         if n_img >= 4:
             spline = interpolate.CubicSpline(xi, energies, bc_type="natural")
             x_fine = np.linspace(0.0, 1.0, 120)
             y_fine = spline(x_fine)
-            ax.plot(x_fine, y_fine, color=color, lw=2.2, label="NEB MEP")
+            ax.plot(x_fine, y_fine, color=line_col, lw=2.2, label="NEB MEP")
         else:
-            ax.plot(xi, energies, color=color, lw=2.2)
+            ax.plot(xi, energies, color=line_col, lw=2.2)
         ax.scatter(
             xi,
             energies,
             s=65,
-            facecolor=palettes.PAPER,
-            edgecolor=color,
+            facecolor=preset_obj.axes_facecolor,
+            edgecolor=line_col,
             linewidth=2.0,
             zorder=5,
             label="NEB Images",
@@ -191,8 +207,8 @@ def plot_neb(
                     energies[ts_idx] + 0.14 * max(float(np.ptp(energies)), 0.2),
                 ),
                 ha="center",
-                color="#0072B2",
-                arrowprops={"arrowstyle": "->", "color": "#0072B2", "lw": 1.4},
+                color=ts_col,
+                arrowprops={"arrowstyle": "->", "color": ts_col, "lw": 1.4},
             )
         ax.axhline(0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=1.1)
         span = max(float(np.ptp(energies)), 0.4)
@@ -202,7 +218,7 @@ def plot_neb(
         )
         ax.set_xlabel("Normalized Reaction Coordinate")
         ax.set_ylabel(f"Relative Energy ({unit})")
-        theme.apply_xkcd_spines(ax)
+        theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
     return ax

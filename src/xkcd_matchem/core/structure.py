@@ -88,24 +88,47 @@ class AtomsData:
             raise exceptions.StructureError(
                 f"Expected positions shape ({n_atoms}, 3), got {pos.shape}."
             )
+        if not np.all(np.isfinite(pos)):
+            raise exceptions.StructureError(
+                "Atomic positions contain NaN or infinite values."
+            )
         self.positions = pos
+        if len(self.pbc) != 3:
+            raise exceptions.StructureError(
+                f"Expected 3 pbc flags, got {len(self.pbc)}."
+            )
+        self.pbc = (bool(self.pbc[0]), bool(self.pbc[1]), bool(self.pbc[2]))
         if self.cell is not None:
             cell_arr = np.asarray(self.cell, dtype=np.float64)
             if cell_arr.shape != (3, 3):
                 raise exceptions.StructureError(
                     f"Expected cell shape (3, 3), got {cell_arr.shape}."
                 )
+            if not np.all(np.isfinite(cell_arr)):
+                raise exceptions.StructureError(
+                    "Cell matrix contains NaN or infinite values."
+                )
+            if any(self.pbc) and abs(float(np.linalg.det(cell_arr))) < 1e-12:
+                raise exceptions.StructureError(
+                    "Periodic unit cell matrix is singular (zero volume)."
+                )
             self.cell = cell_arr
-        if len(self.pbc) != 3:
-            raise exceptions.StructureError(
-                f"Expected 3 pbc flags, got {len(self.pbc)}."
-            )
-        self.pbc = (bool(self.pbc[0]), bool(self.pbc[1]), bool(self.pbc[2]))
+        for arr_name in ("velocities", "forces"):
+            val = getattr(self, arr_name)
+            if val is not None:
+                arr_3d = np.asarray(val, dtype=np.float64)
+                if arr_3d.shape != (n_atoms, 3) or not np.all(
+                    np.isfinite(arr_3d)
+                ):
+                    raise exceptions.StructureError(
+                        f"{arr_name} must be finite with shape ({n_atoms}, 3)."
+                    )
+                setattr(self, arr_name, arr_3d)
         if self.charges is not None:
             chg = np.asarray(self.charges, dtype=np.float64)
-            if chg.shape != (n_atoms,):
+            if chg.shape != (n_atoms,) or not np.all(np.isfinite(chg)):
                 raise exceptions.StructureError(
-                    f"Expected charges shape ({n_atoms},), got {chg.shape}."
+                    f"Expected finite charges ({n_atoms},), got {chg.shape}."
                 )
             self.charges = chg
         if self.atom_labels is not None and len(self.atom_labels) != n_atoms:
@@ -194,6 +217,34 @@ class AtomsData:
         wrapped.positions = frac @ self.cell
         return wrapped
 
+    def center_in_cell(
+        self,
+        axes: tuple[int, ...] = (0, 1, 2),
+    ) -> AtomsData:
+        """Shifts fractional coords so the widest gap sits on cell faces.
+
+        Keeping atoms away from box boundaries produces cleaner unit-cell
+        renderings without clipped half-spheres along cell edges.
+
+        Args:
+          axes: Periodic lattice axis indices to recenter.
+
+        Returns:
+          Copy of ``AtomsData`` with wrapped and centered positions.
+        """
+        if self.cell is None or not any(self.pbc) or len(self) == 0:
+            return self.copy()
+        active_axes = tuple(ax for ax in axes if 0 <= ax < 3 and self.pbc[ax])
+        if not active_axes:
+            return self.wrap_positions()
+        frac = np.mod(self.fractional_positions(), 1.0)
+        shift = geometry.best_fractional_shift(frac, axes=active_axes)
+        for ax in active_axes:
+            frac[:, ax] = np.mod(frac[:, ax] + shift[ax], 1.0)
+        centered = self.copy()
+        centered.positions = frac @ self.cell
+        return centered
+
     def repeat(self, rep: tuple[int, int, int] = (1, 1, 1)) -> AtomsData:
         """Builds a periodic ``(nx, ny, nz)`` supercell.
 
@@ -215,9 +266,11 @@ class AtomsData:
             raise exceptions.StructureError("Supercell counts must be >= 1.")
         if (na, nb, nc) == (1, 1, 1):
             return self.copy()
-        new_symbols: list[str] = []
+        n_base = len(self.symbols)
+        n_cells = na * nb * nc
         pos_chunks: list[np.ndarray] = []
-        chg_chunks: list[np.ndarray] = []
+        new_bonds: list[Bond] = []
+
         for ia in range(na):
             for ib in range(nb):
                 for ic in range(nc):
@@ -226,10 +279,22 @@ class AtomsData:
                         + ib * self.cell[1]
                         + ic * self.cell[2]
                     )
-                    new_symbols.extend(self.symbols)
+                    base_idx = ((ia * nb + ib) * nc + ic) * n_base
                     pos_chunks.append(self.positions + shift)
-                    if self.charges is not None:
-                        chg_chunks.append(self.charges)
+                    for b in self.bonds:
+                        sa, rem_a = divmod(ia + b.shift[0], na)
+                        sb, rem_b = divmod(ib + b.shift[1], nb)
+                        sc, rem_c = divmod(ic + b.shift[2], nc)
+                        dst_base = ((rem_a * nb + rem_b) * nc + rem_c) * n_base
+                        new_bonds.append(
+                            Bond(
+                                i=base_idx + b.i,
+                                j=dst_base + b.j,
+                                order=b.order,
+                                shift=(int(sa), int(sb), int(sc)),
+                            )
+                        )
+
         new_pos = (
             np.vstack(pos_chunks)
             if pos_chunks
@@ -238,15 +303,36 @@ class AtomsData:
         new_cell = np.vstack(
             [self.cell[0] * na, self.cell[1] * nb, self.cell[2] * nc]
         )
-        new_charges = np.concatenate(chg_chunks) if chg_chunks else None
+        new_meta = dict(self.metadata)
+        new_meta["supercell_repeat"] = (na, nb, nc)
         return AtomsData(
-            symbols=new_symbols,
+            symbols=self.symbols * n_cells,
             positions=new_pos,
             cell=new_cell,
             pbc=self.pbc,
-            charges=new_charges,
-            energies=dict(self.energies),
-            metadata=dict(self.metadata),
+            bonds=new_bonds,
+            charges=(
+                np.tile(self.charges, n_cells)
+                if self.charges is not None
+                else None
+            ),
+            velocities=(
+                np.tile(self.velocities, (n_cells, 1))
+                if self.velocities is not None
+                else None
+            ),
+            forces=(
+                np.tile(self.forces, (n_cells, 1))
+                if self.forces is not None
+                else None
+            ),
+            energies={},
+            atom_labels=(
+                self.atom_labels * n_cells
+                if self.atom_labels is not None
+                else None
+            ),
+            metadata=new_meta,
         )
 
     def copy(self) -> AtomsData:

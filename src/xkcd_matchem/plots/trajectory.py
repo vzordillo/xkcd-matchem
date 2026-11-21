@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from importlib import util
 import pathlib
 
@@ -37,7 +38,7 @@ def plot_md_timeseries(
     quantity: str = "rmsd",
     running_window: int = 0,
     color: str = "#0072B2",
-    preset: str = "classic",
+    preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots energy, temperature, pressure, or RMSD along an MD trajectory."""
@@ -68,6 +69,8 @@ def plot_md_timeseries(
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.4, 3.8))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
         ax.plot(xs, ys, color=color, lw=1.9, alpha=0.88, label=quantity.upper())
         if 1 < running_window <= len(ys):
             kernel = np.ones(running_window, dtype=np.float64) / running_window
@@ -82,7 +85,7 @@ def plot_md_timeseries(
             ax.legend(loc="best", frameon=True)
         ax.set_xlabel("Time / Step")
         ax.set_ylabel(y_label)
-        theme.apply_xkcd_spines(ax)
+        theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
     return ax
@@ -94,13 +97,15 @@ def plot_rdf(
     ax: maxes.Axes | None = None,
     unit: str = "A",
     color: str = "#009E73",
-    preset: str = "classic",
+    preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots a radial distribution function ``g(r)`` with ``g(r)=1`` guide."""
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.0, 4.0))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
         ax.plot(r_vals, g_vals, color=color, lw=2.2)
         ax.fill_between(r_vals, 0.0, g_vals, color=color, alpha=0.18)
         ax.axhline(1.0, color=palettes.MUTED_GRAY, linestyle="--", lw=1.3)
@@ -118,7 +123,7 @@ def plot_rdf(
             )
         ax.set_xlabel(f"Pair Distance r ({unit})")
         ax.set_ylabel("g(r)")
-        theme.apply_xkcd_spines(ax)
+        theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
     return ax
@@ -130,17 +135,19 @@ def plot_rmsd(
     ax: maxes.Axes | None = None,
     time_unit: str = "ps",
     color: str = "#0072B2",
-    preset: str = "classic",
+    preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots a precomputed RMSD curve vs simulation time."""
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.0, 3.8))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
         ax.plot(times, rmsd_vals, color=color, lw=2.0)
         ax.set_xlabel(f"Time ({time_unit})")
         ax.set_ylabel("RMSD (A)")
-        theme.apply_xkcd_spines(ax)
+        theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
     return ax
@@ -151,9 +158,9 @@ def animate_trajectory(
     out_path: str | pathlib.Path,
     fps: int = 8,
     stride: int = 1,
-    camera: geometry.Camera | None = None,
-    palette: str = "xkcd",
-    preset: str = "classic",
+    camera: geometry.Camera | str | None = None,
+    palette: str | Mapping[str, str] = "xkcd",
+    preset: str | theme.ThemePreset = "classic",
 ) -> pathlib.Path:
     """Renders an xkcd-styled animated GIF across ``Trajectory`` frames."""
     if util.find_spec("PIL") is None:
@@ -165,7 +172,8 @@ def animate_trajectory(
     out = pathlib.Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     selected = traj.frames[:: max(1, stride)]
-    cam = geometry.Camera() if camera is None else camera
+    ref_cell = selected[0].cell if selected else None
+    cam = geometry.resolve_camera(camera, cell=ref_cell)
     with theme.xkcd_style(preset=preset):
         fig, ax = plt.subplots(figsize=(4.8, 4.2))
 

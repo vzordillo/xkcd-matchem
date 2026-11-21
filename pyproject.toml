@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "xkcd-matchem"
 dynamic = ["version"]
-description = "Hand-drawn xkcd-style visualization package for molecules and materials"
+description = "An xkcd-Style Visualization Suite for Chemistry and Materials Science Communication"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md"]
 authors = [
-  {name = "xkcd-matchem Contributors"},
+  {name = "Viejay Ordillo"},
 ]
 keywords = [
   "chemistry",
@@ -50,7 +50,6 @@ docs = [
   "jupyter-book>=1.0,<2.0",
   "sphinx-design>=0.5",
   "sphinx-copybutton>=0.5",
-  "sphinx-thebe>=0.3",
   "ipykernel>=6.25",
 ]
 dev = [
@@ -85,6 +84,7 @@ xkcd_matchem = [
   "data/fonts/*.ttf",
   "data/fonts/*OFL.txt",
   "data/samples/*",
+  "data/templates/*.html",
 ]
 
 [tool.pytest.ini_options]

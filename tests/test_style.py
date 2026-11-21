@@ -46,6 +46,7 @@ def test_bundled_fonts_and_no_rcparams_leak() -> None:
 def test_all_theme_presets_and_scientific_glyphs() -> None:
     matplotlib.use("Agg")
     for preset_name in theme.list_presets():
+        assert theme.get_preset(preset_name).font == "Patrick Hand"
         with theme.xkcd_style(preset=preset_name):
             fig, ax = plt.subplots()
             ax.plot([0.0, 1.0], [1.0, 2.0])
@@ -64,10 +65,48 @@ def test_all_theme_presets_and_scientific_glyphs() -> None:
 
 def test_palettes_and_errors() -> None:
     assert len(palettes.get_palette("okabe_ito")) == 8
+    assert "pastel" in palettes.list_element_palettes()
     assert palettes.get_element_color("O", scheme="jmol") == "#FF0D0D"
     assert palettes.get_element_color("N", scheme="colorblind") == "#0072B2"
     assert palettes.get_element_color("Fe", scheme="colorblind") == "#0072B2"
+    assert (
+        palettes.get_element_color("Ti", scheme={"Ti": "#E07A5F"}) == "#E07A5F"
+    )
     with pytest.raises(exceptions.StyleError):
         theme.get_preset("nonexistent_preset")
     with pytest.raises(exceptions.StyleError):
         palettes.get_element_color("C", scheme="unknown")
+
+
+def test_custom_presets_palettes_and_existing_axes() -> None:
+    matplotlib.use("Agg")
+    theme.register_preset(
+        "test_custom_theme", base="classic", figure_facecolor="#FAF6EE"
+    )
+    assert "test_custom_theme" in theme.list_presets()
+    assert theme.get_preset("test_custom_theme").figure_facecolor == "#FAF6EE"
+
+    palettes.register_palette("test_series", ["#111111", "#222222", "#333333"])
+    assert palettes.get_palette("test_series") == (
+        "#111111",
+        "#222222",
+        "#333333",
+    )
+    palettes.register_element_palette(
+        "test_elem", {"Si": "#00AA88"}, base="pastel"
+    )
+    assert "test_elem" in palettes.list_element_palettes()
+    assert palettes.get_element_color("Si", scheme="test_elem") == "#00AA88"
+
+    fig, ax = plt.subplots()
+    theme.style_existing_axes(ax, preset="dark_chalk")
+    assert ax.get_facecolor()[:3] != (1.0, 1.0, 1.0)
+    with theme.xkcd_style(
+        "classic",
+        palette=["#123456", "#654321"],
+        background="#F0F4F8",
+        ink="#222222",
+    ):
+        assert matplotlib.rcParams["figure.facecolor"] == "#F0F4F8"
+        assert matplotlib.rcParams["axes.edgecolor"] == "#222222"
+    plt.close(fig)

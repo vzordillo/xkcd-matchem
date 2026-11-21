@@ -115,15 +115,8 @@ def _parse_affine_term(expr: str) -> tuple[np.ndarray, float]:
     return coeff, shift
 
 
-def _apply_symops(
-    frac_sites: np.ndarray,
-    site_symbols: list[str],
-    site_labels: list[str],
-    symops: list[str],
-) -> tuple[np.ndarray, list[str], list[str]]:
-    """Expands asymmetric unit sites using CIF symmetry operations."""
-    if not symops:
-        return frac_sites, site_symbols, site_labels
+def _parse_cif_symops(symops: list[str]) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Parses CIF affine symmetry strings into rotation/translation pairs."""
     parsed_ops: list[tuple[np.ndarray, np.ndarray]] = []
     for op_str in symops:
         parts = op_str.split(",")
@@ -136,20 +129,42 @@ def _apply_symops(
             rot[row_idx] = c
             trans[row_idx] = s
         parsed_ops.append((rot, trans))
-    if not parsed_ops:
-        return frac_sites, site_symbols, site_labels
+    return parsed_ops
 
+
+def _apply_symops(
+    frac_sites: np.ndarray,
+    site_symbols: list[str],
+    site_labels: list[str],
+    symops: list[str],
+    site_occupancies: list[float] | None = None,
+) -> tuple[np.ndarray, list[str], list[str], list[float] | None]:
+    """Expands asymmetric unit sites using CIF symmetry operations."""
+    parsed_ops = _parse_cif_symops(symops) if symops else []
+    if not parsed_ops:
+        return frac_sites, site_symbols, site_labels, site_occupancies
+
+    occs_in = (
+        site_occupancies
+        if site_occupancies is not None
+        else [1.0] * len(site_symbols)
+    )
     expanded_frac: list[np.ndarray] = []
     expanded_syms: list[str] = []
     expanded_lbls: list[str] = []
-    for pos, sym, lbl in zip(
-        frac_sites, site_symbols, site_labels, strict=True
+    expanded_occs: list[float] = []
+    for pos, sym, lbl, occ in zip(
+        frac_sites, site_symbols, site_labels, occs_in, strict=True
     ):
         for rot, trans in parsed_ops:
             cand = np.mod(rot @ pos + trans, 1.0)
             cand = np.where(np.isclose(cand, 1.0, atol=1e-5), 0.0, cand)
             duplicate = False
-            for existing in expanded_frac:
+            for existing, existing_sym in zip(
+                expanded_frac, expanded_syms, strict=True
+            ):
+                if existing_sym != sym:
+                    continue
                 diff = np.abs(cand - existing)
                 diff = np.minimum(diff, 1.0 - diff)
                 if np.linalg.norm(diff) < 1e-3:
@@ -159,7 +174,13 @@ def _apply_symops(
                 expanded_frac.append(cand)
                 expanded_syms.append(sym)
                 expanded_lbls.append(lbl)
-    return np.vstack(expanded_frac), expanded_syms, expanded_lbls
+                expanded_occs.append(occ)
+    return (
+        np.vstack(expanded_frac),
+        expanded_syms,
+        expanded_lbls,
+        expanded_occs if site_occupancies is not None else None,
+    )
 
 
 def _extract_loops_and_scalars(
@@ -198,14 +219,26 @@ def _extract_loops_and_scalars(
     return scalars, loops
 
 
+def _parse_cif_occ(raw_occ: str) -> float:
+    """Parses optional CIF site occupancy string."""
+    cleaned = raw_occ.strip()
+    if cleaned in ("?", "."):
+        return 1.0
+    return float(_strip_uncertainty(cleaned))
+
+
 def _collect_cif_sites_and_symops(
     loops: list[tuple[list[str], list[list[str]]]],
-) -> tuple[list[str], list[list[float]], list[str], list[str]]:
-    """Extracts symmetry operations and fractional sites from CIF loops."""
+) -> tuple[
+    list[str], list[list[float]], list[str], list[str], list[float] | None
+]:
+    """Extracts symmetry operations, fractional sites, and occupancies."""
     symops: list[str] = []
     frac_list: list[list[float]] = []
     syms: list[str] = []
     labels: list[str] = []
+    occs: list[float] = []
+    has_occ = False
     for headers, rows in loops:
         for sym_tag in (
             "_space_group_symop_operation_xyz",
@@ -233,10 +266,20 @@ def _collect_cif_sites_and_symops(
             if "_atom_site_label" in headers
             else None
         )
+        io_occ = (
+            headers.index("_atom_site_occupancy")
+            if "_atom_site_occupancy" in headers
+            else None
+        )
+        if io_occ is not None:
+            has_occ = True
         for row in rows:
             raw_sym = row[it] if it is not None else row[il or 0]
             syms.append(_clean_element_symbol(raw_sym))
             labels.append(row[il] if il is not None else raw_sym)
+            occs.append(
+                _parse_cif_occ(row[io_occ]) if io_occ is not None else 1.0
+            )
             frac_list.append(
                 [
                     _strip_uncertainty(row[ix]),
@@ -244,7 +287,7 @@ def _collect_cif_sites_and_symops(
                     _strip_uncertainty(row[iz]),
                 ]
             )
-    return symops, frac_list, syms, labels
+    return symops, frac_list, syms, labels, occs if has_occ else None
 
 
 def read_cif(path: str | pathlib.Path) -> structure.AtomsData:
@@ -264,7 +307,7 @@ def read_cif(path: str | pathlib.Path) -> structure.AtomsData:
             f"Missing or invalid unit-cell tags in CIF: {p}"
         ) from exc
 
-    symops, frac_list, syms, labels = _collect_cif_sites_and_symops(loops)
+    symops, frac_list, syms, labels, occs = _collect_cif_sites_and_symops(loops)
 
     if not frac_list:
         raise exceptions.ParseError(
@@ -272,10 +315,16 @@ def read_cif(path: str | pathlib.Path) -> structure.AtomsData:
         )
 
     frac_arr = np.array(frac_list, dtype=np.float64)
-    exp_frac, exp_syms, exp_labels = _apply_symops(
-        frac_arr, syms, labels, symops
+    exp_frac, exp_syms, exp_labels, exp_occs = _apply_symops(
+        frac_arr, syms, labels, symops, site_occupancies=occs
     )
     sg_name = scalars.get("_space_group_name_h-m_alt", "")
+    metadata: dict[str, object] = {
+        "source": str(p),
+        "space_group": sg_name,
+    }
+    if exp_occs is not None:
+        metadata["occupancies"] = exp_occs
     return structure.AtomsData.from_cell_parameters(
         symbols=exp_syms,
         frac_positions=exp_frac,
@@ -287,7 +336,7 @@ def read_cif(path: str | pathlib.Path) -> structure.AtomsData:
         gamma=gamma,
         pbc=(True, True, True),
         atom_labels=exp_labels,
-        metadata={"source": str(p), "space_group": sg_name},
+        metadata=metadata,
     )
 
 
