@@ -235,8 +235,8 @@ class ScrollCard:
         style: str | None,
         *,
         spacing: float | None = None,
-        color: str = "#B09060",
-        alpha: float = 0.28,
+        color: str = "#A68452",
+        alpha: float = 0.38,
         margin_line: bool = False,
         square_grid: bool = True,
     ) -> ScrollCard:
@@ -766,8 +766,8 @@ def _apply_initial_scroll_grid(
     patterns.apply_background_grid(
         child_ax,
         style=bg_key,
-        color="#B09060",
-        alpha=0.28,
+        color="#A68452",
+        alpha=0.38,
         spacing=eff_y,
         spacing_x=step_x,
         margin_line=margin_line,

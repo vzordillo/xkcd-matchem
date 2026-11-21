@@ -286,7 +286,11 @@ class AtomsData:
                 frac[:, axis] = wrapped
         syms: list[str] = []
         frac_out: list[tuple[float, float, float]] = []
-        for sym, f_vec in zip(self.symbols, frac, strict=True):
+        src_indices: list[int] = []
+        is_image: list[bool] = []
+        for idx, (sym, f_vec) in enumerate(
+            zip(self.symbols, frac, strict=True)
+        ):
             axis_opts = [
                 (0.0, 1.0)
                 if (self.pbc[d] and float(f_vec[d]) <= tol)
@@ -296,13 +300,18 @@ class AtomsData:
             for combo in itertools.product(*axis_opts):
                 syms.append(sym)
                 frac_out.append((combo[0], combo[1], combo[2]))
+                src_indices.append(idx)
+                is_image.append(any(c >= 1.0 - tol for c in combo))
         pos = np.asarray(frac_out, dtype=np.float64) @ self.cell
+        meta = dict(self.metadata)
+        meta["source_indices"] = src_indices
+        meta["is_boundary_image"] = is_image
         return AtomsData(
             symbols=syms,
             positions=pos,
             cell=self.cell.copy(),
             pbc=self.pbc,
-            metadata=dict(self.metadata),
+            metadata=meta,
         )
 
     def repeat(self, rep: tuple[int, int, int] = (1, 1, 1)) -> AtomsData:

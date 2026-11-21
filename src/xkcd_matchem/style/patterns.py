@@ -176,6 +176,26 @@ def compute_background_grid_coords(
     return np.zeros((0,), dtype=np.float64), np.zeros((0,), dtype=np.float64)
 
 
+_DEFAULT_GRID_SKETCH: tuple[float, float, float] = (1.15, 78.0, 2.0)
+_BLUEPRINT_GRID_SKETCH: tuple[float, float, float] = (0.45, 115.0, 1.8)
+
+
+def _resolve_grid_sketch(
+    sketch: tuple[float, float, float] | bool | None,
+    key: str,
+) -> tuple[float, float, float]:
+    """Resolves Matplotlib ``sketch_params`` for background grid lines."""
+    if sketch is False:
+        return (0.0, 0.0, 0.0)
+    if sketch is True:
+        return _DEFAULT_GRID_SKETCH
+    if sketch is not None:
+        return (float(sketch[0]), float(sketch[1]), float(sketch[2]))
+    if key == "blueprint":
+        return _BLUEPRINT_GRID_SKETCH
+    return _DEFAULT_GRID_SKETCH
+
+
 def _draw_axes_rule_lines(
     ax: maxes.Axes,
     xs: Sequence[tuple[float, float]],
@@ -183,6 +203,7 @@ def _draw_axes_rule_lines(
     color: str,
     alpha: float,
     linewidth: float,
+    sketch_params: tuple[float, float, float] = _DEFAULT_GRID_SKETCH,
 ) -> None:
     """Draws background lines in axes-fraction coordinates behind plot art."""
     for (x0, x1), (y0, y1) in zip(xs, ys, strict=True):
@@ -196,7 +217,7 @@ def _draw_axes_rule_lines(
             zorder=0.2,
             clip_on=True,
         )
-        line.set_sketch_params(0.0, 0.0, 0.0)
+        line.set_sketch_params(*sketch_params)
         line.set_gid(BG_GRID_GID)
         ax.add_line(line)
 
@@ -206,6 +227,7 @@ def _draw_isometric_grid(
     color: str,
     alpha: float,
     step: float,
+    sketch_params: tuple[float, float, float] = _DEFAULT_GRID_SKETCH,
 ) -> None:
     """Draws 60-degree isometric triangular lines in axes coordinates."""
     xs_out: list[tuple[float, float]] = []
@@ -219,7 +241,9 @@ def _draw_isometric_grid(
         ys_out.append((0.0, 1.0))
         xs_out.append((float(x0), float(x0 - 1.0 / tan60)))
         ys_out.append((0.0, 1.0))
-    _draw_axes_rule_lines(ax, xs_out, ys_out, color, alpha, 0.75)
+    _draw_axes_rule_lines(
+        ax, xs_out, ys_out, color, alpha, 0.75, sketch_params=sketch_params
+    )
 
 
 def apply_background_grid(
@@ -231,6 +255,7 @@ def apply_background_grid(
     spacing: float = 0.08,
     spacing_x: float | None = None,
     margin_line: bool = True,
+    sketch: tuple[float, float, float] | bool | None = None,
 ) -> maxes.Axes:
     """Applies a customizable notebook, graph, dot, isometric, or blueprint bg.
 
@@ -250,6 +275,8 @@ def apply_background_grid(
       spacing_x: Optional horizontal spacing override in axes-fraction units
         (defaults to ``spacing``).
       margin_line: Whether ``"ruled"``/``"lines"`` draws a subtle left margin.
+      sketch: Optional xkcd sketch wobble ``(scale, length, randomness)``,
+        ``True`` (default xkcd wobble), or ``False`` (straight lines).
 
     Returns:
       The styled ``Axes`` instance.
@@ -270,6 +297,7 @@ def apply_background_grid(
     step_x = (
         step if spacing_x is None else max(0.02, min(0.25, float(spacing_x)))
     )
+    sketch_params = _resolve_grid_sketch(sketch, key)
     ax.patch.set_sketch_params(0.0, 0.0, 0.0)
     xs_grid, ys_grid = compute_background_grid_coords(
         key, spacing=step, spacing_x=step_x
@@ -290,6 +318,7 @@ def apply_background_grid(
             g_col,
             g_alpha * 0.55,
             0.55,
+            sketch_params=sketch_params,
         )
         _draw_axes_rule_lines(
             ax,
@@ -300,6 +329,7 @@ def apply_background_grid(
             g_col,
             g_alpha,
             0.95,
+            sketch_params=sketch_params,
         )
         return ax
 
@@ -313,6 +343,7 @@ def apply_background_grid(
             g_col,
             g_alpha,
             0.85,
+            sketch_params=sketch_params,
         )
         if margin_line:
             _draw_axes_rule_lines(
@@ -322,6 +353,7 @@ def apply_background_grid(
                 "#E07A5F",
                 min(0.55, g_alpha + 0.12),
                 1.05,
+                sketch_params=sketch_params,
             )
     elif key in ("grid", "graph"):
         g_alpha = 0.28 if alpha is None else alpha
@@ -334,6 +366,7 @@ def apply_background_grid(
             g_col,
             g_alpha,
             0.75,
+            sketch_params=sketch_params,
         )
     elif key in ("dots", "dotgrid"):
         g_alpha = 0.45 if alpha is None else alpha
@@ -353,7 +386,9 @@ def apply_background_grid(
         pts.set_gid(BG_GRID_GID)
     elif key == "isometric":
         g_alpha = 0.24 if alpha is None else alpha
-        _draw_isometric_grid(ax, g_col, g_alpha, step * 1.4)
+        _draw_isometric_grid(
+            ax, g_col, g_alpha, step * 1.4, sketch_params=sketch_params
+        )
     return ax
 
 

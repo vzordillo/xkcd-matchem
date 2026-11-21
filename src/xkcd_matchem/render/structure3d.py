@@ -303,7 +303,13 @@ def _format_atom_label(
         if key in ("none", "off", "false"):
             return None
         if key == "index":
-            return f"{atoms.symbols[idx]}{idx}"
+            src_idxs = atoms.metadata.get("source_indices")
+            site_idx = (
+                int(src_idxs[idx])
+                if isinstance(src_idxs, Sequence) and idx < len(src_idxs)
+                else idx
+            )
+            return f"{atoms.symbols[idx]}{site_idx}"
     if atoms.atom_labels is not None:
         return str(atoms.atom_labels[idx])
     return atoms.symbols[idx]

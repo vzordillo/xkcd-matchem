@@ -82,11 +82,11 @@ def _spring_layout(
     return pos / span
 
 
-def _bipartite_columns_pos(
+def _bipartite_ring_pos(
     n_nodes: int,
     adj: Sequence[set[int]],
 ) -> np.ndarray | None:
-    """Places 2-colorable crystal graphs cleanly in two parallel columns."""
+    """Places 2-colorable crystal graphs in an alternating flat 2D ring."""
     if n_nodes < 4 or n_nodes > 12 or any(not nbrs for nbrs in adj):
         return None
     color_map: dict[int, int] = {}
@@ -107,21 +107,22 @@ def _bipartite_columns_pos(
     g1 = [i for i in range(n_nodes) if color_map[i] == 1]
     if not g0 or not g1:
         return None
+    ring_order: list[int] = []
+    max_len = max(len(g0), len(g1))
+    for k in range(max_len):
+        if k < len(g0):
+            ring_order.append(g0[k])
+        if k < len(g1):
+            ring_order.append(g1[k])
+    angles = np.linspace(
+        0.5 * np.pi, 0.5 * np.pi - 2.0 * np.pi, n_nodes, endpoint=False
+    )
     pos_out = np.zeros((n_nodes, 2), dtype=np.float64)
-    ys0 = (
-        np.linspace(1.05, -1.05, len(g0))
-        if len(g0) > 1
-        else np.array([0.0], dtype=np.float64)
-    )
-    ys1 = (
-        np.linspace(1.05, -1.05, len(g1))
-        if len(g1) > 1
-        else np.array([0.0], dtype=np.float64)
-    )
-    for idx, y_val in zip(g0, ys0, strict=True):
-        pos_out[idx] = [-0.95, float(y_val)]
-    for idx, y_val in zip(g1, ys1, strict=True):
-        pos_out[idx] = [0.95, float(y_val)]
+    for rank, idx in enumerate(ring_order):
+        pos_out[idx] = [
+            1.05 * math.cos(float(angles[rank])),
+            1.05 * math.sin(float(angles[rank])),
+        ]
     return pos_out
 
 
@@ -142,7 +143,7 @@ def _planar_layout(
             adj[u].add(v)
             adj[v].add(u)
 
-    bip_pos = _bipartite_columns_pos(n_nodes, adj)
+    bip_pos = _bipartite_ring_pos(n_nodes, adj)
     if bip_pos is not None:
         return bip_pos
 
@@ -347,67 +348,88 @@ def _draw_graph_nodes(
     series: Sequence[str],
     ink_col: str,
     node_shape: str = "circle",
+    *,
+    image_flags: Sequence[bool] | None = None,
+    node_depths: Sequence[float] | None = None,
 ) -> float:
     """Draws shaded xkcd circular or rounded-pill network nodes."""
     n_nodes = len(nodes)
-    span_x = float(np.ptp(xy[:, 0])) if n_nodes > 1 else 2.0
-    span_y = float(np.ptp(xy[:, 1])) if n_nodes > 1 else 2.0
-    scale = max(0.5 * max(span_x, span_y), 0.8)
+    scale = (
+        max(
+            0.5 * max(float(np.ptp(xy[:, 0])), float(np.ptp(xy[:, 1]))),
+            0.8,
+        )
+        if n_nodes > 1
+        else 1.0
+    )
     base_r = max(0.085, min(0.14, 0.48 / max(math.sqrt(n_nodes), 2.8))) * scale
     use_pill = node_shape.strip().lower() == "pill"
+    order = (
+        sorted(range(n_nodes), key=lambda i: float(node_depths[i]))
+        if node_depths is not None and len(node_depths) == n_nodes
+        else list(range(n_nodes))
+    )
 
-    for idx, raw_lbl in enumerate(nodes):
-        col = _resolve_node_color(idx, str(raw_lbl), node_colors, series)
+    for rank, idx in enumerate(order):
+        raw_lbl = str(nodes[idx])
+        col = _resolve_node_color(idx, raw_lbl, node_colors, series)
         cx, cy = float(xy[idx, 0]), float(xy[idx, 1])
+        is_img = bool(
+            image_flags is not None
+            and idx < len(image_flags)
+            and image_flags[idx]
+        )
+        z_node = 5.0 + 0.05 * rank
         if use_pill:
-            fill = primitives.lighten_hex(col, 0.62)
             ax.text(
                 cx,
                 cy,
-                str(raw_lbl),
+                raw_lbl,
                 ha="center",
                 va="center",
                 fontsize=9.5,
                 color=ink_col,
                 bbox={
                     "boxstyle": "round,pad=0.45",
-                    "facecolor": fill,
+                    "facecolor": primitives.lighten_hex(col, 0.62),
                     "edgecolor": ink_col,
                     "linewidth": 1.6,
                 },
-                zorder=6.0,
+                zorder=z_node + 1.0,
             )
             continue
+        fill_col = primitives.lighten_hex(col, 0.42) if is_img else col
+        r_draw = base_r * (0.90 if is_img else 1.0)
         ax.add_patch(
             patches.Circle(
                 (cx, cy),
-                radius=base_r,
-                facecolor=col,
-                edgecolor=ink_col,
-                linewidth=1.7,
-                zorder=5.0,
+                radius=r_draw,
+                facecolor=fill_col,
+                edgecolor="#0072B2" if is_img else ink_col,
+                linestyle="--" if is_img else "-",
+                linewidth=1.45 if is_img else 1.7,
+                zorder=z_node,
             )
         )
         ax.add_patch(
             patches.Circle(
-                (cx - 0.28 * base_r, cy + 0.28 * base_r),
-                radius=0.18 * base_r,
+                (cx - 0.28 * r_draw, cy + 0.28 * r_draw),
+                radius=0.18 * r_draw,
                 facecolor="#FFFFFF",
                 edgecolor="none",
                 alpha=0.72,
-                zorder=5.2,
+                zorder=z_node + 0.01,
             )
         )
-        txt_col = primitives.contrast_text_color(mcolors.to_hex(col))
         ax.text(
             cx,
             cy,
-            str(raw_lbl),
+            raw_lbl,
             ha="center",
             va="center",
-            fontsize=max(7.8, min(9.8, 9.2)),
-            color=txt_col,
-            zorder=6.0,
+            fontsize=7.6 if is_img else 8.4,
+            color=primitives.contrast_text_color(mcolors.to_hex(fill_col)),
+            zorder=z_node + 0.02,
         )
     return base_r
 
@@ -513,7 +535,6 @@ def plot_graph_network(
             theme.style_existing_axes(ax, preset=preset)
         if background_grid:
             patterns.apply_background_grid(ax, style=background_grid)
-        curve_dashed = layout.strip().lower() != "planar"
         _draw_all_graph_edges(
             ax,
             n_nodes,
@@ -522,7 +543,7 @@ def plot_graph_network(
             dashed_flags,
             (
                 directed,
-                curve_dashed,
+                True,
                 ink_col,
                 preset_obj.axes_facecolor,
                 shrink_pt,
@@ -582,6 +603,34 @@ def _extract_structure_edges(
             order_tag = "=" if abs(b.order - 2.0) < 0.25 else ""
             lbl = f"{order_tag}{dist:.2f}A"
         dashed_flags.append(False)
+        edge_items.append((b.i, b.j, lbl))
+    return edge_items, dashed_flags
+
+
+def _extract_closed_cell_edges(
+    atoms: structure.AtomsData,
+    show_distances: bool,
+    show_periodic_edges: bool,
+) -> tuple[list[tuple[int, int, str]], list[bool]]:
+    """Extracts exact 3D interior bonds on a closed ``[0, 1]^3`` cell."""
+    is_img = list(atoms.metadata.get("is_boundary_image", []))
+    bonds = bonding.infer_bonds(atoms, use_pbc=False)
+    edge_items: list[tuple[int, int, str]] = []
+    dashed_flags: list[bool] = []
+    for b in bonds:
+        touches_img = bool(
+            (b.i < len(is_img) and is_img[b.i])
+            or (b.j < len(is_img) and is_img[b.j])
+        )
+        if touches_img and not show_periodic_edges:
+            continue
+        lbl = ""
+        if show_distances:
+            dist = float(
+                np.linalg.norm(atoms.positions[b.j] - atoms.positions[b.i])
+            )
+            lbl = f"{dist:.2f}A"
+        dashed_flags.append(touches_img)
         edge_items.append((b.i, b.j, lbl))
     return edge_items, dashed_flags
 
@@ -671,7 +720,7 @@ def _compute_structure_graph_coords(
     atoms: structure.AtomsData,
     layout: str,
     camera: geometry.Camera | str | None,
-) -> tuple[np.ndarray | None, geometry.Camera, np.ndarray]:
+) -> tuple[np.ndarray | None, np.ndarray | None, geometry.Camera, np.ndarray]:
     """Computes camera-projected or PCA 2D coordinates for a structure graph."""
     cam = geometry.resolve_camera(camera, cell=atoms.cell)
     pivot = (
@@ -681,13 +730,95 @@ def _compute_structure_graph_coords(
     )
     key = layout.strip().lower()
     if key == "camera" and len(atoms) >= 1:
-        xy, _ = geometry.project_points(atoms.positions, cam, center=pivot)
-        return xy, cam, pivot
+        xy, depth = geometry.project_points(atoms.positions, cam, center=pivot)
+        return xy, depth, cam, pivot
     if key == "pca" and len(atoms) >= 2:
         centered = atoms.positions - np.mean(atoms.positions, axis=0)
         _, _, vt = np.linalg.svd(centered, full_matrices=False)
-        return centered @ vt[:2].T, cam, pivot
-    return None, cam, pivot
+        return centered @ vt[:2].T, None, cam, pivot
+    return None, None, cam, pivot
+
+
+def _render_closed_cell_graph(
+    atoms: structure.AtomsData,
+    *,
+    camera: geometry.Camera | str | None,
+    show_cell: bool,
+    show_distances: bool,
+    show_periodic_edges: bool,
+    directed: bool,
+    background_grid: str | None,
+    palette: str | Mapping[str, str],
+    preset: str | theme.ThemePreset,
+    ax: maxes.Axes | None,
+    title: str | None,
+) -> maxes.Axes:
+    """Renders a 3D camera-matched closed-cell crystal graph (1-to-1 sites)."""
+    completed = atoms.with_boundary_atoms()
+    src_idxs = list(completed.metadata.get("source_indices", []))
+    is_img = list(completed.metadata.get("is_boundary_image", []))
+    nodes = [
+        f"{sym}{src_idxs[i] if i < len(src_idxs) else i}"
+        for i, sym in enumerate(completed.symbols)
+    ]
+    node_cols = [
+        palettes.get_element_color(sym, scheme=palette)
+        for sym in completed.symbols
+    ]
+    edge_items, dashed_flags = _extract_closed_cell_edges(
+        completed, show_distances, show_periodic_edges
+    )
+    xy, depth, cam, pivot = _compute_structure_graph_coords(
+        completed, "camera", camera
+    )
+    if xy is None:
+        xy = np.zeros((len(nodes), 2), dtype=np.float64)
+    preset_obj = theme.get_preset(preset)
+    ink_col = preset_obj.ink_color
+    series = palettes.get_palette("okabe_ito")
+
+    with theme.xkcd_style(preset=preset):
+        if ax is None:
+            _, ax = plt.subplots(figsize=(6.4, 5.0))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
+        if background_grid:
+            patterns.apply_background_grid(ax, style=background_grid)
+        _draw_all_graph_edges(
+            ax,
+            len(nodes),
+            edge_items,
+            xy,
+            dashed_flags,
+            (directed, False, ink_col, preset_obj.axes_facecolor, 13.0),
+        )
+        base_r = _draw_graph_nodes(
+            ax,
+            nodes,
+            xy,
+            node_cols,
+            series,
+            ink_col,
+            image_flags=is_img,
+            node_depths=depth,
+        )
+        _set_graph_limits(ax, xy, base_r, "circle")
+        ax.set_aspect("equal")
+        ax.set_axis_off()
+        ax.set_title(
+            title or f"{atoms.formula()} Structure Graph", color=ink_col
+        )
+    _add_structure_graph_overlays(
+        ax,
+        completed,
+        cam,
+        pivot,
+        show_cell=show_cell,
+        layout="camera",
+        has_dashed=any(dashed_flags),
+        preset=preset,
+    )
+    return ax
 
 
 def plot_structure_graph(
@@ -696,6 +827,7 @@ def plot_structure_graph(
     layout: str = "camera",
     camera: geometry.Camera | str | None = None,
     show_cell: bool = True,
+    boundary_atoms: bool = False,
     show_distances: bool = False,
     show_periodic_edges: bool = True,
     multi_edges: bool = False,
@@ -709,10 +841,12 @@ def plot_structure_graph(
 ) -> maxes.Axes:
     """Renders a crystal or molecule as an intuitive xkcd GNN structure graph.
 
-    Supports both camera-matched 3D crystal graphs (``layout="camera"`` with
-    faint unit-cell box guide) and flat planar 2D topological/quotient graphs
-    (``layout="planar"``, optionally with ``multi_edges=True`` and
-    ``show_shift_labels=True`` to display fanned periodic translation vectors).
+    Displays only the unique basis atoms in the unit cell by default
+    (``boundary_atoms=False``) so every node corresponds 1-to-1 to a unique GNN
+    graph vertex, with solid intra-cell bonds and dashed periodic edges.
+    Supports camera-matched 3D crystal graphs (``layout="camera"``) and flat
+    planar 2D topological or quotient multigraphs (``layout="planar"``,
+    optionally with ``multi_edges=True`` and ``show_shift_labels=True``).
 
     Args:
       source: ``AtomsData``, file path, or bundled sample filename.
@@ -721,8 +855,11 @@ def plot_structure_graph(
       camera: ``Camera`` instance or preset string when ``layout="camera"``.
       show_cell: Whether to draw a subtle unit-cell wireframe when periodic and
         ``layout="camera"``.
+      boundary_atoms: Whether to include replicated boundary image sites on
+        closed ``[0, 1]^3`` faces/corners (default ``False`` so GNN graphs
+        contain only unique unit-cell atoms without mirror-image duplicates).
       show_distances: Whether to annotate intra-cell bond lengths in Angstrom.
-      show_periodic_edges: Whether to include periodic-boundary image arcs.
+      show_periodic_edges: Whether to include periodic-boundary image edges.
       multi_edges: Whether to draw every distinct periodic image shift as a
         separate fanned arc (quotient multigraph view).
       show_shift_labels: Whether to label edges with integer lattice-shift
@@ -738,6 +875,25 @@ def plot_structure_graph(
       Matplotlib ``Axes`` containing the structure graph.
     """
     atoms = _load_graph_atoms(source).wrap_positions()
+    if (
+        boundary_atoms
+        and atoms.is_periodic
+        and layout.strip().lower() == "camera"
+    ):
+        return _render_closed_cell_graph(
+            atoms,
+            camera=camera,
+            show_cell=show_cell,
+            show_distances=show_distances,
+            show_periodic_edges=show_periodic_edges,
+            directed=directed,
+            background_grid=background_grid,
+            palette=palette,
+            preset=preset,
+            ax=ax,
+            title=title,
+        )
+
     nodes = [f"{sym}{idx}" for idx, sym in enumerate(atoms.symbols)]
     node_cols = [
         palettes.get_element_color(sym, scheme=palette) for sym in atoms.symbols
@@ -749,7 +905,9 @@ def plot_structure_graph(
         multi_edges=multi_edges,
         show_shift_labels=show_shift_labels,
     )
-    pos_2d, cam, pivot = _compute_structure_graph_coords(atoms, layout, camera)
+    pos_2d, _, cam, pivot = _compute_structure_graph_coords(
+        atoms, layout, camera
+    )
     ax = plot_graph_network(
         nodes,
         edge_items,

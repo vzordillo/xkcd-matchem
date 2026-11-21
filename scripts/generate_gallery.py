@@ -836,9 +836,10 @@ def _make_icons_and_graphs_gallery(out_dir: pathlib.Path) -> None:
             "si_diamond.cif",
             camera=cam,
             boundary_atoms=False,
+            crystal_axes="corner",
             show_labels="index",
             ax=ax_crys,
-            title="1. Actual Crystal (8-Atom Basis)",
+            title="1. Actual Crystal (8-Atom Unit Cell)",
         )
         xm.plot_structure_graph(
             "si_diamond.cif",
