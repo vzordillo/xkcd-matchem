@@ -1,6 +1,6 @@
 # Visual Gallery
 
-Every figure and animated GIF below is generated automatically by `scripts/generate_gallery.py` using real bundled sample files, unified `Patrick Hand` typography, and depth-sorted 3D scenes. Click any tutorial link to see the exact code behind each plot.
+Every figure and animated GIF below is generated automatically by `scripts/generate_gallery.py` using real bundled sample files, unified `xkcd Script` typography, and depth-sorted 3D scenes. Click any tutorial link to see the exact code behind each plot.
 
 ## Animated Motion & Theme Explorer
 

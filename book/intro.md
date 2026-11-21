@@ -21,7 +21,7 @@ Not sure where to jump in? Choose the path that fits what you want to do right n
 
 :::{note}
 **Defaults first, full control whenever you want it.**
-Every plotter runs in a single line using balanced white-canvas defaults (`classic` preset, unified `Patrick Hand` typography, borderless structure frames). Whenever you want to match a poster color scheme or dark slide deck, you can override individual element colors, cameras, backgrounds, line wiggles, and reusable presets.
+Every plotter runs in a single line using balanced white-canvas defaults (`classic` preset, unified `xkcd Script` typography, borderless structure frames). Whenever you want to match a poster color scheme or dark slide deck, you can override individual element colors, cameras, backgrounds, fonts, line wiggles, and reusable presets.
 :::
 
 :::{warning}

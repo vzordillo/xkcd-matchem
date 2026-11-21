@@ -2,7 +2,7 @@
 
 ## Core Package
 
-`xkcd-matchem` has a light core footprint: **Python 3.10+**, **NumPy**, **SciPy**, and **Matplotlib**. All **15 bundled sample files** (molecules, crystals, slabs, DFT outputs, spectra, and trajectories) and SIL OFL 1.1 comic-style fonts (`Patrick Hand` and `Comic Neue`) ship inside the wheel.
+`xkcd-matchem` has a light core footprint: **Python 3.10+**, **NumPy**, **SciPy**, and **Matplotlib**. All **15 bundled sample files** (molecules, crystals, slabs, DFT outputs, spectra, and trajectories) and bundled comic-style fonts—`xkcd Script` (default, CC BY-NC 3.0 for non-commercial/academic use) plus commercial-safe SIL OFL 1.1 alternates (`Patrick Hand` and `Comic Neue`)—ship inside the wheel.
 
 ```bash
 pip install xkcd-matchem

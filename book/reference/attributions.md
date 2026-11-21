@@ -57,5 +57,6 @@ Every physical constant, atomic radius, scattering form factor, and color refere
 
 - **Okabe & Ito CUD Palette**: Okabe, M.; Ito, K. (2002; mod. 2008). *Color Universal Design (CUD)* ([https://jfly.uni-koeln.de/color/](https://jfly.uni-koeln.de/color/)).
 - **Jmol Element Colors**: Jmol Development Team; Herráez, A.; Vervelle, N. *Jmol Colors* ([https://jmol.sourceforge.net/jscolors/](https://jmol.sourceforge.net/jscolors/), fallback `#FF1493` for $Z=110\text{–}118$).
-- **Patrick Hand**: Patrick Wagesreiter, SIL Open Font License 1.1.
-- **Comic Neue**: Craig Rozynski & Hrant Papazian, SIL Open Font License 1.1.
+- **xkcd Script (default)**: Derived from Randall Munroe's handwriting via [`ipython/xkcd-font`](https://github.com/ipython/xkcd-font), Creative Commons Attribution-NonCommercial 3.0 Unported (CC BY-NC 3.0; non-commercial/academic use).
+- **Patrick Hand**: Patrick Wagesreiter, SIL Open Font License 1.1 (commercial-safe alternate).
+- **Comic Neue**: Craig Rozynski & Hrant Papazian, SIL Open Font License 1.1 (commercial-safe alternate).

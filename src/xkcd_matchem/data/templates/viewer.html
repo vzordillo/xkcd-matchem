@@ -32,7 +32,7 @@ __XM_FONT_CSS__
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: "Patrick Hand", system-ui, -apple-system, sans-serif;
+  font-family: "xkcd Script", system-ui, -apple-system, sans-serif;
   background: var(--ui-bg);
   color: var(--ui-ink);
 }
@@ -916,7 +916,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
           [cellCorners[0], cellCorners[2], "b"],
           [cellCorners[0], cellCorners[1], "c"],
         ];
-        ctx.font = 'bold 17px "Patrick Hand", sans-serif';
+        ctx.font = 'bold 17px "xkcd Script", sans-serif';
         ctx.fillStyle = ink;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -982,7 +982,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
       ctx.closePath();
       ctx.fillStyle = colors[v.k];
       ctx.fill();
-      ctx.font = 'bold 15px "Patrick Hand", sans-serif';
+      ctx.font = 'bold 15px "xkcd Script", sans-serif';
       ctx.fillStyle = colors[v.k];
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -1109,7 +1109,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     for (const s of symbols) if (!seen.includes(s)) seen.push(s);
     const step = Math.min(72, Math.max(46, (width - 40) / Math.max(seen.length, 1)));
     const startX = width * 0.5 - ((seen.length - 1) * step) * 0.5;
-    ctx.font = '15px "Patrick Hand", sans-serif';
+    ctx.font = '15px "xkcd Script", sans-serif';
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
     seen.forEach((sym, i) => {
@@ -1400,7 +1400,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
         for (const [c0, c1, label] of [[cellCorners[0], cellCorners[4], "a"], [cellCorners[0], cellCorners[2], "b"], [cellCorners[0], cellCorners[1], "c"]]) {
           const p0 = sc(c0), p1 = sc(c1);
           const dx = p1[0] - p0[0], dy = p1[1] - p0[1], l = Math.hypot(dx, dy) || 1;
-          parts.push(`<text x="${(p1[0] + (dx / l) * 14).toFixed(1)}" y="${(p1[1] + (dy / l) * 14).toFixed(1)}" fill="${ink}" font-family="Patrick Hand, sans-serif" font-size="17" font-weight="bold" text-anchor="middle" dominant-baseline="central">${label}</text>`);
+          parts.push(`<text x="${(p1[0] + (dx / l) * 14).toFixed(1)}" y="${(p1[1] + (dy / l) * 14).toFixed(1)}" fill="${ink}" font-family="xkcd Script, sans-serif" font-size="17" font-weight="bold" text-anchor="middle" dominant-baseline="central">${label}</text>`);
         }
       }
     }
@@ -1422,7 +1422,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
         if (seg < 2) continue;
         const ux = v.dx / seg, uy = v.dy / seg;
         parts.push(`<line x1="${ox.toFixed(1)}" y1="${oy.toFixed(1)}" x2="${tx.toFixed(1)}" y2="${ty.toFixed(1)}" stroke="${aCols[v.k]}" stroke-width="2.4" stroke-linecap="round"/>`);
-        parts.push(`<text x="${(tx + ux * 12).toFixed(1)}" y="${(ty + uy * 12).toFixed(1)}" fill="${aCols[v.k]}" font-family="Patrick Hand, sans-serif" font-size="15" font-weight="bold" text-anchor="middle" dominant-baseline="central">${aNames[v.k]}</text>`);
+        parts.push(`<text x="${(tx + ux * 12).toFixed(1)}" y="${(ty + uy * 12).toFixed(1)}" fill="${aCols[v.k]}" font-family="xkcd Script, sans-serif" font-size="15" font-weight="bold" text-anchor="middle" dominant-baseline="central">${aNames[v.k]}</text>`);
       }
       parts.push(`<circle cx="${ox.toFixed(1)}" cy="${oy.toFixed(1)}" r="3.2" fill="${ink}"/>`);
     }
@@ -1435,7 +1435,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
       seen.forEach((sym, i) => {
         const lx = startX + i * step;
         parts.push(`<circle cx="${(lx - 10).toFixed(1)}" cy="${ly.toFixed(1)}" r="7" fill="${elementColor(sym)}" stroke="${ink}" stroke-width="1.25"/>`);
-        parts.push(`<text x="${(lx + 2).toFixed(1)}" y="${(ly + 1).toFixed(1)}" fill="${ink}" font-family="Patrick Hand, sans-serif" font-size="15" dominant-baseline="central">${sym}</text>`);
+        parts.push(`<text x="${(lx + 2).toFixed(1)}" y="${(ly + 1).toFixed(1)}" fill="${ink}" font-family="xkcd Script, sans-serif" font-size="15" dominant-baseline="central">${sym}</text>`);
       });
     }
     parts.push("</svg>");

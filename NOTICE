@@ -7,23 +7,34 @@ licensed under the Apache License, Version 2.0 (see LICENSE).
 ===========================================================================
 Documentation and Gallery Figures
 ===========================================================================
-The documentation, tutorials, and gallery figures in `book/` are licensed
-under the Creative Commons Attribution 4.0 International License (CC BY 4.0).
-See `book/LICENSE-CC-BY-4.0.txt`.
+The documentation text and tutorial notebooks in `book/` are licensed under
+the Creative Commons Attribution 4.0 International License (CC BY 4.0; see
+`book/LICENSE-CC-BY-4.0.txt`). Rendered gallery figures that embed the
+default `xkcd Script` typeface are additionally subject to the non-commercial
+terms of `xkcd-script` (CC BY-NC 3.0) described below.
 
 ===========================================================================
-Bundled Handwritten Fonts (SIL Open Font License 1.1)
+Bundled Fonts
 ===========================================================================
 This distribution includes the following fonts in
 `src/xkcd_matchem/data/fonts/`:
 
-1. Patrick Hand (`PatrickHand-Regular.ttf`)
+1. xkcd Script (`xkcd-script.ttf`) — Default Font (Non-Commercial)
+   Derived from Randall Munroe's handwriting via the IPython xkcd-font project
+   (https://github.com/ipython/xkcd-font).
+   Licensed under the Creative Commons Attribution-NonCommercial 3.0 Unported
+   License (CC BY-NC 3.0).
+   Full license text: `src/xkcd_matchem/data/fonts/xkcd-script-LICENSE.txt`.
+   Note: For commercial workflows, switch to the bundled SIL OFL 1.1 fonts
+   (`Patrick Hand` or `Comic Neue`) via `xm.set_default_font("Patrick Hand")`.
+
+2. Patrick Hand (`PatrickHand-Regular.ttf`)
    Copyright 2011 The Patrick Hand Project Authors
    (Patrick Wagesreiter <pwagesreiter@gmail.com>)
    Licensed under the SIL Open Font License, Version 1.1.
    Full license text: `src/xkcd_matchem/data/fonts/PatrickHand-OFL.txt`.
 
-2. Comic Neue (`ComicNeue-Regular.ttf`, `ComicNeue-Bold.ttf`)
+3. Comic Neue (`ComicNeue-Regular.ttf`, `ComicNeue-Bold.ttf`)
    Copyright 2014 The Comic Neue Project Authors
    (Craig Rozynski & Hrant Papazian)
    Licensed under the SIL Open Font License, Version 1.1.

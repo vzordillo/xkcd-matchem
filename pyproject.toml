@@ -83,6 +83,7 @@ xkcd_matchem = [
   "py.typed",
   "data/fonts/*.ttf",
   "data/fonts/*OFL.txt",
+  "data/fonts/*LICENSE*.txt",
   "data/samples/*",
   "data/templates/*.html",
 ]

@@ -29,8 +29,10 @@ from xkcd_matchem.style import theme
 
 def test_bundled_fonts_and_no_rcparams_leak() -> None:
     registered = fonts.ensure_fonts_registered()
+    assert "xkcd-script.ttf" in registered
     assert "PatrickHand-Regular.ttf" in registered
     assert "ComicNeue-Regular.ttf" in registered
+    assert fonts.get_bundled_font_path("xkcd Script").is_file()
     assert fonts.get_bundled_font_path("Patrick Hand").is_file()
     before_bg = matplotlib.rcParams["figure.facecolor"]
     before_sketch = matplotlib.rcParams["path.sketch"]
@@ -46,7 +48,7 @@ def test_bundled_fonts_and_no_rcparams_leak() -> None:
 def test_all_theme_presets_and_scientific_glyphs() -> None:
     matplotlib.use("Agg")
     for preset_name in theme.list_presets():
-        assert theme.get_preset(preset_name).font == "Patrick Hand"
+        assert theme.get_preset(preset_name).font == "xkcd Script"
         with theme.xkcd_style(preset=preset_name):
             fig, ax = plt.subplots()
             ax.plot([0.0, 1.0], [1.0, 2.0])
@@ -125,5 +127,5 @@ def test_custom_presets_palettes_and_existing_axes() -> None:
         with theme.xkcd_style("classic"):
             assert matplotlib.rcParams["font.family"][0] == "Comic Neue"
     finally:
-        assert fonts.set_default_font(None) == "Patrick Hand"
+        assert fonts.set_default_font(None) == "xkcd Script"
         assert fonts.get_default_font() is None

@@ -215,13 +215,13 @@ def serialize_structure(
 
 
 def _build_font_css() -> str:
-    """Embeds bundled Patrick Hand TTF as base64 ``@font-face`` CSS."""
+    """Embeds bundled xkcd Script TTF as base64 ``@font-face`` CSS."""
     try:
-        font_path = fonts.get_bundled_font_path("Patrick Hand")
+        font_path = fonts.get_bundled_font_path("xkcd Script")
         encoded = base64.b64encode(font_path.read_bytes()).decode("ascii")
         return (
             "@font-face {\n"
-            "  font-family: 'Patrick Hand';\n"
+            "  font-family: 'xkcd Script';\n"
             f"  src: url('data:font/ttf;base64,{encoded}') "
             "format('truetype');\n"
             "  font-display: swap;\n"

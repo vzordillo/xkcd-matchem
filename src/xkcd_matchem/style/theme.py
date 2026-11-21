@@ -72,7 +72,7 @@ class ThemePreset:
 PRESETS: dict[str, ThemePreset] = {
     "classic": ThemePreset(
         name="classic",
-        font="Patrick Hand",
+        font="xkcd Script",
         sketch_scale=1.0,
         sketch_length=100.0,
         sketch_randomness=2.0,
@@ -88,7 +88,7 @@ PRESETS: dict[str, ThemePreset] = {
     ),
     "notebook": ThemePreset(
         name="notebook",
-        font="Patrick Hand",
+        font="xkcd Script",
         sketch_scale=0.85,
         sketch_length=110.0,
         sketch_randomness=1.8,
@@ -104,7 +104,7 @@ PRESETS: dict[str, ThemePreset] = {
     ),
     "poster": ThemePreset(
         name="poster",
-        font="Patrick Hand",
+        font="xkcd Script",
         sketch_scale=0.8,
         sketch_length=115.0,
         sketch_randomness=1.7,
@@ -120,7 +120,7 @@ PRESETS: dict[str, ThemePreset] = {
     ),
     "minimal": ThemePreset(
         name="minimal",
-        font="Patrick Hand",
+        font="xkcd Script",
         sketch_scale=0.45,
         sketch_length=135.0,
         sketch_randomness=1.3,
@@ -136,7 +136,7 @@ PRESETS: dict[str, ThemePreset] = {
     ),
     "dark_chalk": ThemePreset(
         name="dark_chalk",
-        font="Patrick Hand",
+        font="xkcd Script",
         sketch_scale=1.05,
         sketch_length=95.0,
         sketch_randomness=2.1,
@@ -152,7 +152,7 @@ PRESETS: dict[str, ThemePreset] = {
     ),
     "blueprint": ThemePreset(
         name="blueprint",
-        font="Patrick Hand",
+        font="xkcd Script",
         sketch_scale=0.85,
         sketch_length=110.0,
         sketch_randomness=1.7,

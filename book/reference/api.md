@@ -36,7 +36,7 @@ Looking for the right function? Start here:
 
 - **Presets & themes:** `PRESETS`, `ThemePreset`, `list_presets()`, `get_preset()`, `register_preset()`, `xkcd_style()`, `build_rc_params()`, `apply_xkcd_spines()`, `style_existing_axes()`
 - **Palettes & elements:** `get_palette()`, `register_palette()`, `list_palettes()`, `get_element_color()`, `register_element_palette()`, `list_element_palettes()`
-- **Fonts:** `list_bundled_fonts()`, `get_bundled_font_path()`, `ensure_fonts_registered()`, `fetch_xkcd_script()`
+- **Fonts:** `list_bundled_fonts()`, `get_bundled_font_path()`, `ensure_fonts_registered()`, `register_font()`, `set_default_font()`, `get_default_font()`, `use_xkcd_script()`, `fetch_xkcd_script()`
 
 ```{eval-rst}
 .. automodule:: xkcd_matchem.style.theme

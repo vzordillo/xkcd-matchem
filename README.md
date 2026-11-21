@@ -3,7 +3,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/downloads/)
 [![Code License: Apache-2.0](https://img.shields.io/badge/code-Apache--2.0-green.svg)](LICENSE)
 [![Docs License: CC BY 4.0](https://img.shields.io/badge/docs-CC%20BY%204.0-lightgrey.svg)](LICENSE-DOCS)
-[![Fonts: SIL OFL 1.1](https://img.shields.io/badge/fonts-SIL%20OFL%201.1-orange.svg)](THIRD_PARTY_LICENSES.md)
+[![Default Font: xkcd Script (CC BY-NC 3.0)](https://img.shields.io/badge/font-xkcd%20Script%20(CC%20BY--NC%203.0)-orange.svg)](THIRD_PARTY_LICENSES.md)
 
 **A more fun — yet crisp and readable — xkcd-style way to view your molecules, crystals, and materials chemistry.**
 
@@ -17,7 +17,7 @@
 | 3D Coordination Polyhedra Orbit | Climbing-Image NEB Pathway | Live Theme & Palette Switching |
 | :---: | :---: | :---: |
 | ![TiO2 coordination polyhedra orbit](book/_static/gallery/crystal_orbit.gif) | ![SN2 NEB reaction animation](book/_static/gallery/neb_reaction.gif) | ![Theme and color scheme switcher](book/_static/gallery/theme_switcher.gif) |
-| *Orbiting $\text{TiO}_6$ polyhedra with depth-sorted bonds and faces* | *Animating a 9-image $\text{S}_\text{N}2$ reaction path into a looping GIF* | *Switching light, warm paper, and dark chalkboard presets on the fly* |
+| *Orbiting $\text{TiO}_6$ coordination octahedra with depth-sorted faces* | *Animating a 9-image $\text{S}_\text{N}2$ reaction path into a looping GIF* | *Switching light, warm paper, and dark chalkboard presets on the fly* |
 
 > **A quick note on scope:** `xkcd-matchem` is built for playful exploration, posters, talks, and scicomm. Because intentional xkcd line wiggle can soften fine peak shoulders or subtle curve features, standard straight-line Matplotlib plots remain the better choice for archival journal figures and quantitative peak fitting.
 
@@ -27,7 +27,7 @@
 
 ## What Makes It Fun (and Practical)
 
-- **One-line defaults that look clean right away:** Load a molecule, crystal, band structure, or trajectory and plot it immediately on an open white canvas with unified **Patrick Hand** typography (SIL OFL 1.1), split half-bonds, white specular highlights, and zero clutter.
+- **One-line defaults that look clean right away:** Load a molecule, crystal, band structure, or trajectory and plot it immediately on an open white canvas with authentic **`xkcd Script`** typography (CC BY-NC 3.0 for non-commercial/academic use; SIL OFL 1.1 alternates also bundled), seamless two-tone bonds, white specular highlights, and zero clutter.
 - **Customize every visual detail:** Swap individual atom colors with a plain Python dict (`{"Ti": "#E07A5F", "O": "#3D405B"}`), create reusable themes (`register_preset`) and color schemes (`register_palette`, `register_element_palette`), pick crystallographic camera angles (`Camera.from_preset`), or restyle your own `plt.subplots()` with `style_existing_axes()`.
 - **Spin structures offline in 3D:** Launch the browser-based **Interactive 3D Studio** (`xm.view_structure(...)` or `xkcd-matchem view ...`) directly in Jupyter or as a standalone offline HTML file — rotate, build supercells, tweak colors live, export PNG/SVG, and copy the matching Python code.
 - **Zero-dependency built-in readers:** Open 26 common chemistry and materials formats using only **NumPy, SciPy, and Matplotlib**, with optional adapters for **ASE**, **pymatgen**, **RDKit**, **cclib**, **MDAnalysis**, and **MDTraj**.
@@ -68,7 +68,7 @@ Putting together a research poster? Opt into `xm.Board`, `Container`, `Card`, `S
 
 ## Installation
 
-Install the core package (requires only Python 3.10+, NumPy, SciPy, and Matplotlib — **15 bundled sample files** and SIL OFL 1.1 fonts are included):
+Install the core package (requires only Python 3.10+, NumPy, SciPy, and Matplotlib — **15 bundled sample files**, the default `xkcd Script` font, and SIL OFL 1.1 alternates are included):
 
 ```bash
 pip install xkcd-matchem
@@ -166,21 +166,20 @@ with xm.xkcd_style("studio_chalk", palette=["#F4A261", "#81B29A"]):
     )
 ```
 
-### Use the Authentic `xkcd Script` Font (Optional, CC BY-NC 3.0)
+### Fonts & Commercial-Safe Alternates
 
-`xkcd-matchem` bundles SIL OFL 1.1 fonts (`Patrick Hand` and `Comic Neue`) so the package stays 100% Apache-2.0 / commercial-safe out of the box. For personal, academic, or non-commercial figures using the authentic IPython [`xkcd Script`](https://github.com/ipython/xkcd-font) marker font (licensed under **CC BY-NC 3.0**), activate it in one line:
+`xkcd-matchem` uses the authentic IPython [`xkcd Script`](https://github.com/ipython/xkcd-font) font (**CC BY-NC 3.0**, non-commercial/academic use) by default across every preset and the Interactive 3D Studio. Need a commercial-safe font or your own local `.ttf`? Switch globally in one line using the bundled **SIL OFL 1.1** fonts (`Patrick Hand` or `Comic Neue`):
 
 ```python
 import xkcd_matchem as xm
 
-# Option A: download & cache ~/.cache/xkcd_matchem/fonts/xkcd-script.ttf and activate globally
-xm.use_xkcd_script()
+# Switch globally to a bundled SIL OFL 1.1 font (commercial-safe)
+xm.set_default_font("Patrick Hand")  # or "Comic Neue"
 
-# Option B: load your own local xkcd-script.ttf offline
-xm.use_xkcd_script("/path/to/xkcd-script.ttf")
-
-# Or load any other local .ttf / .otf font (or reset back to Patrick Hand with None)
+# Or load any local .ttf / .otf font file
 xm.set_default_font("/path/to/MyFont.ttf")
+
+# Reset back to the bundled xkcd Script default anytime
 xm.set_default_font(None)
 ```
 
@@ -249,5 +248,5 @@ This repository was developed semi-autonomously with **Google DeepMind's Gemini*
 
 - **Code**: [Apache License, Version 2.0](LICENSE)
 - **Documentation & Tutorials**: [CC BY 4.0](LICENSE-DOCS)
-- **Bundled Fonts**: `Patrick Hand` and `Comic Neue` under the **SIL Open Font License 1.1** ([`NOTICE`](NOTICE), [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md))
+- **Bundled Fonts**: Default **`xkcd Script`** (`ipython/xkcd-font`, derived from Randall Munroe's handwriting) under **CC BY-NC 3.0** (non-commercial/academic use; see [`xkcd-script-LICENSE.txt`](src/xkcd_matchem/data/fonts/xkcd-script-LICENSE.txt)), plus commercial-safe alternates `Patrick Hand` and `Comic Neue` under the **SIL Open Font License 1.1** ([`NOTICE`](NOTICE), [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md))
 - **Scientific Reference Data**: CODATA 2022 (`Rev. Mod. Phys.` 97, 025002), IUPAC 2021 / CIAAW atomic weights, Blue Obelisk BODR covalent radii, Alvarez (2013) & Mantina et al. (2009) vdW radii, Cromer-Mann (LA-3816) + exact H 1s form factors, Okabe-Ito CUD palette, and Jmol element colors. Full citations live in [Citation & Attributions](book/reference/attributions.md).

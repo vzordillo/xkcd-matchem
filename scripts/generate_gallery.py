@@ -413,11 +413,11 @@ def _make_opt_in_poster(out_dir: pathlib.Path) -> None:
 
 
 def _export_docs_assets() -> None:
-    """Exports offline interactive studio HTML and Patrick Hand font file."""
+    """Exports offline interactive studio HTML and xkcd Script font file."""
     fonts_dir = _BOOK_STATIC / "fonts"
     fonts_dir.mkdir(parents=True, exist_ok=True)
-    ttf_src = xm.style.get_bundled_font_path("Patrick Hand")
-    shutil.copy2(ttf_src, fonts_dir / "PatrickHand-Regular.ttf")
+    ttf_src = xm.style.get_bundled_font_path("xkcd Script")
+    shutil.copy2(ttf_src, fonts_dir / "xkcd-script.ttf")
 
     xm.export_interactive_html(
         "tio2_slab.poscar",
