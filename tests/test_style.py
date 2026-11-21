@@ -110,3 +110,20 @@ def test_custom_presets_palettes_and_existing_axes() -> None:
         assert matplotlib.rcParams["figure.facecolor"] == "#F0F4F8"
         assert matplotlib.rcParams["axes.edgecolor"] == "#222222"
     plt.close(fig)
+
+    # Nested xkcd_style preserves outer font override; set_default_font works.
+    cn_path = fonts.get_bundled_font_path("Comic Neue")
+    assert fonts.register_font(cn_path) == "Comic Neue"
+    with (
+        theme.xkcd_style("classic", font="Comic Neue"),
+        theme.xkcd_style("classic"),
+    ):
+        assert matplotlib.rcParams["font.family"][0] == "Comic Neue"
+    try:
+        assert fonts.set_default_font(cn_path) == "Comic Neue"
+        assert fonts.get_default_font() == "Comic Neue"
+        with theme.xkcd_style("classic"):
+            assert matplotlib.rcParams["font.family"][0] == "Comic Neue"
+    finally:
+        assert fonts.set_default_font(None) == "Patrick Hand"
+        assert fonts.get_default_font() is None

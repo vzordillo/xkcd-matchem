@@ -169,6 +169,22 @@ PRESETS: dict[str, ThemePreset] = {
 }
 
 _CUSTOM_PRESETS: dict[str, ThemePreset] = {}
+_ACTIVE_FONT_STACK: list[str] = []
+
+
+def _resolve_active_font(
+    preset_obj: ThemePreset,
+    explicit_font: str | None = None,
+) -> str:
+    """Resolves font: explicit > active context > session default > preset."""
+    if explicit_font is not None:
+        return explicit_font
+    if _ACTIVE_FONT_STACK:
+        return _ACTIVE_FONT_STACK[-1]
+    session_font = fonts.get_default_font()
+    if session_font is not None:
+        return session_font
+    return preset_obj.font
 
 
 def register_preset(
@@ -271,7 +287,7 @@ def build_rc_params(
       Dictionary suitable for ``matplotlib.rc_context``.
     """
     theme = get_preset(preset)
-    chosen_font = font if font is not None else theme.font
+    chosen_font = _resolve_active_font(theme, font)
     bg_fig = theme.figure_facecolor if background is None else background
     bg_ax = theme.axes_facecolor if background is None else background
     ink_col = theme.ink_color if ink is None else ink
@@ -374,8 +390,14 @@ def xkcd_style(
         ink=ink,
         overrides=overrides,
     )
-    with plt.rc_context(rc):
-        yield
+    if font is not None:
+        _ACTIVE_FONT_STACK.append(font)
+    try:
+        with plt.rc_context(rc):
+            yield
+    finally:
+        if font is not None:
+            _ACTIVE_FONT_STACK.pop()
 
 
 def style_existing_axes(
@@ -396,7 +418,7 @@ def style_existing_axes(
       The updated ``Axes`` instance.
     """
     resolved = get_preset(preset)
-    font_chain = fonts.resolve_font_chain(resolved.font)
+    font_chain = fonts.resolve_font_chain(_resolve_active_font(resolved))
     ax.set_facecolor(resolved.axes_facecolor)
     ax.patch.set_sketch_params(0.0, 0.0, 0.0)
     if ax.figure is not None:

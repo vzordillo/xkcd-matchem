@@ -101,7 +101,7 @@ import xkcd_matchem as xm
 
 # Molecules, crystals, slabs, and coordination polyhedra
 xm.plot_molecule("aspirin.xyz", title="Aspirin 3D")
-xm.plot_crystal("si_diamond.cif", miller_planes=[(1, 1, 1)], title="Si (111)")
+xm.plot_crystal("si_diamond.cif", miller_planes=[(1, 1, 1)], crystal_axes="corner", title="Si (111)")
 xm.plot_slab("tio2_slab.poscar", supercell=(3, 2, 1), view="side")
 xm.plot_coordination("tio2_slab.poscar", "Ti", "O", title="TiO2 Coordination Polyhedra")
 
@@ -116,7 +116,7 @@ xm.animate_trajectory(xm.load_trajectory("sn2_neb.xyz"), "sn2_path.gif", fps=6)
 # Periodic table, materials informatics, scrolls, icons, and crystal GNN graphs
 xm.plot_periodic_table(element_property="electronegativity", missing_shade="hatch")
 xm.plot_spacegroup_distribution({225: 32, 194: 26, 62: 28, 14: 22}, mode="sunburst", shade="cycle")
-xm.plot_structure_graph("si_diamond.cif", layout="spring", background_grid="isometric")
+xm.plot_structure_graph("si_diamond.cif", layout="camera", show_cell=True)
 xm.plot_scroll_card("Lab Checklist", items=[("Step 1", "Relax cell"), ("Step 2", "Plot in xkcd")], background_grid="ruled")
 
 # Open the offline Interactive 3D Studio in Jupyter or a browser
@@ -142,14 +142,15 @@ xm.register_element_palette(
     base="pastel",
 )
 
-# 2. Override colors inline and pick a crystallographic camera angle
+# 2. Override colors inline, pick a camera angle, and decouple crystal axes from the cell box
 cam = xm.Camera.from_preset("perspective", zoom=1.15)
 ax = xm.plot_crystal(
     "mos2_2h.poscar",
     supercell=(2, 2, 1),
     camera=cam,
     palette={"Mo": "#2A9D8F", "S": "#E9C46A"},
-    show_cell="wireframe",
+    show_cell=False,
+    crystal_axes="corner",
 )
 
 # 3. Apply your theme cleanly across custom multi-panel Matplotlib figures
@@ -163,6 +164,24 @@ with xm.xkcd_style("studio_chalk", palette=["#F4A261", "#81B29A"]):
         preset="studio_chalk",
         palette="terracotta",
     )
+```
+
+### Use the Authentic `xkcd Script` Font (Optional, CC BY-NC 3.0)
+
+`xkcd-matchem` bundles SIL OFL 1.1 fonts (`Patrick Hand` and `Comic Neue`) so the package stays 100% Apache-2.0 / commercial-safe out of the box. For personal, academic, or non-commercial figures using the authentic IPython [`xkcd Script`](https://github.com/ipython/xkcd-font) marker font (licensed under **CC BY-NC 3.0**), activate it in one line:
+
+```python
+import xkcd_matchem as xm
+
+# Option A: download & cache ~/.cache/xkcd_matchem/fonts/xkcd-script.ttf and activate globally
+xm.use_xkcd_script()
+
+# Option B: load your own local xkcd-script.ttf offline
+xm.use_xkcd_script("/path/to/xkcd-script.ttf")
+
+# Or load any other local .ttf / .otf font (or reset back to Patrick Hand with None)
+xm.set_default_font("/path/to/MyFont.ttf")
+xm.set_default_font(None)
 ```
 
 ---

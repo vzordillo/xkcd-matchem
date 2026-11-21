@@ -187,6 +187,17 @@ def test_geometry_camera_and_miller_plane() -> None:
     assert sum(1 for _, _, is_back in edges if is_back) == 3
     poly = geometry.miller_plane_polygon(cell, (1, 1, 1))
     assert poly.shape == (3, 3)
+    # Exact intercepts on a=5, b=5, c=5 => x + y + z = 5.
+    assert np.allclose(np.sum(poly, axis=1), 5.0)
+    # Negative-index planes must shift origin cleanly inside [0, 1]^3.
+    poly_neg = geometry.miller_plane_polygon(cell, (1, -1, 0))
+    assert poly_neg.shape == (4, 3)
+    assert np.allclose(poly_neg[:, 0] - poly_neg[:, 1], 0.0)
+    poly_neg_tri = geometry.miller_plane_polygon(cell, (1, -1, 1))
+    assert poly_neg_tri.shape == (3, 3)
+    assert np.allclose(
+        poly_neg_tri[:, 0] - poly_neg_tri[:, 1] + poly_neg_tri[:, 2], 0.0
+    )
 
 
 def test_trajectory_rdf_unwrapped_rmsd_and_electronic_fixes() -> None:

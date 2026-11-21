@@ -479,13 +479,13 @@ def _draw_edge_axis_labels(
         )
 
 
-def _draw_origin_tripod(
+def draw_origin_tripod(
     ax: maxes.Axes,
     cell: np.ndarray,
     camera: geometry.Camera,
-    center: np.ndarray | None,
-    origin: np.ndarray | None,
-    zorder: float,
+    center: np.ndarray | None = None,
+    origin: np.ndarray | None = None,
+    zorder: float = 500.0,
 ) -> None:
     """Draws compact RGB ``a, b, c`` arrows anchored at the cell origin."""
     orig_3d = (
@@ -496,9 +496,9 @@ def _draw_origin_tripod(
     axis_tips = np.vstack(
         [
             orig_3d,
-            orig_3d + cell[0] * 0.25,
-            orig_3d + cell[1] * 0.25,
-            orig_3d + cell[2] * 0.25,
+            orig_3d + cell[0] * 0.30,
+            orig_3d + cell[1] * 0.30,
+            orig_3d + cell[2] * 0.30,
         ]
     )
     proj_ctr = (
@@ -506,34 +506,147 @@ def _draw_origin_tripod(
         if center is None
         else center
     )
-    tips_2d, _ = geometry.project_points(axis_tips, camera, center=proj_ctr)
+    tips_2d, depths = geometry.project_points(
+        axis_tips, camera, center=proj_ctr
+    )
     axis_colors = ("#D55E00", "#009E73", "#0072B2")
     axis_names = ("a", "b", "c")
-    for k in range(3):
+    ax.scatter(
+        [float(tips_2d[0][0])],
+        [float(tips_2d[0][1])],
+        s=18.0,
+        color=_resolve_ink(),
+        zorder=zorder + 0.3,
+    )
+    order = sorted(range(3), key=lambda k: float(depths[k + 1]))
+    for rank, k in enumerate(order):
         dx = float(tips_2d[k + 1][0] - tips_2d[0][0])
         dy = float(tips_2d[k + 1][1] - tips_2d[0][1])
-        if math.hypot(dx, dy) > 0.15:
+        seg_len = math.hypot(dx, dy)
+        if seg_len > 0.12:
             ax.annotate(
                 "",
                 xy=(float(tips_2d[k + 1][0]), float(tips_2d[k + 1][1])),
                 xytext=(float(tips_2d[0][0]), float(tips_2d[0][1])),
                 arrowprops={
-                    "arrowstyle": "->",
+                    "arrowstyle": "-|>,head_length=0.35,head_width=0.22",
                     "color": axis_colors[k],
-                    "lw": 1.6,
+                    "lw": 1.8,
                 },
-                zorder=zorder,
+                zorder=zorder + 0.05 * rank,
             )
+            ux, uy = dx / seg_len, dy / seg_len
+            pad_lbl = max(0.28, 0.20 * seg_len)
             ax.text(
-                float(tips_2d[k + 1][0]) + 0.08 * dx,
-                float(tips_2d[k + 1][1]) + 0.08 * dy,
+                float(tips_2d[k + 1][0]) + pad_lbl * ux,
+                float(tips_2d[k + 1][1]) + pad_lbl * uy,
                 axis_names[k],
-                fontsize=9.5,
+                fontsize=10.0,
                 color=axis_colors[k],
                 ha="center",
                 va="center",
-                zorder=zorder + 0.5,
+                zorder=zorder + 0.6,
             )
+
+
+def _crystal_axes_origin(
+    ax: maxes.Axes,
+    vecs: np.ndarray,
+    location: str,
+) -> tuple[float, float]:
+    """Computes clean non-clipping corner anchor ``(ox, oy)`` for axes triad."""
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    pad_x = 0.065 * max(x1 - x0, 1.0)
+    pad_y = 0.065 * max(y1 - y0, 1.0)
+    loc = location.strip().lower()
+    ox = (
+        x1 - pad_x - max(0.0, float(np.max(vecs[:, 0])))
+        if loc in ("bottom_right", "top_right")
+        else x0 + pad_x - min(0.0, float(np.min(vecs[:, 0])))
+    )
+    oy = (
+        y1 - pad_y - max(0.0, float(np.max(vecs[:, 1])))
+        if loc in ("top_left", "top_right")
+        else y0 + pad_y - min(0.0, float(np.min(vecs[:, 1])))
+    )
+    return ox, oy
+
+
+def draw_crystal_axes(
+    ax: maxes.Axes,
+    cell: np.ndarray,
+    camera: geometry.Camera,
+    *,
+    location: str = "bottom_left",
+    size_frac: float = 0.13,
+    colors: tuple[str, str, str] = ("#D55E00", "#009E73", "#0072B2"),
+    labels: tuple[str, str, str] = ("a", "b", "c"),
+    zorder: float = 600.0,
+) -> None:
+    """Draws a standalone crystallographic ``a, b, c`` orientation triad.
+
+    Positioned cleanly in an axes corner separate from the unit-cell box while
+    preserving exact 3D camera parallelism with the rendered crystal.
+
+    Args:
+      ax: Target Matplotlib ``Axes`` (with data limits already set).
+      cell: Lattice matrix ``(3, 3)`` whose rows are ``a, b, c`` vectors.
+      camera: Active viewing ``Camera`` instance.
+      location: Corner placement: ``"bottom_left"`` (or ``"corner"``),
+        ``"bottom_right"``, ``"top_left"``, or ``"top_right"``.
+      size_frac: Arrow length as a fraction of the smaller axis span.
+      colors: Color triple for ``(a, b, c)``.
+      labels: Label triple for ``(a, b, c)``.
+      zorder: Base z-order above the structure and unit cell.
+    """
+    cell_arr = np.asarray(cell, dtype=np.float64)
+    unit_vecs = np.array(
+        [
+            cell_arr[k] / max(float(np.linalg.norm(cell_arr[k])), 1e-12)
+            for k in range(3)
+        ],
+        dtype=np.float64,
+    )
+    basis = geometry.rotation_matrix(
+        camera.azimuth, camera.elevation, camera.roll
+    )
+    proj = unit_vecs @ basis.T
+    x_span = max(ax.get_xlim()[1] - ax.get_xlim()[0], 1.0)
+    y_span = max(ax.get_ylim()[1] - ax.get_ylim()[0], 1.0)
+    arrow_len = size_frac * min(x_span, y_span)
+    vecs = proj[:, :2] * arrow_len
+    ox, oy = _crystal_axes_origin(ax, vecs, location)
+
+    ax.scatter([ox], [oy], s=18.0, color=_resolve_ink(), zorder=zorder + 0.4)
+    for rank, k in enumerate(sorted(range(3), key=lambda i: float(proj[i, 2]))):
+        vx, vy = float(vecs[k, 0]), float(vecs[k, 1])
+        seg_len = math.hypot(vx, vy)
+        if seg_len < 1e-4:
+            continue
+        tx, ty = ox + vx, oy + vy
+        ax.annotate(
+            "",
+            xy=(tx, ty),
+            xytext=(ox, oy),
+            arrowprops={
+                "arrowstyle": "-|>,head_length=0.35,head_width=0.22",
+                "color": colors[k],
+                "lw": 1.85,
+            },
+            zorder=zorder + 0.05 * rank,
+        )
+        lbl_pad = max(0.24 * arrow_len, 0.25)
+        ax.text(
+            tx + lbl_pad * (vx / seg_len),
+            ty + lbl_pad * (vy / seg_len),
+            labels[k],
+            fontsize=10.5,
+            color=colors[k],
+            ha="center",
+            va="center",
+            zorder=zorder + 0.6,
+        )
 
 
 def draw_unit_cell_box(
@@ -599,8 +712,8 @@ def draw_unit_cell_box(
             _draw_edge_axis_labels(
                 ax, corners_2d, farthest_idx, zorder=front_zorder + 1.0
             )
-        elif axes_mode == "tripod":
-            _draw_origin_tripod(
+        elif axes_mode in ("tripod", "origin"):
+            draw_origin_tripod(
                 ax,
                 cell,
                 camera,
@@ -611,6 +724,14 @@ def draw_unit_cell_box(
     return [corners_2d[k] for k in range(8)]
 
 
+def _format_hkl_label(hkl: tuple[int, int, int]) -> str:
+    """Formats Miller indices cleanly, adding spaces when multi-char."""
+    parts = [str(int(v)) for v in hkl]
+    if all(len(p) == 1 for p in parts):
+        return f"({''.join(parts)})"
+    return f"({' '.join(parts)})"
+
+
 def draw_miller_plane(
     ax: maxes.Axes,
     cell: np.ndarray,
@@ -619,9 +740,10 @@ def draw_miller_plane(
     center: np.ndarray | None = None,
     facecolor: str = "#56B4E9",
     edgecolor: str = "#0072B2",
-    alpha: float = 0.26,
+    alpha: float = 0.30,
     show_label: bool = True,
     zorder: float = 2.5,
+    label_zorder: float | None = None,
 ) -> None:
     """Draws a translucent crystallographic ``(hkl)`` slice inside the cell."""
     poly_3d = geometry.miller_plane_polygon(cell, hkl)
@@ -634,17 +756,36 @@ def draw_miller_plane(
         closed=True,
         facecolor=facecolor,
         edgecolor=edgecolor,
-        linewidth=1.6,
+        linewidth=2.0,
         alpha=alpha,
         zorder=zorder,
     )
     ax.add_patch(patch)
+    outline = patches.Polygon(
+        poly_2d,
+        closed=True,
+        facecolor="none",
+        edgecolor=edgecolor,
+        linewidth=1.9,
+        zorder=zorder + 0.005,
+    )
+    ax.add_patch(outline)
+    ax.scatter(
+        poly_2d[:, 0],
+        poly_2d[:, 1],
+        s=18.0,
+        color=edgecolor,
+        edgecolor=palettes.PAPER,
+        linewidth=0.7,
+        zorder=zorder + 0.008,
+    )
     if show_label:
         centroid = np.mean(poly_2d, axis=0)
+        lbl_z = zorder + 0.2 if label_zorder is None else label_zorder
         ax.text(
             float(centroid[0]),
             float(centroid[1]),
-            f"({hkl[0]}{hkl[1]}{hkl[2]})",
+            _format_hkl_label(hkl),
             fontsize=9.5,
             color=edgecolor,
             ha="center",
@@ -653,7 +794,7 @@ def draw_miller_plane(
                 "boxstyle": "round,pad=0.2",
                 "facecolor": palettes.PAPER,
                 "edgecolor": edgecolor,
-                "alpha": 0.85,
+                "alpha": 0.90,
             },
-            zorder=zorder + 0.2,
+            zorder=lbl_z,
         )

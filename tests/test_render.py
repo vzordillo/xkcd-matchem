@@ -67,10 +67,31 @@ def test_render_2d_crystal_slab_and_polyhedra() -> None:
     plt.close(ax_asp_2d.figure)
 
     ax_crys = struct_plots.plot_crystal(
-        "si_diamond.cif", supercell=(1, 1, 1), miller_planes=[(1, 1, 1)]
+        "si_diamond.cif",
+        supercell=(1, 1, 1),
+        miller_planes=[(1, 1, 1)],
+        crystal_axes="corner",
     )
     assert len(ax_crys.patches) > 0
     plt.close(ax_crys.figure)
+
+    ax_axes_only = struct_plots.plot_crystal(
+        "si_diamond.cif",
+        show_cell=False,
+        crystal_axes="bottom_right",
+    )
+    assert len(ax_axes_only.texts) >= 3
+    plt.close(ax_axes_only.figure)
+
+    ax_origin = struct_plots.plot_coordination(
+        "tio2_slab.poscar",
+        "Ti",
+        "O",
+        show_cell=False,
+        crystal_axes="origin",
+    )
+    assert len(ax_origin.lines) == 0
+    plt.close(ax_origin.figure)
 
     ax_slab = struct_plots.plot_slab("tio2_slab.poscar", view="side")
     assert len(ax_slab.patches) > 0
@@ -90,6 +111,8 @@ def test_render_2d_crystal_slab_and_polyhedra() -> None:
 
     ax_poly = struct_plots.plot_coordination("tio2_slab.poscar", "Ti", "O")
     assert len(ax_poly.patches) > 0
+    # Only the 12 unit-cell edges should be drawn as Line2D (no stick bonds).
+    assert len(ax_poly.lines) == 12
     plt.close(ax_poly.figure)
 
 

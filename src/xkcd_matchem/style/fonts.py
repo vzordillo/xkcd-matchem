@@ -28,6 +28,7 @@ _FONTS_DIR = pathlib.Path(__file__).resolve().parent.parent / "data" / "fonts"
 # Track registered font files within the process to keep registration
 # idempotent across repeated xkcd_style context entries.
 _REGISTERED_FONT_PATHS: set[pathlib.Path] = set()
+_DEFAULT_FONT_STATE: list[str | None] = [None]
 
 _BUNDLED_FONT_FILES: dict[str, str] = {
     "Patrick Hand": "PatrickHand-Regular.ttf",
@@ -116,8 +117,65 @@ def resolve_font_chain(preferred: str = "Patrick Hand") -> list[str]:
     return chain
 
 
+def register_font(font_path: str | pathlib.Path) -> str:
+    """Registers a local ``.ttf`` or ``.otf`` font file with Matplotlib.
+
+    Args:
+      font_path: Path to a local TrueType or OpenType font file.
+
+    Returns:
+      Matplotlib font family name read from the font metadata.
+
+    Raises:
+      StyleError: If ``font_path`` does not point to an existing file.
+    """
+    resolved = pathlib.Path(font_path).expanduser().resolve()
+    if not resolved.is_file():
+        raise exceptions.StyleError(f"Font file not found: {resolved}")
+    if resolved not in _REGISTERED_FONT_PATHS:
+        font_manager.fontManager.addfont(str(resolved))
+        _REGISTERED_FONT_PATHS.add(resolved)
+    return str(font_manager.FontProperties(fname=str(resolved)).get_name())
+
+
+def get_default_font() -> str | None:
+    """Returns the active session-wide font override, or ``None`` if unset."""
+    return _DEFAULT_FONT_STATE[0]
+
+
+def set_default_font(font: str | pathlib.Path | None) -> str:
+    """Sets or resets the default font used across all ``xkcd-matchem`` plots.
+
+    Args:
+      font: Font family name (for example ``"xkcd Script"`` or
+        ``"Comic Neue"``), path to a local ``.ttf``/``.otf`` file to register
+        and activate, or ``None`` to reset to the bundled ``"Patrick Hand"``
+        default.
+
+    Returns:
+      The resolved active default font family name.
+    """
+    if font is None:
+        _DEFAULT_FONT_STATE[0] = None
+        return "Patrick Hand"
+    candidate = pathlib.Path(font).expanduser()
+    if isinstance(font, pathlib.Path) or (
+        candidate.suffix.lower() in (".ttf", ".otf", ".ttc")
+        and candidate.is_file()
+    ):
+        family = register_font(candidate)
+    else:
+        family = str(font).strip()
+        if not family:
+            raise exceptions.StyleError("Font name cannot be empty.")
+    _DEFAULT_FONT_STATE[0] = family
+    return family
+
+
 def fetch_xkcd_script(
     cache_dir: str | pathlib.Path | None = None,
+    *,
+    activate: bool = True,
 ) -> pathlib.Path:
     """Downloads the optional ``xkcd-script`` font into a user cache directory.
 
@@ -126,8 +184,10 @@ def fetch_xkcd_script(
     review non-commercial licensing terms before commercial publication.
 
     Args:
-      cache_dir: Optional directory for the downloaded `.ttf` file. Defaults to
-        ``~/.cache/xkcd_matchem/fonts``.
+      cache_dir: Optional directory for the downloaded ``.ttf`` file. Defaults
+        to ``~/.cache/xkcd_matchem/fonts``.
+      activate: Whether to set ``"xkcd Script"`` as the active default font for
+        all subsequent ``xkcd-matchem`` plots in this Python session.
 
     Returns:
       Path to the downloaded ``xkcd-script.ttf`` file registered in Matplotlib.
@@ -157,8 +217,32 @@ def fetch_xkcd_script(
                 "Downloaded xkcd-script payload was empty."
             )
         target_file.write_bytes(payload)
-    if target_file not in _REGISTERED_FONT_PATHS:
-        font_manager.fontManager.addfont(str(target_file))
-        _REGISTERED_FONT_PATHS.add(target_file)
+    family = register_font(target_file)
+    if activate:
+        _DEFAULT_FONT_STATE[0] = family
     print(_XKCD_SCRIPT_NOTICE % target_file)
     return target_file
+
+
+def use_xkcd_script(
+    font_path: str | pathlib.Path | None = None,
+    cache_dir: str | pathlib.Path | None = None,
+) -> str:
+    """Activates the authentic ``xkcd Script`` font for the current session.
+
+    Pass ``font_path`` to load a local ``xkcd-script.ttf`` file offline, or
+    omit it to fetch and cache ``xkcd-script.ttf`` automatically via
+    :func:`fetch_xkcd_script`.
+
+    Args:
+      font_path: Optional path to a local ``xkcd-script.ttf`` file.
+      cache_dir: Optional download cache directory when ``font_path`` is
+        omitted.
+
+    Returns:
+      The registered font family name (``"xkcd Script"``).
+    """
+    if font_path is not None:
+        return set_default_font(pathlib.Path(font_path))
+    downloaded = fetch_xkcd_script(cache_dir=cache_dir, activate=True)
+    return register_font(downloaded)

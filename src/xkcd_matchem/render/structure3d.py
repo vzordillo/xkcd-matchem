@@ -46,33 +46,81 @@ def _atom_visual_radius(symbol: str, style: str, scale: float) -> float:
     return max(0.24, min(0.58, 0.18 + 0.27 * r_cov)) * scale
 
 
-def _parse_cell_mode(
+_CORNER_AXES_LOCS = ("bottom_left", "bottom_right", "top_left", "top_right")
+
+
+def _resolve_axes_override(
+    crystal_axes: bool | str | None,
+    draw_box: bool,
+    default_axes: str,
+) -> tuple[str, str]:
+    """Resolves ``(box_axes, standalone_axes)`` from ``crystal_axes``."""
+    if crystal_axes is None:
+        return default_axes, "none"
+    if isinstance(crystal_axes, bool):
+        return "none", ("bottom_left" if crystal_axes else "none")
+    ax_key = crystal_axes.strip().lower()
+    mapping: dict[str, tuple[str, str]] = {
+        "none": ("none", "none"),
+        "off": ("none", "none"),
+        "false": ("none", "none"),
+        "corner": ("none", "bottom_left"),
+        "bottom_left": ("none", "bottom_left"),
+        "bottom_right": ("none", "bottom_right"),
+        "top_left": ("none", "top_left"),
+        "top_right": ("none", "top_right"),
+        "origin": ("none", "origin"),
+        "tripod": ("none", "origin"),
+        "edges": ("edges" if draw_box else "none", "none"),
+    }
+    if ax_key in mapping:
+        return mapping[ax_key]
+    raise exceptions.StructureError(
+        f"Unsupported crystal_axes mode {crystal_axes!r}. Use None, True, "
+        "False, 'corner', 'bottom_left', 'bottom_right', 'top_left', "
+        "'top_right', 'origin', or 'edges'."
+    )
+
+
+def _parse_cell_and_axes(
     show_cell: bool | str,
+    crystal_axes: bool | str | None,
     has_cell: bool,
-) -> tuple[bool, str | None, str]:
-    """Resolves cell mode ``(enabled, base_plane_color, axes_mode)``."""
-    if not has_cell or show_cell is False:
-        return False, None, "none"
-    if isinstance(show_cell, str):
+    has_miller: bool,
+) -> tuple[bool, str | None, str, str]:
+    """Resolves ``(draw_box, base_plane_color, box_axes, standalone_axes)``."""
+    if not has_cell:
+        return False, None, "none", "none"
+
+    draw_box = True
+    base_col: str | None = None if has_miller else palettes.VACUUM_TINT
+    default_axes = "edges"
+    if show_cell is False:
+        draw_box, base_col, default_axes = False, None, "none"
+    elif isinstance(show_cell, str):
         key = show_cell.strip().lower()
         if key in ("none", "off", "false"):
-            return False, None, "none"
-        if key == "wireframe":
-            return True, None, "edges"
-        if key == "clean":
-            return True, None, "none"
-        if key == "tripod":
-            return True, None, "tripod"
-    return True, palettes.VACUUM_TINT, "edges"
+            draw_box, base_col, default_axes = False, None, "none"
+        elif key == "wireframe":
+            draw_box, base_col, default_axes = True, None, "edges"
+        elif key == "clean":
+            draw_box, base_col, default_axes = True, None, "none"
+        elif key in ("tripod", "origin"):
+            draw_box, base_col, default_axes = True, None, "origin"
+
+    box_axes, standalone_axes = _resolve_axes_override(
+        crystal_axes, draw_box, default_axes
+    )
+    return draw_box, base_col, box_axes, standalone_axes
 
 
-def _polyhedra_pair_filter(
+def _polyhedra_skip_spec(
     style: str,
     polyhedra: tuple[str, str | None]
     | Sequence[bonding.CoordinationPolyhedron]
     | None,
-) -> tuple[str | None, str | None] | None:
-    """Returns center/ligand pair to suppress redundant inner bonds."""
+) -> tuple[set[str], set[str] | None, set[int]] | None:
+    """Returns ``(center_syms, ligand_syms, center_idxs)`` to suppress bonds."""
     if style != "polyhedra" or polyhedra is None:
         return None
     if (
@@ -80,8 +128,31 @@ def _polyhedra_pair_filter(
         and len(polyhedra) == 2
         and isinstance(polyhedra[0], str)
     ):
-        return polyhedra[0], polyhedra[1]
-    return None
+        ligs = None if polyhedra[1] is None else {polyhedra[1]}
+        return {polyhedra[0]}, ligs, set()
+    c_syms = {p.center_symbol for p in polyhedra}  # type: ignore[union-attr]
+    c_idxs = {p.center_index for p in polyhedra}  # type: ignore[union-attr]
+    return (c_syms, None, c_idxs) if c_syms else None
+
+
+def _should_skip_poly_bond(
+    i_idx: int,
+    j_idx: int,
+    atoms: structure.AtomsData,
+    skip_spec: tuple[set[str], set[str] | None, set[int]] | None,
+) -> bool:
+    """Returns ``True`` when a bond is redundant with coordination polyhedra."""
+    if skip_spec is None:
+        return False
+    c_syms, l_syms, c_idxs = skip_spec
+    if i_idx in c_idxs or j_idx in c_idxs:
+        return True
+    s_i, s_j = atoms.symbols[i_idx], atoms.symbols[j_idx]
+    if s_i in c_syms and s_j in c_syms:
+        return True
+    match_fwd = s_i in c_syms and (l_syms is None or s_j in l_syms)
+    match_rev = s_j in c_syms and (l_syms is None or s_i in l_syms)
+    return match_fwd or match_rev
 
 
 def _build_interior_bond_item(
@@ -136,7 +207,7 @@ def _add_bond_queue_items(
     xy_and_depth: tuple[np.ndarray, np.ndarray],
     colors: Sequence[str],
     radii: Sequence[float],
-    skip_pair: tuple[str | None, str | None] | None = None,
+    skip_spec: tuple[set[str], set[str] | None, set[int]] | None = None,
 ) -> None:
     """Appends unified two-tone interior bonds and periodic edge stubs."""
     xy, depth = xy_and_depth
@@ -144,13 +215,8 @@ def _add_bond_queue_items(
         i_idx, j_idx = bond.i, bond.j
         if i_idx >= len(atoms) or j_idx >= len(atoms):
             continue
-        if skip_pair is not None:
-            c_sym, l_sym = skip_pair
-            s_i, s_j = atoms.symbols[i_idx], atoms.symbols[j_idx]
-            match_fwd = s_i == c_sym and (l_sym is None or s_j == l_sym)
-            match_rev = s_j == c_sym and (l_sym is None or s_i == l_sym)
-            if match_fwd or match_rev:
-                continue
+        if _should_skip_poly_bond(i_idx, j_idx, atoms, skip_spec):
+            continue
         if bond.shift == (0, 0, 0) or atoms.cell is None:
             items.append(
                 _build_interior_bond_item(atoms, bond, xy, depth, colors, radii)
@@ -293,11 +359,22 @@ def _draw_queue_item(
             zorder=z_layer,
         )
     elif kind == "tri":
-        tri_xy, c_col = payload  # type: ignore[misc]
         primitives.draw_polyhedron_triangle(
             ax,
-            tri_xy,
-            facecolor=c_col,
+            payload[0],  # type: ignore[index]
+            facecolor=payload[1],  # type: ignore[index]
+            zorder=z_layer,
+        )
+    elif kind == "miller" and atoms.cell is not None:
+        primitives.draw_miller_plane(
+            ax,
+            atoms.cell,
+            payload[0],  # type: ignore[index]
+            payload[3],  # type: ignore[index]
+            center=payload[4],  # type: ignore[index]
+            facecolor=payload[1],  # type: ignore[index]
+            edgecolor=payload[2],  # type: ignore[index]
+            show_label=False,
             zorder=z_layer,
         )
 
@@ -317,27 +394,73 @@ def _estimate_pt_per_angstrom(
     return min(ax_w_pt / x_span, ax_h_pt / y_span)
 
 
-def _draw_miller_planes(
-    ax: maxes.Axes,
+def _miller_plane_colors(index: int) -> tuple[str, str]:
+    """Returns ``(facecolor, edgecolor)`` pair for the ``index``-th plane."""
+    fill_cycle = ("#3B82F6", "#10B981", "#F59E0B", "#EC4899", "#8B5CF6")
+    edge_cycle = ("#1D4ED8", "#047857", "#B45309", "#BE185D", "#6D28D9")
+    return fill_cycle[index % len(fill_cycle)], edge_cycle[
+        index % len(edge_cycle)
+    ]
+
+
+def _add_miller_queue_items(
+    items: list[tuple[float, str, object]],
     atoms: structure.AtomsData,
+    miller_planes: Sequence[tuple[int, int, int]] | None,
     cam: geometry.Camera,
     pivot: np.ndarray,
-    miller_planes: Sequence[tuple[int, int, int]] | None,
-) -> None:
-    """Draws translucent crystallographic Miller slices when requested."""
+) -> list[tuple[tuple[int, int, int], np.ndarray, str]]:
+    """Adds depth-sorted Miller slices to queue and returns label positions."""
+    labels_meta: list[tuple[tuple[int, int, int], np.ndarray, str]] = []
     if not miller_planes or atoms.cell is None:
-        return
-    plane_palette = palettes.get_palette("okabe_ito")
+        return labels_meta
     for idx_m, hkl in enumerate(miller_planes):
-        col = plane_palette[(idx_m + 2) % len(plane_palette)]
-        primitives.draw_miller_plane(
-            ax,
-            atoms.cell,
-            hkl,
-            cam,
-            center=pivot,
-            facecolor=col,
-            edgecolor=col,
+        poly_3d = geometry.miller_plane_polygon(atoms.cell, hkl)
+        if poly_3d.shape[0] < 3:
+            continue
+        poly_2d, poly_depth = geometry.project_points(
+            poly_3d, cam, center=pivot
+        )
+        face_col, edge_col = _miller_plane_colors(idx_m)
+        items.append(
+            (
+                float(np.mean(poly_depth)) - 0.01,
+                "miller",
+                (hkl, face_col, edge_col, cam, pivot),
+            )
+        )
+        labels_meta.append((hkl, np.mean(poly_2d, axis=0), edge_col))
+    return labels_meta
+
+
+def _draw_miller_labels(
+    ax: maxes.Axes,
+    labels_meta: Sequence[tuple[tuple[int, int, int], np.ndarray, str]],
+    zorder: float,
+) -> None:
+    """Places crisp ``(hkl)`` badges above the rendered crystal."""
+    for hkl, centroid, edge_col in labels_meta:
+        parts = [str(int(v)) for v in hkl]
+        tag = (
+            f"({''.join(parts)})"
+            if all(len(p) == 1 for p in parts)
+            else f"({' '.join(parts)})"
+        )
+        ax.text(
+            float(centroid[0]),
+            float(centroid[1]),
+            tag,
+            fontsize=9.5,
+            color=edge_col,
+            ha="center",
+            va="center",
+            bbox={
+                "boxstyle": "round,pad=0.22",
+                "facecolor": palettes.PAPER,
+                "edgecolor": edge_col,
+                "alpha": 0.92,
+            },
+            zorder=zorder,
         )
 
 
@@ -347,7 +470,7 @@ def _prepare_scene_geometry(
     cam: geometry.Camera,
     style: str,
     palette: str | Mapping[str, str],
-    show_cell: bool | str,
+    cell_cfg: tuple[bool, str | None, str, str],
     radius_scale: float,
     pad: float,
 ) -> tuple[
@@ -358,7 +481,7 @@ def _prepare_scene_geometry(
     list[str],
     list[float],
     float,
-    tuple[bool, str | None, str],
+    tuple[bool, str | None, str, str],
     tuple[float, float, float, float],
 ]:
     """Computes projected points, colors, radii, cell mode, and widths."""
@@ -377,7 +500,6 @@ def _prepare_scene_geometry(
     margin = max(radii, default=0.4) + pad
 
     bounds_pts: list[np.ndarray] = [xy]
-    cell_cfg = _parse_cell_mode(show_cell, atoms.cell is not None)
     if cell_cfg[0] and atoms.cell is not None:
         corners_2d, _, _ = geometry.cell_corners_projected(
             atoms.cell, cam, center=pivot
@@ -416,7 +538,7 @@ def render_structure_3d(
     palette: str | Mapping[str, str] = "xkcd",
     show_cell: bool | str = True,
     show_labels: bool = False,
-    show_bonds: bool = True,
+    show_bonds: bool | None = None,
     radius_scale: float = 1.0,
     bond_scale: float = 1.20,
     polyhedra: tuple[str, str | None]
@@ -424,6 +546,8 @@ def render_structure_3d(
     | None = None,
     miller_planes: Sequence[tuple[int, int, int]] | None = None,
     pad: float = 0.85,
+    *,
+    crystal_axes: bool | str | None = None,
 ) -> maxes.Axes:
     """Renders a 3D molecule or crystal in clean xkcd-style depth-sorted view.
 
@@ -436,10 +560,20 @@ def render_structure_3d(
         ``"stick"``, or ``"polyhedra"``.
       palette: Built-in or registered element scheme name, or inline
         ``{symbol: color}`` mapping overriding defaults.
-      show_cell: Cell display mode: ``True`` (base plane + edges + ``a,b,c``),
+      show_cell: Cell box display mode: ``True`` (base plane + edges),
         ``"wireframe"``, ``"clean"``, ``"tripod"``, or ``False``.
+      crystal_axes: Independent crystallographic ``a, b, c`` axes option:
+        ``None`` (follow ``show_cell``), ``True`` / ``"corner"`` /
+        ``"bottom_left"`` / ``"bottom_right"`` / ``"top_left"`` /
+        ``"top_right"`` (standalone VESTA-style triad separate from the cell
+        box), ``"origin"`` (RGB tripod at cell origin), ``"edges"`` (box edge
+        labels), or ``False`` / ``"none"`` (hidden).
       show_labels: Whether to print element symbols inside atom spheres.
-      show_bonds: Whether to draw bonds (ignored in ``"spacefill"`` mode).
+      show_bonds: Whether to draw stick bonds. Defaults to ``None``, which
+        draws bonds for ``"ball_and_stick"`` and ``"stick"`` while keeping
+        ``"spacefill"`` and ``"polyhedra"`` views free of bond sticks. Pass
+        ``True`` explicitly to overlay non-polyhedral bonds (for example
+        organic linkers alongside coordination polyhedra).
       radius_scale: Global multiplier for atom sphere radii.
       bond_scale: Covalent-radius factor used when inferring missing bonds.
       polyhedra: ``(center_symbol, ligand_symbol)`` pair or sequence of
@@ -451,7 +585,7 @@ def render_structure_3d(
       Matplotlib ``Axes`` containing the rendered structure.
 
     Raises:
-      StructureError: If ``style`` or ``camera`` preset is unsupported.
+      StructureError: If ``style``, ``crystal_axes``, or ``camera`` is invalid.
     """
     if style not in _VALID_STYLES:
         raise exceptions.StructureError(
@@ -464,10 +598,18 @@ def render_structure_3d(
         return ax
 
     cam = geometry.resolve_camera(camera, cell=atoms.cell)
-    scene = _prepare_scene_geometry(
-        atoms, ax, cam, style, palette, show_cell, radius_scale, pad
+    cell_cfg = _parse_cell_and_axes(
+        show_cell, crystal_axes, atoms.cell is not None, bool(miller_planes)
     )
-    opts = (style, palette, show_labels, show_bonds, bond_scale)
+    scene = _prepare_scene_geometry(
+        atoms, ax, cam, style, palette, cell_cfg, radius_scale, pad
+    )
+    draw_bonds = (
+        style not in ("spacefill", "polyhedra")
+        if show_bonds is None
+        else show_bonds
+    )
+    opts = (style, palette, show_labels, draw_bonds, bond_scale)
     _render_prepared_3d(ax, atoms, cam, scene, opts, polyhedra, miller_planes)
     return ax
 
@@ -484,8 +626,12 @@ def _build_3d_painter_queue(
     polyhedra: tuple[str, str | None]
     | Sequence[bonding.CoordinationPolyhedron]
     | None,
-) -> list[tuple[float, str, object]]:
-    """Assembles and depth-sorts atoms, unified bonds, and polyhedra faces."""
+    miller_planes: Sequence[tuple[int, int, int]] | None,
+) -> tuple[
+    list[tuple[float, str, object]],
+    list[tuple[tuple[int, int, int], np.ndarray, str]],
+]:
+    """Assembles and depth-sorts atoms, bonds, polyhedra, and Miller slices."""
     style, palette, _, show_bonds, bond_scale = opts
     items: list[tuple[float, str, object]] = [
         (float(depth[idx]), "atom", idx) for idx in range(len(atoms))
@@ -505,11 +651,58 @@ def _build_3d_painter_queue(
             (xy, depth),
             colors,
             radii,
-            skip_pair=_polyhedra_pair_filter(style, polyhedra),
+            skip_spec=_polyhedra_skip_spec(style, polyhedra),
         )
     _add_polyhedra_items(items, atoms, polyhedra, cam, pivot, palette)
+    miller_labels = _add_miller_queue_items(
+        items, atoms, miller_planes, cam, pivot
+    )
     items.sort(key=lambda entry: entry[0])
-    return items
+    return items, miller_labels
+
+
+def _finalize_3d_viewport(
+    ax: maxes.Axes,
+    atoms: structure.AtomsData,
+    cam: geometry.Camera,
+    pivot: np.ndarray,
+    all_pts: np.ndarray,
+    margin: float,
+    standalone_axes: str,
+    front_z: float,
+) -> None:
+    """Applies viewport bounds and draws standalone crystal axes when active."""
+    x_lo = float(np.min(all_pts[:, 0])) - margin
+    x_hi = float(np.max(all_pts[:, 0])) + margin
+    y_lo = float(np.min(all_pts[:, 1])) - margin
+    y_hi = float(np.max(all_pts[:, 1])) + margin
+    x_span = max(x_hi - x_lo, 2.0)
+    if standalone_axes in ("bottom_left", "top_left"):
+        x_lo -= 0.28 * x_span
+    elif standalone_axes in ("bottom_right", "top_right"):
+        x_hi += 0.28 * x_span
+    ax.set_xlim(x_lo, x_hi)
+    ax.set_ylim(y_lo, y_hi)
+    ax.set_aspect("equal")
+    ax.set_axis_off()
+
+    if atoms.cell is not None:
+        if standalone_axes in _CORNER_AXES_LOCS:
+            primitives.draw_crystal_axes(
+                ax,
+                atoms.cell,
+                cam,
+                location=standalone_axes,
+                zorder=front_z + 2.5,
+            )
+        elif standalone_axes == "origin":
+            primitives.draw_origin_tripod(
+                ax,
+                atoms.cell,
+                cam,
+                center=pivot,
+                zorder=front_z + 2.5,
+            )
 
 
 def _render_prepared_3d(
@@ -524,7 +717,7 @@ def _render_prepared_3d(
         list[str],
         list[float],
         float,
-        tuple[bool, str | None, str],
+        tuple[bool, str | None, str, str],
         tuple[float, float, float, float],
     ],
     opts: tuple[str, str | Mapping[str, str], bool, bool, float],
@@ -536,8 +729,9 @@ def _render_prepared_3d(
     """Executes cell backdrop, depth-sorted painter pass, and front cell."""
     pivot, xy, depth, all_pts, colors = scene[:5]
     radii, margin, cell_cfg, widths = scene[5:]
+    draw_box, base_col, box_axes, standalone_axes = cell_cfg
 
-    if cell_cfg[0] and atoms.cell is not None:
+    if draw_box and atoms.cell is not None:
         primitives.draw_unit_cell_box(
             ax,
             atoms.cell,
@@ -546,12 +740,21 @@ def _render_prepared_3d(
             linewidth=widths[3],
             draw_back=True,
             draw_front=False,
-            base_plane_color=cell_cfg[1],
-            cell_axes=cell_cfg[2],
+            base_plane_color=base_col,
+            cell_axes=box_axes,
         )
 
-    items = _build_3d_painter_queue(
-        atoms, cam, pivot, xy, depth, colors, radii, opts, polyhedra
+    items, miller_labels = _build_3d_painter_queue(
+        atoms,
+        cam,
+        pivot,
+        xy,
+        depth,
+        colors,
+        radii,
+        opts,
+        polyhedra,
+        miller_planes,
     )
     state = (
         atoms,
@@ -567,8 +770,8 @@ def _render_prepared_3d(
     for rank, (_, kind, payload) in enumerate(items):
         _draw_queue_item(ax, kind, payload, 2.0 + 0.02 * rank, state)
 
-    _draw_miller_planes(ax, atoms, cam, pivot, miller_planes)
-    if cell_cfg[0] and atoms.cell is not None:
+    front_z = 2.0 + 0.02 * (len(items) + 4)
+    if draw_box and atoms.cell is not None:
         primitives.draw_unit_cell_box(
             ax,
             atoms.cell,
@@ -578,17 +781,11 @@ def _render_prepared_3d(
             draw_back=False,
             draw_front=True,
             base_plane_color=None,
-            cell_axes=cell_cfg[2],
-            front_zorder=2.0 + 0.02 * (len(items) + 4),
+            cell_axes=box_axes,
+            front_zorder=front_z,
         )
-
-    ax.set_xlim(
-        float(np.min(all_pts[:, 0])) - margin,
-        float(np.max(all_pts[:, 0])) + margin,
+    if miller_labels:
+        _draw_miller_labels(ax, miller_labels, zorder=front_z + 1.5)
+    _finalize_3d_viewport(
+        ax, atoms, cam, pivot, all_pts, margin, standalone_axes, front_z
     )
-    ax.set_ylim(
-        float(np.min(all_pts[:, 1])) - margin,
-        float(np.max(all_pts[:, 1])) + margin,
-    )
-    ax.set_aspect("equal")
-    ax.set_axis_off()

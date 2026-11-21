@@ -30,6 +30,7 @@ __all__ = [
     "build_interactive_html",
     "draw_atom_sphere",
     "draw_callout",
+    "draw_crystal_axes",
     "draw_curved_arrow",
     "draw_element_badge",
     "draw_element_legend",
@@ -53,6 +54,7 @@ annotate_distance = callouts.annotate_distance
 build_interactive_html = interactive.build_interactive_html
 draw_atom_sphere = primitives.draw_atom_sphere
 draw_callout = callouts.draw_callout
+draw_crystal_axes = primitives.draw_crystal_axes
 draw_curved_arrow = callouts.draw_curved_arrow
 draw_element_badge = icons.draw_element_badge
 draw_element_legend = callouts.draw_element_legend

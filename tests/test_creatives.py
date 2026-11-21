@@ -177,14 +177,16 @@ def test_icons_and_graph_networks() -> None:
         plt.close(fig)
 
     ax_net = xm.plot_graph_network(
-        ["Ti", "O", "C"],
-        [(0, 1, "1.95A"), (1, 2, "1.22A")],
+        ["TiO2", "Li4Ti5O12", "BaTiO3"],
+        [(0, 1, "800 C"), (0, 2, "950 C")],
+        node_shape="pill",
         directed=True,
-        background_grid="dotgrid",
     )
-    assert len(ax_net.patches) >= 3
+    assert len(ax_net.texts) >= 3
     plt.close(ax_net.figure)
 
-    ax_sg = xm.plot_structure_graph("mos2_2h.poscar")
-    assert len(ax_sg.patches) >= 3
+    ax_sg = xm.plot_structure_graph(
+        "si_diamond.cif", layout="camera", show_cell=True
+    )
+    assert len(ax_sg.patches) >= 8
     plt.close(ax_sg.figure)

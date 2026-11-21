@@ -518,8 +518,10 @@ def miller_plane_polygon(
 ) -> np.ndarray:
     """Intersects a crystallographic ``(hkl)`` plane with the unit-cell box.
 
-    Uses the normalized positive-intercept plane inside ``[0, 1]^3`` fractional
-    coordinates so negative indices shift cleanly inside the unit box.
+    Uses the standard crystallographic origin-shift rule inside ``[0, 1]^3``
+    fractional coordinates: negative indices shift the origin to the opposite
+    cell corner (``o_i = 1`` where ``m_i < 0``), yielding the exact first
+    lattice plane ``h*x + k*y + l*z = sum(min(0, m_i)) + 1``.
 
     Args:
       cell: Lattice matrix ``(3, 3)`` with rows as lattice vectors.
@@ -532,11 +534,8 @@ def miller_plane_polygon(
     if h == 0 and k == 0 and l_idx == 0:
         return np.zeros((0, 3), dtype=np.float64)
     normal_frac = np.array([float(h), float(k), float(l_idx)], dtype=np.float64)
-    shift = sum(-val for val in normal_frac if val < 0.0)
-    if h + k + l_idx <= 0 and shift == 0.0:
-        rhs = 0.5
-    else:
-        rhs = max(1.0, shift + 0.5) if shift > 0.0 else 1.0
+    v_min = sum(min(0.0, float(val)) for val in (h, k, l_idx))
+    rhs = v_min + 1.0
     pts_frac = _intersect_box_plane(normal_frac, rhs)
     unique: list[np.ndarray] = []
     for pt in pts_frac:

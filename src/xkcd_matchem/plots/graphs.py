@@ -22,12 +22,14 @@ import pathlib
 
 from matplotlib import axes as maxes
 from matplotlib import colors as mcolors
+from matplotlib import lines as mlines
 from matplotlib import patches
 from matplotlib import pyplot as plt
 import numpy as np
 
 from xkcd_matchem.core import bonding
 from xkcd_matchem.core import exceptions
+from xkcd_matchem.core import geometry
 from xkcd_matchem.core import structure
 from xkcd_matchem.data import elements
 from xkcd_matchem.io import loader
@@ -125,6 +127,7 @@ def _draw_graph_edge(
     linewidth: float,
     label: str | None,
     bg_color: str,
+    shrink_pt: float = 14.0,
 ) -> None:
     """Draws a straight or curved xkcd graph edge with optional label."""
     ls = "--" if dashed else "-"
@@ -140,8 +143,8 @@ def _draw_graph_edge(
                 "color": color,
                 "lw": linewidth,
                 "linestyle": ls,
-                "shrinkA": 15,
-                "shrinkB": 15,
+                "shrinkA": shrink_pt,
+                "shrinkB": shrink_pt,
             },
             zorder=2.0,
         )
@@ -160,82 +163,23 @@ def _draw_graph_edge(
         perp = np.array([-vec[1], vec[0]], dtype=np.float64)
         p_norm = float(np.linalg.norm(perp))
         if p_norm > 1e-6 and abs(rad) > 1e-4:
-            mid = mid + (perp / p_norm) * (0.26 * rad * p_norm)
+            mid = mid + (perp / p_norm) * (0.24 * rad * p_norm)
         ax.text(
             float(mid[0]),
             float(mid[1]),
             label,
             ha="center",
             va="center",
-            fontsize=8.0,
+            fontsize=8.2,
             color=color,
             bbox={
-                "boxstyle": "round,pad=0.14",
+                "boxstyle": "round,pad=0.16",
                 "facecolor": bg_color,
                 "edgecolor": "none",
-                "alpha": 0.88,
+                "alpha": 0.90,
             },
             zorder=4.5,
         )
-
-
-def _draw_graph_nodes(
-    ax: maxes.Axes,
-    nodes: Sequence[str],
-    xy: np.ndarray,
-    node_colors: Sequence[str] | Mapping[int, str] | None,
-    series: Sequence[str],
-    ink_col: str,
-) -> float:
-    """Draws shaded xkcd network nodes and returns the base node radius."""
-    n_nodes = len(nodes)
-    base_r = max(0.085, min(0.145, 0.52 / max(math.sqrt(n_nodes), 2.8)))
-    for idx, raw_lbl in enumerate(nodes):
-        if isinstance(node_colors, Mapping) and idx in node_colors:
-            col = str(node_colors[idx])
-        elif isinstance(node_colors, Sequence) and not isinstance(
-            node_colors, str
-        ):
-            col = str(node_colors[idx % len(node_colors)])
-        elif raw_lbl in elements.ELEMENTS_BY_SYMBOL:
-            col = palettes.get_element_color(raw_lbl, scheme="xkcd")
-        else:
-            col = series[(idx + 1) % len(series)]
-        ax.add_patch(
-            patches.Circle(
-                (float(xy[idx, 0]), float(xy[idx, 1])),
-                radius=base_r,
-                facecolor=col,
-                edgecolor=ink_col,
-                linewidth=1.8,
-                zorder=5.0,
-            )
-        )
-        ax.add_patch(
-            patches.Circle(
-                (
-                    float(xy[idx, 0]) - 0.28 * base_r,
-                    float(xy[idx, 1]) + 0.28 * base_r,
-                ),
-                radius=0.18 * base_r,
-                facecolor="#FFFFFF",
-                edgecolor="none",
-                alpha=0.72,
-                zorder=5.2,
-            )
-        )
-        txt_col = primitives.contrast_text_color(mcolors.to_hex(col))
-        ax.text(
-            float(xy[idx, 0]),
-            float(xy[idx, 1]),
-            str(raw_lbl),
-            ha="center",
-            va="center",
-            fontsize=max(7.5, min(10.0, 62.0 * base_r)),
-            color=txt_col,
-            zorder=6.0,
-        )
-    return base_r
 
 
 def _draw_all_graph_edges(
@@ -244,10 +188,10 @@ def _draw_all_graph_edges(
     norm_edges: Sequence[tuple[int, int, str | None]],
     xy: np.ndarray,
     dashed_set: set[tuple[int, int]],
-    style_cfg: tuple[bool, bool, str, str],
+    style_cfg: tuple[bool, bool, str, str, float],
 ) -> None:
     """Draws all network edges with automatic multi-edge arc separation."""
-    directed, curved, ink_col, bg_color = style_cfg
+    directed, curved, ink_col, bg_color, shrink_pt = style_cfg
     pair_seen: dict[tuple[int, int], int] = {}
     for u, v, lbl in norm_edges:
         if u >= n_nodes or v >= n_nodes:
@@ -268,11 +212,101 @@ def _draw_all_graph_edges(
             directed=directed,
             dashed=is_dash,
             rad=rad,
-            color="#2A9D8F" if is_dash else ink_col,
-            linewidth=1.6 if is_dash else 2.0,
+            color="#0072B2" if is_dash else ink_col,
+            linewidth=1.5 if is_dash else 2.0,
             label=lbl,
             bg_color=bg_color,
+            shrink_pt=shrink_pt,
         )
+
+
+def _resolve_node_color(
+    idx: int,
+    raw_lbl: str,
+    node_colors: Sequence[str] | Mapping[int, str] | None,
+    series: Sequence[str],
+) -> str:
+    """Selects explicit, element-matched, or palette-cycled fill color."""
+    if isinstance(node_colors, Mapping) and idx in node_colors:
+        return str(node_colors[idx])
+    if isinstance(node_colors, Sequence) and not isinstance(node_colors, str):
+        return str(node_colors[idx % len(node_colors)])
+    if raw_lbl in elements.ELEMENTS_BY_SYMBOL:
+        return palettes.get_element_color(raw_lbl, scheme="xkcd")
+    return series[(idx + 1) % len(series)]
+
+
+def _draw_graph_nodes(
+    ax: maxes.Axes,
+    nodes: Sequence[str],
+    xy: np.ndarray,
+    node_colors: Sequence[str] | Mapping[int, str] | None,
+    series: Sequence[str],
+    ink_col: str,
+    node_shape: str = "circle",
+) -> float:
+    """Draws shaded xkcd circular or rounded-pill network nodes."""
+    n_nodes = len(nodes)
+    span_x = float(np.ptp(xy[:, 0])) if n_nodes > 1 else 2.0
+    span_y = float(np.ptp(xy[:, 1])) if n_nodes > 1 else 2.0
+    scale = max(0.5 * max(span_x, span_y), 0.8)
+    base_r = max(0.085, min(0.14, 0.48 / max(math.sqrt(n_nodes), 2.8))) * scale
+    use_pill = node_shape.strip().lower() == "pill"
+
+    for idx, raw_lbl in enumerate(nodes):
+        col = _resolve_node_color(idx, str(raw_lbl), node_colors, series)
+        cx, cy = float(xy[idx, 0]), float(xy[idx, 1])
+        if use_pill:
+            fill = primitives.lighten_hex(col, 0.62)
+            ax.text(
+                cx,
+                cy,
+                str(raw_lbl),
+                ha="center",
+                va="center",
+                fontsize=9.5,
+                color=ink_col,
+                bbox={
+                    "boxstyle": "round,pad=0.45",
+                    "facecolor": fill,
+                    "edgecolor": ink_col,
+                    "linewidth": 1.6,
+                },
+                zorder=6.0,
+            )
+            continue
+        ax.add_patch(
+            patches.Circle(
+                (cx, cy),
+                radius=base_r,
+                facecolor=col,
+                edgecolor=ink_col,
+                linewidth=1.7,
+                zorder=5.0,
+            )
+        )
+        ax.add_patch(
+            patches.Circle(
+                (cx - 0.28 * base_r, cy + 0.28 * base_r),
+                radius=0.18 * base_r,
+                facecolor="#FFFFFF",
+                edgecolor="none",
+                alpha=0.72,
+                zorder=5.2,
+            )
+        )
+        txt_col = primitives.contrast_text_color(mcolors.to_hex(col))
+        ax.text(
+            cx,
+            cy,
+            str(raw_lbl),
+            ha="center",
+            va="center",
+            fontsize=max(7.8, min(9.8, 9.2)),
+            color=txt_col,
+            zorder=6.0,
+        )
+    return base_r
 
 
 def plot_graph_network(
@@ -281,10 +315,10 @@ def plot_graph_network(
     *,
     pos: np.ndarray | Sequence[tuple[float, float]] | None = None,
     layout: str = "spring",
+    node_shape: str = "circle",
     node_colors: Sequence[str] | Mapping[int, str] | None = None,
     dashed_edges: Sequence[tuple[int, int]] | None = None,
     directed: bool = False,
-    curved: bool = False,
     background_grid: str | None = None,
     palette: str | Sequence[str] = "okabe_ito",
     preset: str | theme.ThemePreset = "classic",
@@ -293,22 +327,21 @@ def plot_graph_network(
 ) -> maxes.Axes:
     """Plots a clean xkcd-style graph network for materials/chem informatics.
 
-    Automatically styles node fills using element colors whenever node labels
-    match a valid element symbol (or cycles ``palette`` otherwise).
+    Use ``node_shape="circle"`` for atom/element symbols or ``"pill"`` for
+    synthesis pathways, polymorph maps, and chemical-space networks.
 
     Args:
-      nodes: Sequence of node labels (e.g. ``["LiFePO4", "FePO4", ...]`` or
-        ``["Ti0", "O1", ...]``).
+      nodes: Sequence of node labels (e.g. ``["Anatase TiO2", "Rutile TiO2"]``
+        or ``["Ti0", "O1", ...]``).
       edges: Sequence of ``(u, v)`` or ``(u, v, label)`` index tuples.
       pos: Optional explicit ``(N, 2)`` coordinates.
       layout: Layout mode when ``pos`` is ``None``: ``"spring"``,
         ``"circular"``, or ``"grid"``.
+      node_shape: ``"circle"`` (shaded spheres) or ``"pill"`` (rounded boxes).
       node_colors: Optional per-node hex color list or ``{idx: color}``.
-      dashed_edges: Optional edge pairs rendered as dashed arcs (e.g. periodic
-        images or secondary interactions).
-      directed: Whether to draw arrowheads along edges.
-      curved: Whether to curve all edges slightly for comic flair.
-      background_grid: Optional background grid (``"dots"``, ``"grid"``, etc.).
+      dashed_edges: Optional edge pairs rendered as dashed arcs.
+      directed: Whether to draw directional arrowheads along edges.
+      background_grid: Optional background grid (default ``None`` for clean bg).
       palette: Series palette name or sequence of colors.
       preset: Visual theme preset name or ``ThemePreset``.
       ax: Optional target Matplotlib ``Axes``.
@@ -332,10 +365,11 @@ def plot_graph_network(
         (min(int(a), int(b)), max(int(a), int(b)))
         for a, b in (dashed_edges or ())
     }
+    shrink_pt = 26.0 if node_shape.strip().lower() == "pill" else 14.0
 
     with theme.xkcd_style(preset=preset):
         if ax is None:
-            _, ax = plt.subplots(figsize=(6.4, 5.2))
+            _, ax = plt.subplots(figsize=(6.4, 5.0))
         else:
             theme.style_existing_axes(ax, preset=preset)
         if background_grid:
@@ -346,16 +380,25 @@ def plot_graph_network(
             norm_edges,
             xy,
             dashed_set,
-            (directed, curved, ink_col, preset_obj.axes_facecolor),
+            (directed, False, ink_col, preset_obj.axes_facecolor, shrink_pt),
         )
-        base_r = _draw_graph_nodes(ax, nodes, xy, node_colors, series, ink_col)
+        base_r = _draw_graph_nodes(
+            ax, nodes, xy, node_colors, series, ink_col, node_shape=node_shape
+        )
         if n_nodes > 0:
-            pad = base_r * 2.2 + 0.18
+            pad_x = (
+                base_r * 3.4 + 0.35
+                if node_shape.strip().lower() == "pill"
+                else base_r * 2.2 + 0.25
+            )
+            pad_y = base_r * 2.4 + 0.25
             ax.set_xlim(
-                float(np.min(xy[:, 0])) - pad, float(np.max(xy[:, 0])) + pad
+                float(np.min(xy[:, 0])) - pad_x,
+                float(np.max(xy[:, 0])) + pad_x,
             )
             ax.set_ylim(
-                float(np.min(xy[:, 1])) - pad, float(np.max(xy[:, 1])) + pad
+                float(np.min(xy[:, 1])) - pad_y,
+                float(np.max(xy[:, 1])) + pad_y,
             )
         ax.set_aspect("equal")
         ax.set_axis_off()
@@ -369,59 +412,89 @@ def _extract_structure_edges(
     show_distances: bool,
     show_periodic_edges: bool,
 ) -> tuple[list[tuple[int, int, str]], list[tuple[int, int]]]:
-    """Builds labeled solid and periodic dashed edges from an ``AtomsData``."""
+    """Builds solid bond and dashed periodic-image edges from ``AtomsData``."""
     bonds = list(atoms.bonds) or bonding.infer_bonds(atoms)
     edge_items: list[tuple[int, int, str]] = []
     dashed: list[tuple[int, int]] = []
-    seen_pbc: dict[tuple[int, int], int] = {}
+    seen_pbc: set[tuple[int, int]] = set()
     for b in bonds:
         is_pbc = b.shift != (0, 0, 0)
         if is_pbc and not show_periodic_edges:
             continue
         if is_pbc and atoms.cell is not None:
             pair = (min(b.i, b.j), max(b.i, b.j))
-            seen_pbc[pair] = seen_pbc.get(pair, 0) + 1
-            if seen_pbc[pair] > 1:
+            if pair in seen_pbc:
                 continue
+            seen_pbc.add(pair)
             dashed.append((b.i, b.j))
-            edge_items.append((b.i, b.j, "pbc"))
+            edge_items.append((b.i, b.j, ""))
             continue
-        dist = float(
-            np.linalg.norm(atoms.positions[b.j] - atoms.positions[b.i])
-        )
         lbl = ""
         if show_distances:
+            dist = float(
+                np.linalg.norm(atoms.positions[b.j] - atoms.positions[b.i])
+            )
             order_tag = "=" if abs(b.order - 2.0) < 0.25 else ""
             lbl = f"{order_tag}{dist:.2f}A"
         edge_items.append((b.i, b.j, lbl))
     return edge_items, dashed
 
 
+def _compute_structure_graph_coords(
+    atoms: structure.AtomsData,
+    layout: str,
+    camera: geometry.Camera | str | None,
+) -> tuple[np.ndarray | None, geometry.Camera, np.ndarray]:
+    """Computes camera-projected or PCA 2D coordinates for a structure graph."""
+    cam = geometry.resolve_camera(camera, cell=atoms.cell)
+    pivot = (
+        0.5 * (atoms.cell[0] + atoms.cell[1] + atoms.cell[2])
+        if atoms.cell is not None
+        else np.mean(atoms.positions, axis=0)
+    )
+    key = layout.strip().lower()
+    if key == "camera" and len(atoms) >= 1:
+        xy, _ = geometry.project_points(atoms.positions, cam, center=pivot)
+        return xy, cam, pivot
+    if key == "pca" and len(atoms) >= 2:
+        centered = atoms.positions - np.mean(atoms.positions, axis=0)
+        _, _, vt = np.linalg.svd(centered, full_matrices=False)
+        return centered @ vt[:2].T, cam, pivot
+    return None, cam, pivot
+
+
 def plot_structure_graph(
     source: structure.AtomsData | str | pathlib.Path,
     *,
-    show_distances: bool = True,
+    layout: str = "camera",
+    camera: geometry.Camera | str | None = None,
+    show_cell: bool = True,
+    show_distances: bool = False,
     show_periodic_edges: bool = True,
-    layout: str = "pca",
-    background_grid: str | None = "dotgrid",
+    background_grid: str | None = None,
     palette: str | Mapping[str, str] = "xkcd",
     preset: str | theme.ThemePreset = "classic",
     ax: maxes.Axes | None = None,
     title: str | None = None,
 ) -> maxes.Axes:
-    """Renders a crystal or molecule as an xkcd GNN graph (atoms + bonds).
+    """Renders a crystal or molecule as an intuitive xkcd GNN structure graph.
 
-    Ideal for illustrating Crystal Graph Convolutional Networks (CGCNN, MEGNet,
-    MACE) and molecular message-passing graphs: intra-cell bonds draw as solid
-    edges and periodic image bonds draw as curved dashed arcs.
+    By default (``layout="camera"``), projects atoms using the exact same 3D
+    camera as ``plot_crystal`` / ``plot_molecule`` with a faint unit-cell box
+    guide (``show_cell=True``) so every node stays in its recognizable real
+    crystal position. Solid ink edges mark intra-cell bonds and curved blue
+    dashed arcs mark periodic boundary-image edges.
 
     Args:
       source: ``AtomsData``, file path, or bundled sample filename.
-      show_distances: Whether to label edges with bond lengths in Angstrom.
-      show_periodic_edges: Whether to include periodic-boundary image edges.
-      layout: ``"pca"`` (2D PCA of real atomic coordinates), ``"spring"``, or
+      layout: ``"camera"`` (true 3D crystal view), ``"pca"``, ``"spring"``, or
         ``"circular"``.
-      background_grid: Optional background grid (default ``"dotgrid"``).
+      camera: ``Camera`` instance or preset string when ``layout="camera"``.
+      show_cell: Whether to draw a subtle unit-cell wireframe when periodic and
+        ``layout="camera"``.
+      show_distances: Whether to annotate intra-cell bond lengths in Angstrom.
+      show_periodic_edges: Whether to include periodic-boundary image arcs.
+      background_grid: Optional background grid (default ``None``).
       palette: Element color scheme name or ``{symbol: hex}`` mapping.
       preset: Visual theme preset name or ``ThemePreset``.
       ax: Optional target Matplotlib ``Axes``.
@@ -447,16 +520,10 @@ def plot_structure_graph(
     edge_items, dashed = _extract_structure_edges(
         atoms, show_distances, show_periodic_edges
     )
+    pos_2d, cam, pivot = _compute_structure_graph_coords(atoms, layout, camera)
+    ink_col = theme.get_preset(preset).ink_color
 
-    pos_2d: np.ndarray | None = None
-    if layout.strip().lower() == "pca" and len(atoms) >= 2:
-        centered = atoms.positions - np.mean(atoms.positions, axis=0)
-        _, _, vt = np.linalg.svd(centered, full_matrices=False)
-        proj = centered @ vt[:2].T
-        span = max(float(np.max(np.abs(proj))), 1e-6)
-        pos_2d = proj / span
-
-    return plot_graph_network(
+    ax = plot_graph_network(
         nodes,
         edge_items,
         pos=pos_2d,
@@ -468,3 +535,57 @@ def plot_structure_graph(
         ax=ax,
         title=title or f"{atoms.formula()} Structure Graph",
     )
+
+    if (
+        show_cell
+        and atoms.cell is not None
+        and layout.strip().lower() == "camera"
+    ):
+        with theme.xkcd_style(preset=preset):
+            corners = primitives.draw_unit_cell_box(
+                ax,
+                atoms.cell,
+                cam,
+                center=pivot,
+                edgecolor="#94A3B8",
+                linewidth=1.0,
+                draw_back=True,
+                draw_front=True,
+                base_plane_color=None,
+                cell_axes="none",
+                front_zorder=1.2,
+            )
+            c_arr = np.vstack(corners)
+            x0, x1 = ax.get_xlim()
+            y0, y1 = ax.get_ylim()
+            ax.set_xlim(
+                min(x0, float(np.min(c_arr[:, 0])) - 0.8),
+                max(x1, float(np.max(c_arr[:, 0])) + 0.8),
+            )
+            ax.set_ylim(
+                min(y0, float(np.min(c_arr[:, 1])) - 1.0),
+                max(y1, float(np.max(c_arr[:, 1])) + 0.8),
+            )
+
+    if dashed:
+        with theme.xkcd_style(preset=preset):
+            handles = [
+                mlines.Line2D([], [], color=ink_col, lw=2.0, label="Bond"),
+                mlines.Line2D(
+                    [],
+                    [],
+                    color="#0072B2",
+                    lw=1.6,
+                    linestyle="--",
+                    label="Periodic edge",
+                ),
+            ]
+            ax.legend(
+                handles=handles,
+                loc="lower center",
+                bbox_to_anchor=(0.5, -0.06),
+                ncol=2,
+                frameon=False,
+                fontsize=8.8,
+            )
+    return ax

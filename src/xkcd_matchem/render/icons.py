@@ -25,6 +25,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 from xkcd_matchem.core import exceptions
+from xkcd_matchem.core import geometry
 from xkcd_matchem.data import elements
 from xkcd_matchem.render import primitives
 from xkcd_matchem.style import palettes
@@ -263,57 +264,88 @@ def _icon_crystal(
     ink: str,
     z: float,
 ) -> None:
-    """Isometric unit-cell crystal cube with shaded faces and corner atoms."""
-    r = 0.44 * s
-    top = np.array(
+    """Simple cubic unit cell icon with all 8 corners and 12 edges."""
+    cell = np.eye(3, dtype=np.float64)
+    cam = geometry.Camera(azimuth=-118.0, elevation=24.0)
+    corners_2d, depths, back_idx = geometry.cell_corners_projected(cell, cam)
+    span = max(float(np.max(np.abs(corners_2d))), 1e-6)
+    pts = np.column_stack(
         [
-            [cx, cy + r],
-            [cx + 0.86 * r, cy + 0.5 * r],
-            [cx, cy],
-            [cx - 0.86 * r, cy + 0.5 * r],
+            cx + corners_2d[:, 0] * (0.44 * s / span),
+            cy + corners_2d[:, 1] * (0.44 * s / span),
         ]
     )
-    left = np.array(
-        [
-            [cx - 0.86 * r, cy + 0.5 * r],
-            [cx, cy],
-            [cx, cy - r],
-            [cx - 0.86 * r, cy - 0.5 * r],
-        ]
+    edge_pairs = (
+        (0, 1),
+        (0, 2),
+        (0, 3),
+        (1, 4),
+        (1, 5),
+        (2, 4),
+        (2, 6),
+        (3, 5),
+        (3, 6),
+        (4, 7),
+        (5, 7),
+        (6, 7),
     )
-    right = np.array(
-        [
-            [cx + 0.86 * r, cy + 0.5 * r],
-            [cx, cy],
-            [cx, cy - r],
-            [cx + 0.86 * r, cy - 0.5 * r],
-        ]
-    )
-    for face, shade_amt in (
-        (top, 0.45),
-        (left, 0.15),
-        (right, 0.0),
-    ):
-        ax.add_patch(
-            patches.Polygon(
-                face,
-                closed=True,
-                facecolor=primitives.lighten_hex(col, shade_amt),
-                edgecolor=ink,
-                linewidth=1.6,
-                alpha=0.82,
-                zorder=z,
-            )
+    # Subtle tinted base plane so the 3D box reads immediately.
+    ax.add_patch(
+        patches.Polygon(
+            pts[[0, 1, 4, 2]],
+            closed=True,
+            facecolor=primitives.lighten_hex(col, 0.55),
+            edgecolor="none",
+            alpha=0.55,
+            zorder=z,
         )
-    for vx, vy in (
-        (cx, cy + r),
-        (cx + 0.86 * r, cy + 0.5 * r),
-        (cx - 0.86 * r, cy + 0.5 * r),
-        (cx, cy),
-        (cx, cy - r),
-    ):
+    )
+    # 3 dashed back edges meeting at the farthest corner.
+    for u, v in edge_pairs:
+        if back_idx in (u, v):
+            ax.plot(
+                [pts[u, 0], pts[v, 0]],
+                [pts[u, 1], pts[v, 1]],
+                color="#777777",
+                linestyle=(0, (3, 2)),
+                linewidth=1.25,
+                zorder=z + 0.1,
+            )
+    # Back corner atom drawn behind the front edges.
+    primitives.draw_atom_sphere(
+        ax,
+        float(pts[back_idx, 0]),
+        float(pts[back_idx, 1]),
+        0.068 * s,
+        primitives.lighten_hex(col, 0.35),
+        ink,
+        linewidth=1.0,
+        alpha=0.78,
+        zorder=z + 0.15,
+    )
+    # 9 solid front edges.
+    for u, v in edge_pairs:
+        if back_idx not in (u, v):
+            ax.plot(
+                [pts[u, 0], pts[v, 0]],
+                [pts[u, 1], pts[v, 1]],
+                color=ink,
+                linewidth=1.55,
+                zorder=z + 0.25,
+            )
+    # Remaining 7 front/outer corner atoms depth-sorted.
+    for idx in sorted(range(8), key=lambda k: float(depths[k])):
+        if idx == back_idx:
+            continue
         primitives.draw_atom_sphere(
-            ax, vx, vy, 0.075 * s, col, ink, linewidth=1.1, zorder=z + 0.4
+            ax,
+            float(pts[idx, 0]),
+            float(pts[idx, 1]),
+            0.075 * s,
+            col,
+            ink,
+            linewidth=1.15,
+            zorder=z + 0.4,
         )
 
 

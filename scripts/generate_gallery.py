@@ -129,6 +129,7 @@ def _make_crystals(out_dir: pathlib.Path) -> None:
         xm.plot_crystal(
             "si_diamond.cif",
             miller_planes=[(1, 1, 1)],
+            crystal_axes="corner",
             ax=axes[0],
             title="Si Diamond + (111) Plane",
         )
@@ -810,30 +811,75 @@ def _make_scrolls_and_grids_gallery(out_dir: pathlib.Path) -> None:
 
 
 def _make_icons_and_graphs_gallery(out_dir: pathlib.Path) -> None:
-    """Generates xkcd MatChem icons/element badges and GNN structure graphs."""
+    """Generates MatChem icons, Crystal-to-Graph view, and synthesis graph."""
     with xm.xkcd_style("classic"):
-        fig, (ax_l, ax_r) = plt.subplots(
-            1,
-            2,
-            figsize=(15.4, 6.2),
-            dpi=165,
-            gridspec_kw={"width_ratios": [1.35, 1.0]},
-        )
+        fig = plt.figure(figsize=(16.0, 9.2), dpi=165)
         fig.patch.set_facecolor(xm.style.PAPER)
+        gs = fig.add_gridspec(
+            2, 2, width_ratios=[1.25, 1.35], height_ratios=[1.05, 1.0]
+        )
+        ax_icons = fig.add_subplot(gs[:, 0])
+        sub_top = gs[0, 1].subgridspec(1, 2, wspace=0.06)
+        ax_crys = fig.add_subplot(sub_top[0, 0])
+        ax_graph = fig.add_subplot(sub_top[0, 1])
+        ax_net = fig.add_subplot(gs[1, 1])
+
         xm.plot_icon_sheet(
             elements_to_show=("H", "Li", "C", "O", "Si", "Ti", "Fe", "Au"),
             ncols=6,
-            ax=ax_l,
+            ax=ax_icons,
             title="xkcd MatChem Icons & Element Badges",
+        )
+        cam = xm.Camera.from_preset("isometric")
+        xm.plot_crystal(
+            "si_diamond.cif",
+            camera=cam,
+            ax=ax_crys,
+            title="1. Actual Crystal (Si Diamond)",
         )
         xm.plot_structure_graph(
             "si_diamond.cif",
-            layout="spring",
-            ax=ax_r,
-            background_grid="isometric",
-            title="Diamond Si Crystal Graph (GNN Periodic Edges)",
+            layout="camera",
+            camera=cam,
+            show_cell=True,
+            ax=ax_graph,
+            title="2. Matching GNN Graph (Same View)",
         )
-        fig.tight_layout(w_pad=2.0)
+
+        synth_nodes = [
+            "Anatase\nTiO2",
+            "Rutile\nTiO2",
+            "Li2CO3",
+            "Li4Ti5O12\n(Spinel)",
+            "BaCO3",
+            "BaTiO3\n(Perovskite)",
+        ]
+        synth_pos = [
+            (-1.25, 0.08),
+            (-0.15, 1.05),
+            (1.25, 1.05),
+            (1.25, 0.08),
+            (-1.25, -0.95),
+            (1.25, -0.95),
+        ]
+        synth_edges = [
+            (0, 1, "650 C"),
+            (0, 3, "800 C"),
+            (2, 3, "+ Li"),
+            (0, 5, "950 C"),
+            (4, 5, "+ Ba"),
+        ]
+        xm.plot_graph_network(
+            synth_nodes,
+            synth_edges,
+            pos=synth_pos,
+            node_shape="pill",
+            directed=True,
+            palette="pastel",
+            ax=ax_net,
+            title="Materials Synthesis & Phase-Transformation Network",
+        )
+        fig.tight_layout(w_pad=1.8, h_pad=2.0)
         xm.save_figure(fig, out_dir / "icons_and_graphs.png", dpi=165)
         plt.close(fig)
 

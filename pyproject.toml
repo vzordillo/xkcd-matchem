@@ -168,7 +168,7 @@ max-module-lines = 2000
 ignored-modules = ["scipy.spatial"]
 
 [tool.pylint.design]
-max-args = 13
+max-args = 15
 max-positional-arguments = 13
 max-locals = 28
 max-branches = 18

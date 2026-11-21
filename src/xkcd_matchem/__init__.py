@@ -73,6 +73,7 @@ __all__ = [
     "core",
     "data",
     "draw_callout",
+    "draw_crystal_axes",
     "draw_curved_arrow",
     "draw_element_badge",
     "draw_icon",
@@ -88,6 +89,7 @@ __all__ = [
     "from_smiles",
     "get_atomic_mass",
     "get_covalent_radius",
+    "get_default_font",
     "get_element",
     "get_element_color",
     "get_jmol_color",
@@ -140,6 +142,7 @@ __all__ = [
     "plot_xrd",
     "plots",
     "register_element_palette",
+    "register_font",
     "register_palette",
     "register_preset",
     "render",
@@ -149,12 +152,14 @@ __all__ = [
     "resolve_hatch",
     "save",
     "save_figure",
+    "set_default_font",
     "shade_between",
     "spacegroup_to_crystal_system",
     "style",
     "style_existing_axes",
     "to_ase",
     "to_pymatgen",
+    "use_xkcd_script",
     "view_structure",
     "xkcd_style",
 ]
@@ -201,6 +206,7 @@ atomic_form_factor = data.atomic_form_factor
 broaden_peaks = core.broaden_peaks
 compute_xrd = core.compute_xrd
 draw_callout = render.draw_callout
+draw_crystal_axes = render.draw_crystal_axes
 draw_curved_arrow = render.draw_curved_arrow
 draw_element_badge = render.draw_element_badge
 draw_icon = render.draw_icon
@@ -216,6 +222,7 @@ from_rdkit = io.from_rdkit
 from_smiles = io.from_smiles
 get_atomic_mass = data.get_atomic_mass
 get_covalent_radius = data.get_covalent_radius
+get_default_font = style.get_default_font
 get_element = data.get_element
 get_element_color = style.get_element_color
 get_jmol_color = data.get_jmol_color
@@ -265,6 +272,7 @@ plot_ternary_phase_diagram = plots.plot_ternary_phase_diagram
 plot_volumetric_slice = plots.plot_volumetric_slice
 plot_xrd = plots.plot_xrd
 register_element_palette = style.register_element_palette
+register_font = style.register_font
 register_palette = style.register_palette
 register_preset = style.register_preset
 render_scroll_list = layout.render_scroll_list
@@ -273,10 +281,12 @@ render_structure_3d = render.render_structure_3d
 resolve_hatch = style.resolve_hatch
 save = io.save
 save_figure = layout.save_figure
+set_default_font = style.set_default_font
 shade_between = style.shade_between
 spacegroup_to_crystal_system = plots.spacegroup_to_crystal_system
 style_existing_axes = style.style_existing_axes
 to_ase = io.to_ase
 to_pymatgen = io.to_pymatgen
+use_xkcd_script = style.use_xkcd_script
 view_structure = render.view_structure
 xkcd_style = style.xkcd_style

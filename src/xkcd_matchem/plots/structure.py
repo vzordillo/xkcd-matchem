@@ -494,17 +494,25 @@ def plot_crystal(
     show_cell: bool | str = True,
     show_labels: bool = False,
     show_legend: bool = True,
-    center_in_cell: bool = True,
+    center_in_cell: bool | None = None,
     miller_planes: Sequence[tuple[int, int, int]] | None = None,
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
+    *,
+    crystal_axes: bool | str | None = None,
 ) -> maxes.Axes:
     """Plots a periodic crystal or supercell with clean unit cell & axes."""
     atoms = _coerce_atoms(source).wrap_positions()
-    if center_in_cell:
+    should_center = (
+        not miller_planes if center_in_cell is None else center_in_cell
+    )
+    if should_center:
         atoms = atoms.center_in_cell()
     if supercell != (1, 1, 1) and atoms.cell is not None:
         atoms = atoms.repeat(supercell)
+    cam: geometry.Camera | str | None = camera
+    if cam is None and miller_planes:
+        cam = geometry.Camera(azimuth=32.0, elevation=22.0)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(5.8, 5.0))
@@ -513,10 +521,11 @@ def plot_crystal(
         structure3d.render_structure_3d(
             atoms,
             ax=ax,
-            camera=camera,
+            camera=cam,
             style=style,
             palette=palette,
             show_cell=show_cell,
+            crystal_axes=crystal_axes,
             show_labels=show_labels,
             miller_planes=miller_planes,
         )
@@ -541,6 +550,8 @@ def plot_slab(
     vacuum_margin: float | None = 2.6,
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
+    *,
+    crystal_axes: bool | str | None = None,
 ) -> maxes.Axes:
     """Plots a surface slab in shaded side view or trimmed isometric view."""
     atoms = _coerce_atoms(source).wrap_positions()
@@ -576,6 +587,7 @@ def plot_slab(
                 style="ball_and_stick",
                 palette=palette,
                 show_cell=True,
+                crystal_axes=crystal_axes,
             )
             xlim = ax.get_xlim()
             ylim = ax.get_ylim()
@@ -606,6 +618,10 @@ def plot_coordination(
     palette: str | Mapping[str, str] = "xkcd",
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
+    *,
+    show_cell: bool | str = True,
+    crystal_axes: bool | str | None = None,
+    show_bonds: bool = False,
 ) -> maxes.Axes:
     """Plots a crystal with translucent ConvexHull coordination polyhedra."""
     atoms = _coerce_atoms(source).wrap_positions()
@@ -624,8 +640,10 @@ def plot_coordination(
             camera=camera,
             style="polyhedra",
             palette=palette,
+            show_bonds=show_bonds,
             polyhedra=(center, ligand),
-            show_cell=True,
+            show_cell=show_cell,
+            crystal_axes=crystal_axes,
         )
         _pad_structure_view(ax, bottom_frac=0.17, top_frac=0.06)
         callouts.draw_element_legend(ax, atoms.symbols, scheme=palette)

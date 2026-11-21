@@ -40,6 +40,7 @@ __all__ = [
     "ensure_fonts_registered",
     "fetch_xkcd_script",
     "get_bundled_font_path",
+    "get_default_font",
     "get_element_color",
     "get_palette",
     "get_preset",
@@ -50,12 +51,15 @@ __all__ = [
     "list_presets",
     "list_shade_styles",
     "register_element_palette",
+    "register_font",
     "register_palette",
     "register_preset",
     "resolve_font_chain",
     "resolve_hatch",
+    "set_default_font",
     "shade_between",
     "style_existing_axes",
+    "use_xkcd_script",
     "xkcd_style",
 ]
 
@@ -77,6 +81,7 @@ build_rc_params = theme.build_rc_params
 ensure_fonts_registered = fonts.ensure_fonts_registered
 fetch_xkcd_script = fonts.fetch_xkcd_script
 get_bundled_font_path = fonts.get_bundled_font_path
+get_default_font = fonts.get_default_font
 get_element_color = palettes.get_element_color
 get_palette = palettes.get_palette
 get_preset = theme.get_preset
@@ -87,10 +92,13 @@ list_palettes = palettes.list_palettes
 list_presets = theme.list_presets
 list_shade_styles = patterns.list_shade_styles
 register_element_palette = palettes.register_element_palette
+register_font = fonts.register_font
 register_palette = palettes.register_palette
 register_preset = theme.register_preset
 resolve_font_chain = fonts.resolve_font_chain
 resolve_hatch = patterns.resolve_hatch
+set_default_font = fonts.set_default_font
 shade_between = patterns.shade_between
 style_existing_axes = theme.style_existing_axes
+use_xkcd_script = fonts.use_xkcd_script
 xkcd_style = theme.xkcd_style
