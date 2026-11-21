@@ -180,6 +180,12 @@ If `xkcd-matchem` helps you make a poster, talk, tutorial, or outreach figure, p
 
 ---
 
+## Acknowledgements
+
+This repository was developed semi-autonomously with **Google DeepMind's Gemini** frontier models inside **[Google Antigravity](https://antigravity.google)**, supported through Google's **Antigravity for Science** academic researcher access program (providing six months of complimentary top-tier Google Antigravity and frontier Gemini access to scientists and academic researchers for non-commercial research). Many thanks to the **Google Antigravity**, **Google Research**, and **Google DeepMind** teams for empowering scientific exploration and open-source science communication tooling.
+
+---
+
 ## Licenses & Scientific Attributions
 
 - **Code**: Licensed under the [Apache License, Version 2.0](LICENSE).

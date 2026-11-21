@@ -16,6 +16,10 @@ If `xkcd-matchem` helps you build a poster, lecture slide, tutorial, or scicomm 
 }
 ```
 
+## Acknowledgements
+
+This repository was developed semi-autonomously with **Google DeepMind's Gemini** frontier models inside **[Google Antigravity](https://antigravity.google)**, supported through Google's **Antigravity for Science** academic researcher access program (providing six months of complimentary top-tier Google Antigravity and frontier Gemini access to scientists and academic researchers for non-commercial research). Many thanks to the **Google Antigravity**, **Google Research**, and **Google DeepMind** teams for empowering scientific exploration and open-source science communication tooling.
+
 ## Scientific Data Sources & Attributions
 
 Every physical constant, atomic property, X-ray form factor, and color scheme in `xkcd-matchem` was cross-referenced directly against its verified primary publication or official dataset.
