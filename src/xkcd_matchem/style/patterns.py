@@ -176,6 +176,7 @@ def compute_background_grid_coords(
     return np.zeros((0,), dtype=np.float64), np.zeros((0,), dtype=np.float64)
 
 
+_STRAIGHT_GRID_SKETCH: tuple[float, float, float] = (0.0, 0.0, 0.0)
 _DEFAULT_GRID_SKETCH: tuple[float, float, float] = (1.15, 78.0, 2.0)
 _BLUEPRINT_GRID_SKETCH: tuple[float, float, float] = (0.45, 115.0, 1.8)
 
@@ -185,15 +186,15 @@ def _resolve_grid_sketch(
     key: str,
 ) -> tuple[float, float, float]:
     """Resolves Matplotlib ``sketch_params`` for background grid lines."""
-    if sketch is False:
-        return (0.0, 0.0, 0.0)
+    if sketch is False or sketch is None:
+        return _STRAIGHT_GRID_SKETCH
     if sketch is True:
-        return _DEFAULT_GRID_SKETCH
-    if sketch is not None:
-        return (float(sketch[0]), float(sketch[1]), float(sketch[2]))
-    if key == "blueprint":
-        return _BLUEPRINT_GRID_SKETCH
-    return _DEFAULT_GRID_SKETCH
+        return (
+            _BLUEPRINT_GRID_SKETCH
+            if key == "blueprint"
+            else _DEFAULT_GRID_SKETCH
+        )
+    return (float(sketch[0]), float(sketch[1]), float(sketch[2]))
 
 
 def _draw_axes_rule_lines(
@@ -203,7 +204,7 @@ def _draw_axes_rule_lines(
     color: str,
     alpha: float,
     linewidth: float,
-    sketch_params: tuple[float, float, float] = _DEFAULT_GRID_SKETCH,
+    sketch_params: tuple[float, float, float] = _STRAIGHT_GRID_SKETCH,
 ) -> None:
     """Draws background lines in axes-fraction coordinates behind plot art."""
     for (x0, x1), (y0, y1) in zip(xs, ys, strict=True):
@@ -227,7 +228,7 @@ def _draw_isometric_grid(
     color: str,
     alpha: float,
     step: float,
-    sketch_params: tuple[float, float, float] = _DEFAULT_GRID_SKETCH,
+    sketch_params: tuple[float, float, float] = _STRAIGHT_GRID_SKETCH,
 ) -> None:
     """Draws 60-degree isometric triangular lines in axes coordinates."""
     xs_out: list[tuple[float, float]] = []
@@ -255,7 +256,7 @@ def apply_background_grid(
     spacing: float = 0.08,
     spacing_x: float | None = None,
     margin_line: bool = True,
-    sketch: tuple[float, float, float] | bool | None = None,
+    sketch: tuple[float, float, float] | bool = False,
 ) -> maxes.Axes:
     """Applies a customizable notebook, graph, dot, isometric, or blueprint bg.
 
@@ -276,7 +277,8 @@ def apply_background_grid(
         (defaults to ``spacing``).
       margin_line: Whether ``"ruled"``/``"lines"`` draws a subtle left margin.
       sketch: Optional xkcd sketch wobble ``(scale, length, randomness)``,
-        ``True`` (default xkcd wobble), or ``False`` (straight lines).
+        ``True`` (hand-drawn wobble, e.g. for scrolls), or ``False``
+        (default straight gridlines for plot figures).
 
     Returns:
       The styled ``Axes`` instance.
@@ -299,6 +301,8 @@ def apply_background_grid(
     )
     sketch_params = _resolve_grid_sketch(sketch, key)
     ax.patch.set_sketch_params(0.0, 0.0, 0.0)
+    ax.xaxis.set_tick_params(which="both", grid_sketch_params=0.0)
+    ax.yaxis.set_tick_params(which="both", grid_sketch_params=0.0)
     xs_grid, ys_grid = compute_background_grid_coords(
         key, spacing=step, spacing_x=step_x
     )

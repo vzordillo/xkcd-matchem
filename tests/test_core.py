@@ -167,6 +167,10 @@ def test_powder_xrd_peaks_for_si_and_nacl() -> None:
     top_peak = max(xrd_si.peaks, key=lambda p: p.intensity)
     # Diamond Si (111) Cu K-alpha1 reflection sits at ~28.44 degrees 2theta.
     assert 28.0 <= top_peak.position <= 28.9
+    si_labels = [p.label for p in xrd_si.peaks]
+    assert "(111)" in si_labels
+    assert "(220)" in si_labels
+    assert "(311)" in si_labels
 
     nacl = loader.load("nacl.cif")
     nacl_closed = nacl.with_boundary_atoms()
@@ -184,6 +188,8 @@ def test_powder_xrd_peaks_for_si_and_nacl() -> None:
     top_nacl = max(xrd_nacl.peaks, key=lambda p: p.intensity)
     # NaCl (200) strongest reflection sits at ~31.7 degrees 2theta.
     assert 31.2 <= top_nacl.position <= 32.2
+    assert top_nacl.label == "(200)"
+    assert "(220)" in [p.label for p in xrd_nacl.peaks]
 
 
 def test_geometry_camera_and_miller_plane() -> None:

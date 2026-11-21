@@ -15,14 +15,17 @@
 
 from __future__ import annotations
 
+import json
 import pathlib
 
 import matplotlib
 from matplotlib import pyplot as plt
+import numpy as np
 import pytest
 
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import geometry
+from xkcd_matchem.core import structure
 from xkcd_matchem.io import loader
 from xkcd_matchem.plots import structure as struct_plots
 from xkcd_matchem.render import callouts
@@ -159,3 +162,87 @@ def test_interactive_studio_and_exports(tmp_path: pathlib.Path) -> None:
 
     with pytest.raises(exceptions.StructureError):
         interactive.view_structure("aspirin.xyz", backend="invalid_backend")
+
+    # Perspective projection aligns atom and unit-cell corner coordinates.
+    cell = np.diag([5.0, 5.0, 5.0])
+    box_atoms = structure.AtomsData(
+        symbols=["Si", "Si"],
+        positions=np.array([[0.0, 0.0, 0.0], [2.5, 2.5, 2.5]]),
+        cell=cell,
+        pbc=(True, True, True),
+    )
+    ax_persp = structure3d.render_structure_3d(box_atoms, camera="perspective")
+    corner_2d, _, _ = geometry.cell_corners_projected(
+        cell,
+        geometry.Camera.from_preset("perspective", cell=cell),
+        center=np.array([2.5, 2.5, 2.5]),
+        span=geometry.scene_projection_span(
+            box_atoms.positions,
+            geometry.Camera.from_preset("perspective", cell=cell),
+            center=np.array([2.5, 2.5, 2.5]),
+            cell=cell,
+        ),
+    )
+    atom_centers = [
+        p.center
+        for p in ax_persp.patches
+        if hasattr(p, "center") and p.radius > 0.2
+    ]
+    assert any(np.allclose(c, corner_2d[0], atol=1e-9) for c in atom_centers)
+    plt.close(ax_persp.figure)
+
+    # 2D skeletal terminal carbon CH2 / CH labels (double / triple bonds).
+    ethene = structure.AtomsData(
+        symbols=["C", "C", "H", "H", "H", "H"],
+        positions=np.array(
+            [
+                [-0.67, 0.0, 0.0],
+                [0.67, 0.0, 0.0],
+                [-1.23, 0.92, 0.0],
+                [-1.23, -0.92, 0.0],
+                [1.23, 0.92, 0.0],
+                [1.23, -0.92, 0.0],
+            ]
+        ),
+        bonds=[
+            structure.Bond(0, 1, order=2.0),
+            structure.Bond(0, 2, order=1.0),
+            structure.Bond(0, 3, order=1.0),
+            structure.Bond(1, 4, order=1.0),
+            structure.Bond(1, 5, order=1.0),
+        ],
+    )
+    ax_eth = structure2d.render_structure_2d(ethene)
+    assert [t.get_text() for t in ax_eth.texts] == ["CH2", "CH2"]
+    plt.close(ax_eth.figure)
+
+    ethyne = structure.AtomsData(
+        symbols=["C", "C"],
+        positions=np.array([[-0.6, 0.0, 0.0], [0.6, 0.0, 0.0]]),
+        bonds=[structure.Bond(0, 1, order=3.0)],
+    )
+    ax_aky = structure2d.render_structure_2d(ethyne)
+    assert [t.get_text() for t in ax_aky.texts] == ["CH", "CH"]
+    plt.close(ax_aky.figure)
+
+    # Callout camera presets, vertical arrow label side, and center=False.
+    fig_c, ax_c = plt.subplots()
+    d_pbc = callouts.annotate_distance(ax_c, box_atoms, 0, 1, camera="top")
+    assert d_pbc > 3.0
+    callouts.draw_curved_arrow(
+        ax_c, (0.0, 0.0), (0.0, 2.0), rad=0.25, label="up"
+    )
+    assert abs(ax_c.texts[-1].get_position()[0]) > 0.1
+    plt.close(fig_c)
+
+    nacl_view = interactive.view_structure("nacl.cif", backend="html")
+    html_txt = nacl_view.html_str
+    assert "computeSceneSpan" in html_txt
+    assert "cell_edge" in html_txt
+    payload_line = next(
+        line for line in html_txt.splitlines() if "const PAYLOAD = " in line
+    )
+    embedded = json.loads(
+        payload_line.split("const PAYLOAD = ", 1)[1].rstrip(";")
+    )
+    assert embedded["active"]["positions"][0] == pytest.approx([0.0, 0.0, 0.0])

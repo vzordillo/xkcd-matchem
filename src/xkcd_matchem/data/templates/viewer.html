@@ -511,14 +511,17 @@ canvas#xm-canvas:active { cursor: grabbing; }
       : null;
 
     let rawPos = baseData.positions.map((p) => p.slice());
+    const wrapFrac = (val) => {
+      let w = ((val % 1) + 1) % 1;
+      if (w < 1e-9 || 1 - w < 1e-9) w = 0;
+      return w;
+    };
     if (hasCell && state.centerInCell) {
       const inv = inv3x3(baseData.cell);
       if (inv) {
         const fracs = rawPos.map((p) => {
           const f = matVec3T(inv, p);
-          return baseData.pbc.map((per, ax) =>
-            per ? ((f[ax] % 1) + 1) % 1 : f[ax]
-          );
+          return baseData.pbc.map((per, ax) => (per ? wrapFrac(f[ax]) : f[ax]));
         });
         const mean = [0, 1, 2].map((ax) => {
           if (!baseData.pbc[ax]) return 0;
@@ -527,11 +530,9 @@ canvas#xm-canvas:active { cursor: grabbing; }
           return sum / Math.max(fracs.length, 1);
         });
         rawPos = fracs.map((f) => {
-          const shifted = f.map((val, ax) => {
-            if (!baseData.pbc[ax]) return val;
-            let s = val + (0.5 - mean[ax]);
-            return ((s % 1) + 1) % 1;
-          });
+          const shifted = f.map((val, ax) =>
+            baseData.pbc[ax] ? wrapFrac(val + (0.5 - mean[ax])) : val
+          );
           return matVec3T(baseData.cell, shifted);
         });
       }
@@ -609,7 +610,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     let bonds = [];
     if (addedBoundary) {
       bonds = inferBondsJS(symbols, positions, null, [false, false, false]);
-    } else if (na === 1 && nb === 1 && nc === 1 && baseData.bonds && baseData.bonds.length) {
+    } else if (!state.centerInCell && na === 1 && nb === 1 && nc === 1 && baseData.bonds && baseData.bonds.length) {
       bonds = baseData.bonds;
     } else {
       bonds = inferBondsJS(symbols, positions, cell, baseData.pbc);
@@ -710,15 +711,41 @@ canvas#xm-canvas:active { cursor: grabbing; }
     return [right, up, forward];
   }
 
-  function projectList(pts, pivot, basis) {
+  function computeSceneSpan(positions, cell, pivot, basis) {
+    const [right, up, forward] = basis;
+    let span = 1.0;
+    const scan = (p) => {
+      const d = [p[0] - pivot[0], p[1] - pivot[1], p[2] - pivot[2]];
+      span = Math.max(span, Math.abs(dot3(d, right)), Math.abs(dot3(d, up)), Math.abs(dot3(d, forward)));
+    };
+    for (const p of positions) scan(p);
+    if (cell) {
+      for (let i = 0; i < 2; i++) {
+        for (let j = 0; j < 2; j++) {
+          for (let k = 0; k < 2; k++) {
+            scan([
+              i * cell[0][0] + j * cell[1][0] + k * cell[2][0],
+              i * cell[0][1] + j * cell[1][1] + k * cell[2][1],
+              i * cell[0][2] + j * cell[1][2] + k * cell[2][2],
+            ]);
+          }
+        }
+      }
+    }
+    return span;
+  }
+
+  function projectList(pts, pivot, basis, refSpan) {
     const [right, up, forward] = basis;
     const rotated = pts.map((p) => {
       const d = [p[0] - pivot[0], p[1] - pivot[1], p[2] - pivot[2]];
       return [dot3(d, right), dot3(d, up), dot3(d, forward)];
     });
-    let span = 1.0;
-    for (const r of rotated) {
-      span = Math.max(span, Math.abs(r[0]), Math.abs(r[1]), Math.abs(r[2]));
+    let span = refSpan && refSpan > 1.0 ? refSpan : 1.0;
+    if (!refSpan) {
+      for (const r of rotated) {
+        span = Math.max(span, Math.abs(r[0]), Math.abs(r[1]), Math.abs(r[2]));
+      }
     }
     return rotated.map((r) => {
       let x = r[0] * state.zoom;
@@ -781,7 +808,8 @@ canvas#xm-canvas:active { cursor: grabbing; }
     }
 
     const basis = rotationBasis();
-    const proj = projectList(positions, pivot, basis);
+    const sceneSpan = computeSceneSpan(positions, cell, pivot, basis);
+    const proj = projectList(positions, pivot, basis, sceneSpan);
 
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (let i = 0; i < proj.length; i++) {
@@ -806,7 +834,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
           }
         }
       }
-      cellCorners = projectList(rawC, pivot, basis);
+      cellCorners = projectList(rawC, pivot, basis, sceneSpan);
       for (const c of cellCorners) {
         minX = Math.min(minX, c[0] - 0.6);
         maxX = Math.max(maxX, c[0] + 0.6);
@@ -899,7 +927,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
         const pi = positions[i], pj = positions[j];
         const stubA = [pi[0] + 0.42 * (pj[0] + sv[0] - pi[0]), pi[1] + 0.42 * (pj[1] + sv[1] - pi[1]), pi[2] + 0.42 * (pj[2] + sv[2] - pi[2])];
         const stubB = [pj[0] + 0.42 * (pi[0] - sv[0] - pj[0]), pj[1] + 0.42 * (pi[1] - sv[1] - pj[1]), pj[2] + 0.42 * (pi[2] - sv[2] - pj[2])];
-        const sProj = projectList([stubA, stubB], pivot, basis);
+        const sProj = projectList([stubA, stubB], pivot, basis, sceneSpan);
         items.push({ depth: proj[i][2] - 0.06, kind: "half", p0: proj[i], p1: sProj[0], col: elementColor(symbols[i]), order, seed: idx + 1 });
         items.push({ depth: proj[j][2] - 0.06, kind: "half", p0: proj[j], p1: sProj[1], col: elementColor(symbols[j]), order, seed: idx + 100 });
       }
@@ -907,7 +935,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
 
     if (state.style === "polyhedra" && polyhedra && polyhedra.length) {
       for (const poly of polyhedra) {
-        const vProj = projectList(poly.vertices, pivot, basis);
+        const vProj = projectList(poly.vertices, pivot, basis, sceneSpan);
         const col = elementColor(poly.center_symbol);
         for (const [f0, f1, f2] of poly.faces) {
           const md = (vProj[f0][2] + vProj[f1][2] + vProj[f2][2]) / 3 - 0.03;
@@ -918,6 +946,14 @@ canvas#xm-canvas:active { cursor: grabbing; }
 
     for (let i = 0; i < proj.length; i++) {
       items.push({ depth: proj[i][2], kind: "atom", p: proj[i], sym: symbols[i], idx: i });
+    }
+    if (cellCorners) {
+      for (let eIdx = 0; eIdx < cellEdgesIdx.length; eIdx++) {
+        const [u, v] = cellEdgesIdx[eIdx];
+        if (u === backCornerIdx || v === backCornerIdx) continue;
+        const d = 0.5 * (cellCorners[u][2] + cellCorners[v][2]) - 0.05;
+        items.push({ depth: d, kind: "cell_edge", u, v, seed: eIdx + 20 });
+      }
     }
     items.sort((a, b) => a.depth - b.depth);
 
@@ -943,34 +979,29 @@ canvas#xm-canvas:active { cursor: grabbing; }
       } else if (item.kind === "half") {
         if (!state.showBonds || state.style === "spacefill" || state.style === "polyhedra") continue;
         drawHalfBond(toScreen(item.p0), toScreen(item.p1), item.col, ink, stickHalfPx, item.order, item.seed);
+      } else if (item.kind === "cell_edge") {
+        drawStrokeWiggle(toScreen(cellCorners[item.u]), toScreen(cellCorners[item.v]), ink, 1.65, false, state.wiggle * 0.6, item.seed);
       } else {
         drawAtom(toScreen(item.p), visualRadius(item.sym) * pxPerA, elementColor(item.sym), ink, outlineW, item.idx + 1);
       }
     }
 
-    // Front unit cell edges + outside a, b, c labels
-    if (cellCorners) {
-      for (let eIdx = 0; eIdx < cellEdgesIdx.length; eIdx++) {
-        const [u, v] = cellEdgesIdx[eIdx];
-        if (u === backCornerIdx || v === backCornerIdx) continue;
-        drawStrokeWiggle(toScreen(cellCorners[u]), toScreen(cellCorners[v]), ink, 1.65, false, state.wiggle * 0.6, eIdx + 20);
-      }
-      if (state.axesMode === "edges") {
-        const axes = [
-          [cellCorners[0], cellCorners[4], "a"],
-          [cellCorners[0], cellCorners[2], "b"],
-          [cellCorners[0], cellCorners[1], "c"],
-        ];
-        ctx.font = 'bold 17px "xkcd Script", sans-serif';
-        ctx.fillStyle = ink;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        for (const [c0, c1, label] of axes) {
-          const p0 = toScreen(c0), p1 = toScreen(c1);
-          const dx = p1[0] - p0[0], dy = p1[1] - p0[1];
-          const l = Math.hypot(dx, dy) || 1;
-          ctx.fillText(label, p1[0] + (dx / l) * 14, p1[1] + (dy / l) * 14);
-        }
+    // Outside a, b, c edge labels
+    if (cellCorners && state.axesMode === "edges") {
+      const axes = [
+        [cellCorners[0], cellCorners[4], "a"],
+        [cellCorners[0], cellCorners[2], "b"],
+        [cellCorners[0], cellCorners[1], "c"],
+      ];
+      ctx.font = 'bold 17px "xkcd Script", sans-serif';
+      ctx.fillStyle = ink;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (const [c0, c1, label] of axes) {
+        const p0 = toScreen(c0), p1 = toScreen(c1);
+        const dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+        const l = Math.hypot(dx, dy) || 1;
+        ctx.fillText(label, p1[0] + (dx / l) * 14, p1[1] + (dy / l) * 14);
       }
     }
 
@@ -1213,6 +1244,8 @@ canvas#xm-canvas:active { cursor: grabbing; }
       ? JSON.stringify(buildEffectiveColorDict())
       : JSON.stringify(state.palette);
     const [na, nb, nc] = state.supercell;
+    const centerLine = (baseData.cell && state.centerInCell)
+      ? "atoms = atoms.center_in_cell()\n" : "";
     const repeatLine = (na > 1 || nb > 1 || nc > 1)
       ? `atoms = atoms.repeat((${na}, ${nb}, ${nc}))\n` : "";
     const fn = baseData.cell ? "plot_crystal" : "plot_molecule";
@@ -1221,6 +1254,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
       if (state.cellMode === "off") extra += ", show_cell=False";
       else if (state.cellMode === "wireframe") extra += ', show_cell="wireframe"';
       if (state.axesMode !== "edges") extra += `, crystal_axes=${JSON.stringify(state.axesMode)}`;
+      if (!state.boundaryAtoms) extra += ", boundary_atoms=False";
     }
     if (!state.showBonds) extra += ", show_bonds=False";
     const plotCall =
@@ -1232,6 +1266,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     return (
       `import xkcd_matchem as xm\n\n` +
       `atoms = xm.load(${JSON.stringify(sampleName)})\n` +
+      centerLine +
       repeatLine +
       `cam = xm.Camera(azimuth=${state.azimuth.toFixed(1)}, elevation=${state.elevation.toFixed(1)}, ` +
       `roll=${state.roll.toFixed(1)}, perspective=${state.perspective.toFixed(2)}, zoom=${state.zoom.toFixed(2)})\n` +
@@ -1309,7 +1344,8 @@ canvas#xm-canvas:active { cursor: grabbing; }
       pivot[2] /= Math.max(positions.length, 1);
     }
     const basis = rotationBasis();
-    const proj = projectList(positions, pivot, basis);
+    const sceneSpan = computeSceneSpan(positions, cell, pivot, basis);
+    const proj = projectList(positions, pivot, basis, sceneSpan);
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     proj.forEach((p, i) => {
       const r = visualRadius(symbols[i]);
@@ -1330,7 +1366,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
           }
         }
       }
-      cellCorners = projectList(rawC, pivot, basis);
+      cellCorners = projectList(rawC, pivot, basis, sceneSpan);
       for (const c of cellCorners) {
         minX = Math.min(minX, c[0] - 0.6); maxX = Math.max(maxX, c[0] + 0.6);
         minY = Math.min(minY, c[1] - 0.6); maxY = Math.max(maxY, c[1] + 0.6);
@@ -1387,7 +1423,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
           const sProj = projectList([
             [pi[0] + 0.42 * (pj[0] + sv[0] - pi[0]), pi[1] + 0.42 * (pj[1] + sv[1] - pi[1]), pi[2] + 0.42 * (pj[2] + sv[2] - pi[2])],
             [pj[0] + 0.42 * (pi[0] - sv[0] - pj[0]), pj[1] + 0.42 * (pi[1] - sv[1] - pj[1]), pj[2] + 0.42 * (pi[2] - sv[2] - pj[2])],
-          ], pivot, basis);
+          ], pivot, basis, sceneSpan);
           q.push({ d: proj[i][2] - 0.06, t: "b", a: sc(proj[i]), b: sc(sProj[0]), c: elementColor(symbols[i]), order });
           q.push({ d: proj[j][2] - 0.06, t: "b", a: sc(proj[j]), b: sc(sProj[1]), c: elementColor(symbols[j]), order });
         }
@@ -1395,7 +1431,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     }
     if (state.style === "polyhedra" && polyhedra && polyhedra.length) {
       for (const poly of polyhedra) {
-        const vProj = projectList(poly.vertices, pivot, basis);
+        const vProj = projectList(poly.vertices, pivot, basis, sceneSpan);
         const col = elementColor(poly.center_symbol);
         for (const [f0, f1, f2] of poly.faces) {
           const md = (vProj[f0][2] + vProj[f1][2] + vProj[f2][2]) / 3 - 0.03;
@@ -1404,6 +1440,13 @@ canvas#xm-canvas:active { cursor: grabbing; }
       }
     }
     proj.forEach((p, i) => q.push({ d: p[2], t: "a", c: sc(p), r: visualRadius(symbols[i]) * pxPerA, fill: elementColor(symbols[i]) }));
+    if (cellCorners) {
+      for (const [u, v] of cellEdgesIdx) {
+        if (u === backCornerIdx || v === backCornerIdx) continue;
+        const d = 0.5 * (cellCorners[u][2] + cellCorners[v][2]) - 0.05;
+        q.push({ d, t: "cell_edge", a: sc(cellCorners[u]), b: sc(cellCorners[v]) });
+      }
+    }
     q.sort((x, y) => x.d - y.d);
     for (const it of q) {
       if (it.t === "tri") {
@@ -1431,23 +1474,18 @@ canvas#xm-canvas:active { cursor: grabbing; }
       } else if (it.t === "b") {
         parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${ink}" stroke-width="${(stickW + 2.4).toFixed(1)}" stroke-linecap="butt"/>`);
         parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${it.c}" stroke-width="${Math.max(1.5, stickW - 0.8).toFixed(1)}" stroke-linecap="butt"/>`);
+      } else if (it.t === "cell_edge") {
+        parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${ink}" stroke-width="1.65" stroke-linecap="round"/>`);
       } else {
         parts.push(`<circle cx="${it.c[0].toFixed(1)}" cy="${it.c[1].toFixed(1)}" r="${it.r.toFixed(1)}" fill="${it.fill}" stroke="${ink}" stroke-width="1.6"/>`);
         parts.push(`<circle cx="${(it.c[0] - it.r * 0.34).toFixed(1)}" cy="${(it.c[1] - it.r * 0.34).toFixed(1)}" r="${Math.max(1.5, it.r * 0.16).toFixed(1)}" fill="#ffffff" fill-opacity="0.92"/>`);
       }
     }
-    if (cellCorners) {
-      for (const [u, v] of cellEdgesIdx) {
-        if (u === backCornerIdx || v === backCornerIdx) continue;
-        const p0 = sc(cellCorners[u]), p1 = sc(cellCorners[v]);
-        parts.push(`<line x1="${p0[0].toFixed(1)}" y1="${p0[1].toFixed(1)}" x2="${p1[0].toFixed(1)}" y2="${p1[1].toFixed(1)}" stroke="${ink}" stroke-width="1.65" stroke-linecap="round"/>`);
-      }
-      if (state.axesMode === "edges") {
-        for (const [c0, c1, label] of [[cellCorners[0], cellCorners[4], "a"], [cellCorners[0], cellCorners[2], "b"], [cellCorners[0], cellCorners[1], "c"]]) {
-          const p0 = sc(c0), p1 = sc(c1);
-          const dx = p1[0] - p0[0], dy = p1[1] - p0[1], l = Math.hypot(dx, dy) || 1;
-          parts.push(`<text x="${(p1[0] + (dx / l) * 14).toFixed(1)}" y="${(p1[1] + (dy / l) * 14).toFixed(1)}" fill="${ink}" font-family="xkcd Script, sans-serif" font-size="17" font-weight="bold" text-anchor="middle" dominant-baseline="central">${label}</text>`);
-        }
+    if (cellCorners && state.axesMode === "edges") {
+      for (const [c0, c1, label] of [[cellCorners[0], cellCorners[4], "a"], [cellCorners[0], cellCorners[2], "b"], [cellCorners[0], cellCorners[1], "c"]]) {
+        const p0 = sc(c0), p1 = sc(c1);
+        const dx = p1[0] - p0[0], dy = p1[1] - p0[1], l = Math.hypot(dx, dy) || 1;
+        parts.push(`<text x="${(p1[0] + (dx / l) * 14).toFixed(1)}" y="${(p1[1] + (dy / l) * 14).toFixed(1)}" fill="${ink}" font-family="xkcd Script, sans-serif" font-size="17" font-weight="bold" text-anchor="middle" dominant-baseline="central">${label}</text>`);
       }
     }
     if (cell && (state.axesMode === "corner" || state.axesMode === "origin")) {

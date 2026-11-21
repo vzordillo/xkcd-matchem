@@ -66,27 +66,102 @@ def _barycentric_to_xy(
     return np.column_stack([x, y])
 
 
+def _collinear_lower_hull(
+    uniq: list[int],
+    xy_u: np.ndarray,
+    e_u: np.ndarray,
+) -> tuple[set[int], set[tuple[int, int]]]:
+    """Computes 1D lower convex hull when ternary points are collinear."""
+    deltas = xy_u - xy_u[0]
+    span = np.ptp(deltas, axis=0)
+    proj = deltas[:, 0] if span[0] >= span[1] else deltas[:, 1]
+    order = sorted(
+        range(len(uniq)), key=lambda i: (float(proj[i]), float(e_u[i]))
+    )
+    lower: list[int] = []
+    for idx in order:
+        x2, y2 = float(proj[idx]), float(e_u[idx])
+        while len(lower) >= 2:
+            i0, i1 = lower[-2], lower[-1]
+            x0, y0 = float(proj[i0]), float(e_u[i0])
+            x1, y1 = float(proj[i1]), float(e_u[i1])
+            if (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0) <= 1e-12:
+                lower.pop()
+            else:
+                break
+        lower.append(idx)
+    stable = {uniq[i] for i in lower}
+    edges = {
+        (
+            min(uniq[lower[k]], uniq[lower[k + 1]]),
+            max(uniq[lower[k]], uniq[lower[k + 1]]),
+        )
+        for k in range(len(lower) - 1)
+    }
+    return stable, edges
+
+
 def _ternary_lower_hull(
     xy: np.ndarray,
     energies: np.ndarray,
 ) -> tuple[set[int], set[tuple[int, int]]]:
     """Returns lower convex-hull vertex indices and tie-line edges."""
-    if len(energies) < 3:
-        return set(range(len(energies))), set()
-    pts3 = np.column_stack([xy, energies])
-    try:
-        hull = spatial.ConvexHull(pts3)
-    except spatial.QhullError:
-        return set(range(len(energies))), set()
+    uniq: list[int] = []
+    for idx, (xy_pt, en) in enumerate(zip(xy, energies, strict=True)):
+        hit = next(
+            (
+                pos
+                for pos, rep in enumerate(uniq)
+                if float(np.linalg.norm(xy_pt - xy[rep])) <= 1e-6
+            ),
+            None,
+        )
+        if hit is None:
+            uniq.append(idx)
+        elif float(en) < float(energies[uniq[hit]]):
+            uniq[hit] = idx
+
+    if len(uniq) <= 1:
+        return set(uniq), set()
+    if len(uniq) == 2:
+        return set(uniq), {(min(uniq[0], uniq[1]), max(uniq[0], uniq[1]))}
+
+    xy_u = xy[uniq]
+    e_u = energies[uniq]
+    dists = np.linalg.norm(xy_u - xy_u[0], axis=1)
+    ref = xy_u[int(np.argmax(dists))] - xy_u[0]
+    ref /= max(float(np.linalg.norm(ref)), 1e-12)
+    perp_max = float(
+        np.max(
+            np.abs(
+                (xy_u[:, 0] - xy_u[0, 0]) * ref[1]
+                - (xy_u[:, 1] - xy_u[0, 1]) * ref[0]
+            )
+        )
+    )
+    if perp_max <= 1e-9:
+        return _collinear_lower_hull(uniq, xy_u, e_u)
+
+    e_top = float(np.max(e_u)) + max(10.0, 10.0 * float(np.ptp(e_u)))
+    cap = np.array(
+        [[0.0, 0.0, e_top], [1.0, 0.0, e_top], [0.5, _SQRT3_HALF, e_top]],
+        dtype=np.float64,
+    )
+    pts3 = np.vstack([np.column_stack([xy_u, e_u]), cap])
+    hull = spatial.ConvexHull(pts3)
+    n_u = len(uniq)
     stable: set[int] = set()
     edges: set[tuple[int, int]] = set()
     for simplex, eq in zip(hull.simplices, hull.equations, strict=True):
-        # Outward normal with negative z-component belongs to the lower hull.
-        if float(eq[2]) < -1e-7:
-            i0, i1, i2 = int(simplex[0]), int(simplex[1]), int(simplex[2])
-            stable.update((i0, i1, i2))
-            for u, v in ((i0, i1), (i1, i2), (i2, i0)):
-                edges.add((min(u, v), max(u, v)))
+        if float(eq[2]) >= -1e-7:
+            continue
+        loc = (int(simplex[0]), int(simplex[1]), int(simplex[2]))
+        if any(v >= n_u for v in loc):
+            continue
+        i0, i1, i2 = uniq[loc[0]], uniq[loc[1]], uniq[loc[2]]
+        stable.update((i0, i1, i2))
+        for u, v in ((i0, i1), (i1, i2), (i2, i0)):
+            edges.add((min(u, v), max(u, v)))
     return stable, edges
 
 
@@ -521,15 +596,15 @@ def _draw_hist_series(
     ax: maxes.Axes,
     lbl: str,
     vals: np.ndarray,
-    bins: int,
-    style_cfg: tuple[str, str, str | None, bool, bool, bool],
+    bins: int | np.ndarray,
+    style_cfg: tuple[str, str, str | None, bool, bool, bool, int],
 ) -> None:
     """Draws one histogram series with optional hatch, KDE, and mean line."""
-    col, ink_col, hatch, multi, show_kde, show_mean = style_cfg
+    col, ink_col, hatch, multi, show_kde, show_mean, series_idx = style_cfg
     clean = vals[np.isfinite(vals)]
     if clean.size == 0:
         return
-    counts, edges, bar_patches = ax.hist(
+    _, edges, bar_patches = ax.hist(
         clean,
         bins=bins,
         color=col,
@@ -556,22 +631,26 @@ def _draw_hist_series(
         )
     if show_mean:
         mu = float(np.mean(clean))
+        mean_col = col if multi else ink_col
         ax.axvline(
             mu,
-            color=ink_col,
+            color=mean_col,
             linestyle="--",
-            linewidth=1.35,
-            alpha=0.8,
-            zorder=4.0,
+            linewidth=1.45,
+            alpha=0.9,
+            zorder=4.2,
         )
+        txt = f" {lbl}: {mu:.2f}" if multi else f" mean={mu:.2f}"
+        y_frac = max(0.18, 0.96 - 0.10 * series_idx)
         ax.text(
             mu,
-            max(float(np.max(counts)), 1.0) * 0.96,
-            f" mean={mu:.2f}",
+            y_frac,
+            txt,
+            transform=ax.get_xaxis_transform(),
             ha="left",
             va="top",
-            fontsize=8.8,
-            color=ink_col,
+            fontsize=8.6,
+            color=mean_col,
             zorder=5.0,
         )
 
@@ -621,6 +700,17 @@ def plot_histogram(
     series_cols = palettes.get_palette(palette)
     ink_col = theme.get_preset(preset).ink_color
     multi = len(series_map) > 1
+    non_empty = [v[np.isfinite(v)] for v in series_map.values()]
+    non_empty = [c for c in non_empty if c.size > 0]
+    if non_empty:
+        pooled = np.concatenate(non_empty)
+        lo, hi = float(np.min(pooled)), float(np.max(pooled))
+        if hi - lo < 1e-12:
+            lo -= 0.5
+            hi += 0.5
+        bin_spec: int | np.ndarray = np.linspace(lo, hi, max(int(bins), 1) + 1)
+    else:
+        bin_spec = bins
 
     with theme.xkcd_style(preset=preset):
         if ax is None:
@@ -637,8 +727,8 @@ def plot_histogram(
                 ax,
                 lbl,
                 vals,
-                bins,
-                (col, ink_col, hatch, multi, show_kde, show_mean),
+                bin_spec,
+                (col, ink_col, hatch, multi, show_kde, show_mean, idx),
             )
 
         if multi:

@@ -487,6 +487,8 @@ def draw_origin_tripod(
     center: np.ndarray | None = None,
     origin: np.ndarray | None = None,
     zorder: float = 500.0,
+    *,
+    span: float | None = None,
 ) -> None:
     """Draws compact RGB ``a, b, c`` arrows anchored at the cell origin."""
     orig_3d = (
@@ -508,7 +510,7 @@ def draw_origin_tripod(
         else center
     )
     tips_2d, depths = geometry.project_points(
-        axis_tips, camera, center=proj_ctr
+        axis_tips, camera, center=proj_ctr, span=span
     )
     axis_colors = ("#D55E00", "#009E73", "#0072B2")
     axis_names = ("a", "b", "c")
@@ -664,6 +666,8 @@ def draw_unit_cell_box(
     base_plane_color: str | None = palettes.VACUUM_TINT,
     cell_axes: str = "edges",
     front_zorder: float = 500.0,
+    *,
+    span: float | None = None,
 ) -> list[np.ndarray]:
     """Draws a clean crystallographic unit cell with back/front depth splitting.
 
@@ -672,7 +676,7 @@ def draw_unit_cell_box(
     """
     stroke = _resolve_ink(edgecolor)
     corners_2d, _, farthest_idx = geometry.cell_corners_projected(
-        cell, camera, center=center, origin=origin
+        cell, camera, center=center, origin=origin, span=span
     )
     if draw_back:
         if base_plane_color is not None:
@@ -729,6 +733,7 @@ def draw_unit_cell_box(
                 center=center,
                 origin=origin,
                 zorder=front_zorder + 1.0,
+                span=span,
             )
     return [corners_2d[k] for k in range(8)]
 
@@ -753,13 +758,17 @@ def draw_miller_plane(
     show_label: bool = True,
     zorder: float = 2.5,
     label_zorder: float | None = None,
+    *,
+    span: float | None = None,
 ) -> None:
     """Draws a translucent crystallographic ``(hkl)`` slice inside the cell."""
     poly_3d = geometry.miller_plane_polygon(cell, hkl)
     if poly_3d.shape[0] < 3:
         return
     proj_ctr = 0.5 * (cell[0] + cell[1] + cell[2]) if center is None else center
-    poly_2d, _ = geometry.project_points(poly_3d, camera, center=proj_ctr)
+    poly_2d, _ = geometry.project_points(
+        poly_3d, camera, center=proj_ctr, span=span
+    )
     patch = patches.Polygon(
         poly_2d,
         closed=True,

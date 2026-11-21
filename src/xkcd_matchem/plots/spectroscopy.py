@@ -20,6 +20,7 @@ import pathlib
 
 from matplotlib import axes as maxes
 from matplotlib import pyplot as plt
+import numpy as np
 
 from xkcd_matchem.core import spectroscopy
 from xkcd_matchem.core import structure
@@ -28,6 +29,59 @@ from xkcd_matchem.io import loader
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import patterns
 from xkcd_matchem.style import theme
+
+
+def _resolve_stick_scale(spectrum: spectroscopy.Spectrum) -> float:
+    """Computes stick scaling without distorting already-matched intensities."""
+    if not spectrum.peaks or spectrum.y.size == 0:
+        return 1.0
+    y_max_curve = max(float(np.max(spectrum.y)), 1e-6)
+    p_max = max((p.intensity for p in spectrum.peaks), default=1.0)
+    if 0.25 * y_max_curve <= p_max <= 4.0 * y_max_curve:
+        return 1.0
+    return y_max_curve / max(p_max, 1e-6)
+
+
+def _annotate_spectrum_peaks(
+    ax: maxes.Axes,
+    peaks: list[spectroscopy.Peak],
+    x_arr: np.ndarray,
+    y_arr: np.ndarray,
+    scale: float,
+    annotate_peaks: int,
+    ink_col: str,
+) -> float:
+    """Annotates top spectral peaks above sticks/curve and returns max y."""
+    if annotate_peaks <= 0 or not peaks:
+        return 0.0
+    top_peaks = sorted(peaks, key=lambda p: p.intensity, reverse=True)[
+        :annotate_peaks
+    ]
+    if x_arr.size >= 2:
+        order = np.argsort(x_arr)
+        xs_s, ys_s = x_arr[order], y_arr[order]
+    else:
+        xs_s, ys_s = x_arr, y_arr
+    top_y = 0.0
+    for pk in top_peaks:
+        y_curve = (
+            float(np.interp(pk.position, xs_s, ys_s))
+            if xs_s.size >= 2 and xs_s[0] <= pk.position <= xs_s[-1]
+            else 0.0
+        )
+        y_loc = max(pk.intensity * scale, y_curve)
+        top_y = max(top_y, y_loc)
+        lbl = pk.label if pk.label else f"{pk.position:.1f}"
+        ax.annotate(
+            lbl,
+            xy=(pk.position, y_loc),
+            xytext=(0, 8),
+            textcoords="offset points",
+            ha="center",
+            fontsize=8.5,
+            color=ink_col,
+        )
+    return top_y
 
 
 def plot_spectrum(
@@ -52,6 +106,9 @@ def plot_spectrum(
     should_invert = (
         spectrum.kind.lower() in ("ir", "nmr") if invert_x is None else invert_x
     )
+    scale = _resolve_stick_scale(spectrum)
+    x_arr = np.asarray(spectrum.x, dtype=np.float64)
+    y_arr = np.asarray(spectrum.y, dtype=np.float64)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.4, 4.0))
@@ -59,48 +116,42 @@ def plot_spectrum(
             theme.style_existing_axes(ax, preset=preset)
         if background_grid:
             patterns.apply_background_grid(ax, style=background_grid)
-        ax.plot(spectrum.x, spectrum.y, color=line_col, lw=2.0)
+        ax.plot(x_arr, y_arr, color=line_col, lw=2.0)
         if fill_under:
             patterns.shade_between(
                 ax,
-                spectrum.x,
+                x_arr,
                 0.0,
-                spectrum.y,
+                y_arr,
                 color=line_col,
                 shade=shade,
                 alpha=0.22 if shade else 0.18,
             )
+        top_y = float(np.max(y_arr)) if y_arr.size else 1.0
         if show_sticks and spectrum.peaks:
-            y_max_curve = max(float(max(spectrum.y, default=1.0)), 1e-6)
-            p_max = max((p.intensity for p in spectrum.peaks), default=1.0)
-            scale = y_max_curve / max(p_max, 1e-6)
             for pk in spectrum.peaks:
+                pk_y = pk.intensity * scale
+                top_y = max(top_y, pk_y)
                 ax.vlines(
                     pk.position,
                     0.0,
-                    pk.intensity * scale * 0.9,
+                    pk_y,
                     color=stick_col,
                     lw=1.3,
                     alpha=0.85,
                 )
-        if annotate_peaks > 0 and spectrum.peaks:
-            top_peaks = sorted(
-                spectrum.peaks, key=lambda p: p.intensity, reverse=True
-            )[:annotate_peaks]
-            y_max_curve = max(float(max(spectrum.y, default=1.0)), 1e-6)
-            p_max = max((p.intensity for p in spectrum.peaks), default=1.0)
-            for pk in top_peaks:
-                y_loc = pk.intensity * (y_max_curve / max(p_max, 1e-6))
-                lbl = pk.label if pk.label else f"{pk.position:.1f}"
-                ax.annotate(
-                    lbl,
-                    xy=(pk.position, y_loc),
-                    xytext=(0, 8),
-                    textcoords="offset points",
-                    ha="center",
-                    fontsize=8.5,
-                    color=ink_col,
-                )
+        ann_top = _annotate_spectrum_peaks(
+            ax,
+            spectrum.peaks,
+            x_arr,
+            y_arr,
+            scale,
+            annotate_peaks,
+            ink_col,
+        )
+        top_y = max(top_y, ann_top)
+        y_low = min(0.0, float(np.min(y_arr)) if y_arr.size else 0.0)
+        ax.set_ylim(y_low, max(top_y * 1.15, y_low + 1.0))
         ax.set_xlabel(spectrum.x_label)
         ax.set_ylabel(spectrum.y_label)
         if should_invert:

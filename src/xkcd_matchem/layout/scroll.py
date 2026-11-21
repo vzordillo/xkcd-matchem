@@ -239,6 +239,7 @@ class ScrollCard:
         alpha: float = 0.38,
         margin_line: bool = False,
         square_grid: bool = True,
+        sketch: tuple[float, float, float] | bool = True,
     ) -> ScrollCard:
         """Applies, switches, or removes (``None`` / ``"none"``) the grid."""
         key = _normalize_grid_style(style)
@@ -265,6 +266,7 @@ class ScrollCard:
             spacing=eff_y,
             spacing_x=step_x,
             margin_line=margin_line,
+            sketch=sketch,
         )
         raw_xs, raw_ys = patterns.compute_background_grid_coords(
             key, spacing=eff_y, spacing_x=step_x
@@ -771,6 +773,7 @@ def _apply_initial_scroll_grid(
         spacing=eff_y,
         spacing_x=step_x,
         margin_line=margin_line,
+        sketch=True,
     )
     raw_xs, raw_ys = patterns.compute_background_grid_coords(
         bg_key, spacing=eff_y, spacing_x=step_x

@@ -22,6 +22,7 @@ from matplotlib import patches
 from matplotlib import pyplot as plt
 import numpy as np
 
+from xkcd_matchem.core import exceptions
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import patterns
 from xkcd_matchem.style import theme
@@ -40,8 +41,15 @@ def plot_parity(
     """Plots predicted vs reference parity scatter with MAE, RMSE, and R^2."""
     yt = np.asarray(y_true, dtype=np.float64)
     yp = np.asarray(y_pred, dtype=np.float64)
-    lo = min(float(np.min(yt)), float(np.min(yp)))
-    hi = max(float(np.max(yt)), float(np.max(yp)))
+    if yt.shape != yp.shape:
+        raise exceptions.StructureError(
+            "y_true and y_pred must have identical shapes."
+        )
+    if yt.size > 0:
+        lo = min(float(np.min(yt)), float(np.min(yp)))
+        hi = max(float(np.max(yt)), float(np.max(yp)))
+    else:
+        lo, hi = 0.0, 1.0
     pad = 0.08 * max(hi - lo, 1.0)
     preset_obj = theme.get_preset(preset)
     with theme.xkcd_style(preset=preset):
@@ -72,11 +80,15 @@ def plot_parity(
             mae = float(np.mean(np.abs(err)))
             rmse = float(np.sqrt(np.mean(err * err)))
             ss_tot = float(np.sum((yt - np.mean(yt)) ** 2))
-            r2 = 1.0 - float(np.sum(err * err)) / max(ss_tot, 1e-12)
+            r2_str = (
+                "N/A"
+                if ss_tot <= 1e-12
+                else f"{1.0 - float(np.sum(err * err)) / ss_tot:.3f}"
+            )
             metrics_txt = (
                 f"MAE = {mae:.3f} {unit}\n"
                 f"RMSE = {rmse:.3f} {unit}\n"
-                f"R^2 = {r2:.3f}"
+                f"R^2 = {r2_str}"
             )
             ax.text(
                 0.05,
@@ -103,6 +115,48 @@ def plot_parity(
     return ax
 
 
+def _bar_error_extents(
+    errors: Sequence[float] | np.ndarray | None,
+    n_bars: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Normalizes None, scalar, 1D, or 2xN error inputs to (lower, upper)."""
+    if errors is None or n_bars == 0:
+        zeros = np.zeros(n_bars, dtype=np.float64)
+        return zeros, zeros
+    arr = np.asarray(errors, dtype=np.float64)
+    if arr.ndim == 0:
+        vec = np.full(n_bars, abs(float(arr)), dtype=np.float64)
+        return vec, vec
+    if arr.ndim == 1:
+        vec = np.abs(arr)
+        return vec, vec
+    return np.abs(arr[0]), np.abs(arr[1])
+
+
+def _annotate_bar_values(
+    ax: maxes.Axes,
+    bars: Sequence[patches.Rectangle],
+    vals: np.ndarray,
+    err_lo: np.ndarray,
+    err_hi: np.ndarray,
+    ink_col: str,
+) -> None:
+    """Places signed bar-value annotations cleanly beyond bar and error caps."""
+    for rect, v, e_lo, e_hi in zip(bars, vals, err_lo, err_hi, strict=True):
+        is_neg = float(v) < 0.0
+        tip_y = float(v - e_lo) if is_neg else float(v + e_hi)
+        ax.annotate(
+            f"{v:.2f}",
+            xy=(rect.get_x() + rect.get_width() * 0.5, tip_y),
+            xytext=(0, -4 if is_neg else 4),
+            textcoords="offset points",
+            ha="center",
+            va="top" if is_neg else "bottom",
+            fontsize=9.5,
+            color=ink_col,
+        )
+
+
 def plot_bar_comparison(
     labels: Sequence[str],
     values: Sequence[float] | np.ndarray,
@@ -118,6 +172,7 @@ def plot_bar_comparison(
 ) -> maxes.Axes:
     """Plots an xkcd-style categorical bar comparison with customizable fill."""
     vals = np.asarray(values, dtype=np.float64)
+    err_lo, err_hi = _bar_error_extents(errors, len(vals))
     series = palettes.get_palette(palette)
     colors = [series[(i + 1) % len(series)] for i in range(len(labels))]
     ink_col = theme.get_preset(preset).ink_color
@@ -148,15 +203,16 @@ def plot_bar_comparison(
                     rect.set_hatch(hatch)
                     rect.set_sketch_params(0.0, 0.0, 0.0)
         if annotate_values:
-            for rect, v in zip(bars, vals, strict=True):
-                ax.text(
-                    rect.get_x() + rect.get_width() * 0.5,
-                    rect.get_height(),
-                    f"{v:.2f}",
-                    ha="center",
-                    va="bottom",
-                    fontsize=9.5,
-                )
+            _annotate_bar_values(ax, bars, vals, err_lo, err_hi, ink_col)
+        if vals.size:
+            y_hi = float(np.max(vals + err_hi))
+            y_lo = float(np.min(vals - err_lo))
+            span = max(y_hi - min(0.0, y_lo), abs(y_hi), abs(y_lo), 1.0)
+            top = y_hi + 0.16 * span if y_hi >= 0.0 else 0.06 * span
+            bot = y_lo - 0.16 * span if y_lo < 0.0 else 0.0
+            ax.set_ylim(bot, top)
+            if y_lo < 0.0:
+                ax.axhline(0.0, color=ink_col, linewidth=1.0, alpha=0.6)
         ax.set_xticks(xs)
         ax.set_xticklabels(labels)
         ax.set_ylabel(ylabel)

@@ -203,13 +203,14 @@ def _add_bond_queue_items(
     atoms: structure.AtomsData,
     bonds: Sequence[structure.Bond],
     cam: geometry.Camera,
-    pivot: np.ndarray,
+    view_ref: tuple[np.ndarray, float],
     xy_and_depth: tuple[np.ndarray, np.ndarray],
     colors: Sequence[str],
     radii: Sequence[float],
     skip_spec: tuple[set[str], set[str] | None, set[int]] | None = None,
 ) -> None:
     """Appends unified two-tone interior bonds and periodic edge stubs."""
+    pivot, proj_span = view_ref
     xy, depth = xy_and_depth
     for bond in bonds:
         i_idx, j_idx = bond.i, bond.j
@@ -239,6 +240,7 @@ def _add_bond_queue_items(
             ),
             cam,
             center=pivot,
+            span=proj_span,
         )
         items.append(
             (
@@ -263,12 +265,13 @@ def _add_polyhedra_items(
     | Sequence[bonding.CoordinationPolyhedron]
     | None,
     cam: geometry.Camera,
-    pivot: np.ndarray,
+    view_ref: tuple[np.ndarray, float],
     palette: str | Mapping[str, str],
 ) -> None:
     """Appends depth-sorted individual coordination triangle facets."""
     if polyhedra is None:
         return
+    pivot, proj_span = view_ref
     if (
         isinstance(polyhedra, tuple)
         and len(polyhedra) == 2
@@ -281,7 +284,7 @@ def _add_polyhedra_items(
         poly_list = list(polyhedra)  # type: ignore[arg-type]
     for poly in poly_list:
         p_xy, p_depth = geometry.project_points(
-            poly.vertices_3d, cam, center=pivot
+            poly.vertices_3d, cam, center=pivot, span=proj_span
         )
         c_col = palettes.get_element_color(poly.center_symbol, scheme=palette)
         for i0, i1, i2 in poly.faces:
@@ -401,6 +404,7 @@ def _draw_queue_item(
             edgecolor=payload[2],  # type: ignore[index]
             show_label=False,
             zorder=z_layer,
+            span=payload[5],  # type: ignore[index]
         )
     elif kind == "cell_edge":
         ax.plot(
@@ -443,25 +447,26 @@ def _add_miller_queue_items(
     atoms: structure.AtomsData,
     miller_planes: Sequence[tuple[int, int, int]] | None,
     cam: geometry.Camera,
-    pivot: np.ndarray,
+    view_ref: tuple[np.ndarray, float],
 ) -> list[tuple[tuple[int, int, int], np.ndarray, str]]:
     """Adds depth-sorted Miller slices to queue and returns label positions."""
     labels_meta: list[tuple[tuple[int, int, int], np.ndarray, str]] = []
     if not miller_planes or atoms.cell is None:
         return labels_meta
+    pivot, proj_span = view_ref
     for idx_m, hkl in enumerate(miller_planes):
         poly_3d = geometry.miller_plane_polygon(atoms.cell, hkl)
         if poly_3d.shape[0] < 3:
             continue
         poly_2d, poly_depth = geometry.project_points(
-            poly_3d, cam, center=pivot
+            poly_3d, cam, center=pivot, span=proj_span
         )
         face_col, edge_col = _miller_plane_colors(idx_m)
         items.append(
             (
                 float(np.mean(poly_depth)) - 0.01,
                 "miller",
-                (hkl, face_col, edge_col, cam, pivot),
+                (hkl, face_col, edge_col, cam, pivot, proj_span),
             )
         )
         labels_meta.append((hkl, np.mean(poly_2d, axis=0), edge_col))
@@ -509,7 +514,7 @@ def _prepare_scene_geometry(
     radius_scale: float,
     pad: float,
 ) -> tuple[
-    np.ndarray,
+    tuple[np.ndarray, float],
     np.ndarray,
     np.ndarray,
     np.ndarray,
@@ -525,7 +530,12 @@ def _prepare_scene_geometry(
         if atoms.cell is not None
         else np.mean(atoms.positions, axis=0)
     )
-    xy, depth = geometry.project_points(atoms.positions, cam, center=pivot)
+    proj_span = geometry.scene_projection_span(
+        atoms.positions, cam, center=pivot, cell=atoms.cell
+    )
+    xy, depth = geometry.project_points(
+        atoms.positions, cam, center=pivot, span=proj_span
+    )
     colors = [
         palettes.get_element_color(sym, scheme=palette) for sym in atoms.symbols
     ]
@@ -537,7 +547,7 @@ def _prepare_scene_geometry(
     bounds_pts: list[np.ndarray] = [xy]
     if cell_cfg[0] and atoms.cell is not None:
         corners_2d, _, _ = geometry.cell_corners_projected(
-            atoms.cell, cam, center=pivot
+            atoms.cell, cam, center=pivot, span=proj_span
         )
         bounds_pts.append(corners_2d)
     all_pts = np.vstack(bounds_pts)
@@ -553,7 +563,7 @@ def _prepare_scene_geometry(
     atom_lw = float(np.clip(0.11 * pt_per_a, 1.3, 2.2))
     cell_lw = float(np.clip(0.10 * pt_per_a, 1.15, 1.9))
     return (
-        pivot,
+        (pivot, proj_span),
         xy,
         depth,
         all_pts,
@@ -652,7 +662,7 @@ def render_structure_3d(
 def _build_3d_painter_queue(
     atoms: structure.AtomsData,
     cam: geometry.Camera,
-    pivot: np.ndarray,
+    view_ref: tuple[np.ndarray, float],
     xy: np.ndarray,
     depth: np.ndarray,
     colors: list[str],
@@ -682,15 +692,15 @@ def _build_3d_painter_queue(
             atoms,
             bonds,
             cam,
-            pivot,
+            view_ref,
             (xy, depth),
             colors,
             radii,
             skip_spec=_polyhedra_skip_spec(style, polyhedra),
         )
-    _add_polyhedra_items(items, atoms, polyhedra, cam, pivot, palette)
+    _add_polyhedra_items(items, atoms, polyhedra, cam, view_ref, palette)
     miller_labels = _add_miller_queue_items(
-        items, atoms, miller_planes, cam, pivot
+        items, atoms, miller_planes, cam, view_ref
     )
     items.sort(key=lambda entry: entry[0])
     return items, miller_labels
@@ -700,7 +710,7 @@ def _finalize_3d_viewport(
     ax: maxes.Axes,
     atoms: structure.AtomsData,
     cam: geometry.Camera,
-    pivot: np.ndarray,
+    view_ref: tuple[np.ndarray, float],
     all_pts: np.ndarray,
     margin: float,
     standalone_axes: str,
@@ -721,6 +731,7 @@ def _finalize_3d_viewport(
     ax.set_aspect("equal")
     ax.set_axis_off()
 
+    pivot, proj_span = view_ref
     if atoms.cell is not None:
         if standalone_axes in _CORNER_AXES_LOCS:
             primitives.draw_crystal_axes(
@@ -737,6 +748,7 @@ def _finalize_3d_viewport(
                 cam,
                 center=pivot,
                 zorder=front_z + 2.5,
+                span=proj_span,
             )
 
 
@@ -760,14 +772,15 @@ def _add_front_cell_edges(
     items: list[tuple[float, str, object]],
     atoms: structure.AtomsData,
     cam: geometry.Camera,
-    pivot: np.ndarray,
+    view_ref: tuple[np.ndarray, float],
     cell_lw: float,
 ) -> None:
     """Adds depth-sorted front cell edges so corner/edge atoms sit cleanly."""
     if atoms.cell is None:
         return
+    pivot, proj_span = view_ref
     corners_2d, c_depth, farthest_idx = geometry.cell_corners_projected(
-        atoms.cell, cam, center=pivot
+        atoms.cell, cam, center=pivot, span=proj_span
     )
     for i_idx, j_idx in _FRONT_CELL_EDGES:
         if farthest_idx in (i_idx, j_idx):
@@ -787,7 +800,7 @@ def _render_prepared_3d(
     atoms: structure.AtomsData,
     cam: geometry.Camera,
     scene: tuple[
-        np.ndarray,
+        tuple[np.ndarray, float],
         np.ndarray,
         np.ndarray,
         np.ndarray,
@@ -804,7 +817,7 @@ def _render_prepared_3d(
     miller_planes: Sequence[tuple[int, int, int]] | None,
 ) -> None:
     """Executes cell backdrop, depth-sorted painter pass, and front cell."""
-    pivot, xy, depth, all_pts, colors = scene[:5]
+    view_ref, xy, depth, all_pts, colors = scene[:5]
     radii, margin, cell_cfg, widths = scene[5:]
     draw_box, base_col, box_axes, standalone_axes = cell_cfg
 
@@ -813,18 +826,19 @@ def _render_prepared_3d(
             ax,
             atoms.cell,
             cam,
-            center=pivot,
+            center=view_ref[0],
             linewidth=widths[3],
             draw_back=True,
             draw_front=False,
             base_plane_color=base_col,
             cell_axes=box_axes,
+            span=view_ref[1],
         )
 
     items, miller_labels = _build_3d_painter_queue(
         atoms,
         cam,
-        pivot,
+        view_ref,
         xy,
         depth,
         colors,
@@ -834,7 +848,7 @@ def _render_prepared_3d(
         miller_planes,
     )
     if draw_box and atoms.cell is not None:
-        _add_front_cell_edges(items, atoms, cam, pivot, widths[3])
+        _add_front_cell_edges(items, atoms, cam, view_ref, widths[3])
         items.sort(key=lambda entry: entry[0])
     state = (
         atoms,
@@ -856,7 +870,7 @@ def _render_prepared_3d(
             ax,
             atoms.cell,
             cam,
-            center=pivot,
+            center=view_ref[0],
             linewidth=widths[3],
             draw_back=False,
             draw_front=True,
@@ -864,9 +878,10 @@ def _render_prepared_3d(
             base_plane_color=None,
             cell_axes=box_axes,
             front_zorder=front_z,
+            span=view_ref[1],
         )
     if miller_labels:
         _draw_miller_labels(ax, miller_labels, zorder=front_z + 1.5)
     _finalize_3d_viewport(
-        ax, atoms, cam, pivot, all_pts, margin, standalone_axes, front_z
+        ax, atoms, cam, view_ref, all_pts, margin, standalone_axes, front_z
     )

@@ -177,6 +177,7 @@ def project_points(
     positions: np.ndarray,
     camera: Camera,
     center: np.ndarray | None = None,
+    span: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Projects 3D Cartesian coordinates into 2D screen space and depth.
 
@@ -184,6 +185,7 @@ def project_points(
       positions: Array of shape ``(N, 3)`` in Angstrom.
       camera: Viewing ``Camera`` configuration.
       center: Optional rotation pivot in Angstrom; defaults to centroid.
+      span: Optional global rotated extent for consistent perspective scaling.
 
     Returns:
       Tuple ``(xy, depth)`` where ``xy`` has shape ``(N, 2)`` and ``depth`` has
@@ -201,12 +203,50 @@ def project_points(
     depth = rotated[:, 2]
     xy = rotated[:, :2] * camera.zoom
     if camera.perspective > 0.0:
-        span = max(float(np.max(np.abs(rotated))), 1.0)
+        ref_span = (
+            max(float(span), 1.0)
+            if span is not None
+            else max(float(np.max(np.abs(rotated))), 1.0)
+        )
         denom = np.maximum(
-            1.0 - camera.perspective * (depth / span) * 0.15, 0.25
+            1.0 - camera.perspective * (depth / ref_span) * 0.15, 0.25
         )
         xy = xy / denom[:, None]
     return xy, depth
+
+
+def scene_projection_span(
+    positions: np.ndarray,
+    camera: Camera,
+    center: np.ndarray | None = None,
+    cell: np.ndarray | None = None,
+) -> float:
+    """Computes global rotated extent for consistent perspective projection."""
+    pts = np.asarray(positions, dtype=np.float64)
+    chunks: list[np.ndarray] = [pts] if pts.size else []
+    if cell is not None:
+        cell_arr = np.asarray(cell, dtype=np.float64)
+        frac_corners = np.array(
+            [
+                [0, 0, 0],
+                [1, 0, 0],
+                [0, 1, 0],
+                [0, 0, 1],
+                [1, 1, 0],
+                [1, 0, 1],
+                [0, 1, 1],
+                [1, 1, 1],
+            ],
+            dtype=np.float64,
+        )
+        chunks.append(frac_corners @ cell_arr)
+    if not chunks:
+        return 1.0
+    all_pts = np.vstack(chunks)
+    pivot = np.mean(all_pts, axis=0) if center is None else np.asarray(center)
+    basis = rotation_matrix(camera.azimuth, camera.elevation, camera.roll)
+    rotated = (all_pts - pivot) @ basis.T
+    return max(float(np.max(np.abs(rotated))), 1.0)
 
 
 def cell_vectors_from_parameters(
@@ -379,6 +419,7 @@ def cell_corners_projected(
     camera: Camera,
     center: np.ndarray | None = None,
     origin: np.ndarray | None = None,
+    span: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """Projects the 8 parallelepiped corners and returns farthest corner index.
 
@@ -406,7 +447,9 @@ def cell_corners_projected(
     )
     corners_3d = orig + frac_corners @ cell
     proj_center = np.mean(corners_3d, axis=0) if center is None else center
-    corners_2d, depth = project_points(corners_3d, camera, center=proj_center)
+    corners_2d, depth = project_points(
+        corners_3d, camera, center=proj_center, span=span
+    )
     farthest_idx = int(np.argmin(depth))
     return corners_2d, depth, farthest_idx
 
@@ -441,6 +484,7 @@ def unit_cell_edges(
     camera: Camera,
     center: np.ndarray | None = None,
     origin: np.ndarray | None = None,
+    span: float | None = None,
 ) -> list[tuple[np.ndarray, np.ndarray, bool]]:
     """Computes the 12 projected unit-cell edges with back-face flags.
 
@@ -449,13 +493,14 @@ def unit_cell_edges(
       camera: Viewing ``Camera`` configuration.
       center: Optional 3D center used for projection alignment.
       origin: Optional origin shift for the unit cell (defaults to zero).
+      span: Optional global rotated extent for perspective alignment.
 
     Returns:
       List of 12 tuples ``(p0_2d, p1_2d, is_back)``, where ``is_back`` is True
       for edges touching the corner with smallest depth (drawn dashed behind).
     """
     corners_2d, _, farthest_idx = cell_corners_projected(
-        cell, camera, center=center, origin=origin
+        cell, camera, center=center, origin=origin, span=span
     )
     edge_pairs = (
         (0, 1),

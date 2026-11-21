@@ -34,6 +34,9 @@ def test_background_grids_and_hatched_shading() -> None:
     for grid_style in ("ruled", "graph", "dotgrid", "isometric", "blueprint"):
         fig, ax = plt.subplots()
         xm.apply_background_grid(ax, style=grid_style)
+        for line in ax.lines:
+            if line.get_gid() == xm.style.patterns.BG_GRID_GID:
+                assert line.get_sketch_params()[0] == 0.0
         plt.close(fig)
 
     fig, ax = plt.subplots()
@@ -47,7 +50,19 @@ def test_background_grids_and_hatched_shading() -> None:
         ["A", "B", "C"], [1.0, 2.0, 1.5], shade="cycle", background_grid="graph"
     )
     assert len(ax_bar.patches) >= 3
+    ax_bar.figure.canvas.draw()
+    for line in ax_bar.lines:
+        if line.get_gid() == xm.style.patterns.BG_GRID_GID:
+            assert line.get_sketch_params()[0] == 0.0
+    for grid_ln in ax_bar.xaxis.get_gridlines() + ax_bar.yaxis.get_gridlines():
+        assert grid_ln.get_sketch_params()[0] == 0.0
     plt.close(ax_bar.figure)
+
+    ax_nb = xm.plot_bar_comparison(["A", "B"], [1.0, 2.0], preset="notebook")
+    ax_nb.figure.canvas.draw()
+    for grid_ln in ax_nb.xaxis.get_gridlines() + ax_nb.yaxis.get_gridlines():
+        assert grid_ln.get_sketch_params()[0] == 0.0
+    plt.close(ax_nb.figure)
 
     ax_pbx = xm.plot_pourbaix(
         [("M+", [(0, 0), (7, 0), (7, 1), (0, 1)])],
@@ -56,6 +71,12 @@ def test_background_grids_and_hatched_shading() -> None:
         preset="blueprint",
     )
     assert len(ax_pbx.patches) >= 1
+    ax_pbx.figure.canvas.draw()
+    for line in ax_pbx.lines:
+        if line.get_gid() == xm.style.patterns.BG_GRID_GID:
+            assert line.get_sketch_params()[0] == 0.0
+    for grid_ln in ax_pbx.xaxis.get_gridlines() + ax_pbx.yaxis.get_gridlines():
+        assert grid_ln.get_sketch_params()[0] == 0.0
     plt.close(ax_pbx.figure)
 
 
@@ -78,6 +99,7 @@ def test_scroll_cards_portrait_and_landscape() -> None:
     assert abs(item_texts[2].get_position()[1] - sc_p.line_y(1)) < 0.02
     # Removing the background grid strips all rule lines but preserves text.
     assert len(sc_p.axes.lines) >= 2
+    assert all(ln.get_sketch_params()[0] > 0.0 for ln in sc_p.axes.lines)
     sc_p.clear_background_grid()
     assert len(sc_p.axes.lines) == 0
     assert len(sc_p.axes.texts) == 4
@@ -199,7 +221,37 @@ def test_pymatviz_inspired_materials_plots() -> None:
         background_grid="dotgrid",
     )
     assert len(ax_h.patches) > 0
+    widths = {round(float(p.get_width()), 6) for p in ax_h.patches}
+    assert len(widths) == 1
+    assert len({t.get_position()[1] for t in ax_h.texts}) == 2
     plt.close(ax_h.figure)
+
+    # Edge-case ternary inputs (coplanar, 3-corner, collinear, duplicate poly).
+    for c_pts, e_pts in (
+        ([(1, 0, 0), (0, 1, 0), (0, 0, 1)], [0.0, 0.0, 0.0]),
+        ([(1, 0, 0), (0.5, 0.5, 0), (0, 1, 0)], [0.0, -0.4, 0.0]),
+        (
+            [(1, 0, 0), (0, 1, 0), (0, 0, 1), (0.5, 0.5, 0), (0.5, 0.5, 0)],
+            [0.0, 0.0, 0.0, -0.8, -0.2],
+        ),
+    ):
+        ax_edge = xm.plot_ternary_phase_diagram(c_pts, e_pts)
+        assert len(ax_edge.lines) > 0
+        plt.close(ax_edge.figure)
+
+    ax_neg_bar = xm.plot_bar_comparison(
+        ["Neg", "Pos"], [-2.5, 3.0], errors=[0.4, 0.5]
+    )
+    assert ax_neg_bar.texts[0].get_va() == "top"
+    assert ax_neg_bar.get_ylim()[0] < -2.9
+    assert ax_neg_bar.get_ylim()[1] > 3.5
+    plt.close(ax_neg_bar.figure)
+
+    with pytest.raises(xm.StructureError):
+        xm.plot_parity([1.0, 2.0], [1.0])
+    ax_const = xm.plot_parity([2.0, 2.0, 2.0], [1.9, 2.0, 2.1])
+    assert "R^2 = N/A" in ax_const.texts[0].get_text()
+    plt.close(ax_const.figure)
 
 
 def test_icons_and_graph_networks() -> None:

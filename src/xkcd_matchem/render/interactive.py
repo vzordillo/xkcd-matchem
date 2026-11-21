@@ -382,7 +382,7 @@ def view_structure(
     preset: str = "classic",
     camera: geometry.Camera | str | None = None,
     supercell: tuple[int, int, int] | None = None,
-    center: bool = True,
+    center: bool = False,
     show_cell: bool | str = True,
     background: str = palettes.PAPER,
     polyhedra: tuple[str, str | None] | None = None,

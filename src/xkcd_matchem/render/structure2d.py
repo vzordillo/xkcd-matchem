@@ -232,6 +232,45 @@ def _label_color(sym: str, palette: str | Mapping[str, str], ink: str) -> str:
     return col
 
 
+def _atom_has_label(
+    idx: int,
+    atoms: structure.AtomsData,
+    neighbors: dict[int, list[tuple[int, float]]],
+    visible: list[bool],
+) -> bool:
+    """Returns whether an atom renders a text label on the 2D diagram."""
+    if not visible[idx]:
+        return False
+    if atoms.symbols[idx] == "C":
+        vis_deg = sum(1 for nb, _ in neighbors[idx] if visible[nb])
+        return vis_deg < 2
+    return True
+
+
+def _terminal_carbon_label(
+    idx: int,
+    atoms: structure.AtomsData,
+    neighbors: dict[int, list[tuple[int, float]]],
+    visible: list[bool],
+) -> str:
+    """Computes implicit-H label (CH3/CH2/CH/C) for terminal carbons."""
+    hidden_h = sum(
+        1
+        for nb, _ in neighbors[idx]
+        if atoms.symbols[nb] == "H" and not visible[nb]
+    )
+    if hidden_h > 0:
+        h_cnt = hidden_h
+    else:
+        vis_order = sum(o for nb, o in neighbors[idx] if visible[nb])
+        h_cnt = max(0, 4 - round(vis_order)) if vis_order > 0.0 else 0
+    if h_cnt == 0:
+        return "C"
+    if h_cnt == 1:
+        return "CH"
+    return f"CH{h_cnt}"
+
+
 def _draw_skeletal_labels(
     ax: maxes.Axes,
     atoms: structure.AtomsData,
@@ -245,9 +284,7 @@ def _draw_skeletal_labels(
 ) -> None:
     """Draws halo-backed heteroatom and terminal carbon labels."""
     for idx, sym in enumerate(atoms.symbols):
-        if not visible[idx]:
-            continue
-        if sym == "C" and len(neighbors[idx]) >= 2:
+        if not _atom_has_label(idx, atoms, neighbors, visible):
             continue
         label = sym
         h_cnt = hetero_h_count.get(idx, 0)
@@ -256,7 +293,7 @@ def _draw_skeletal_labels(
         elif h_cnt > 1:
             label = f"{sym}H{h_cnt}"
         if sym == "C":
-            label = "CH3" if len(neighbors[idx]) == 1 else "C"
+            label = _terminal_carbon_label(idx, atoms, neighbors, visible)
         text_col = _label_color(sym, palette, ink)
         ax.add_patch(
             patches.Circle(
@@ -327,8 +364,8 @@ def render_structure_2d(
     for b in bonds:
         if not (visible[b.i] and visible[b.j]):
             continue
-        s_i = 0.17 if atoms.symbols[b.i] != "C" else 0.0
-        s_j = 0.17 if atoms.symbols[b.j] != "C" else 0.0
+        s_i = 0.17 if _atom_has_label(b.i, atoms, neighbors, visible) else 0.0
+        s_j = 0.17 if _atom_has_label(b.j, atoms, neighbors, visible) else 0.0
         edge_key = (min(b.i, b.j), max(b.i, b.j))
         _draw_skeletal_bond(
             ax,

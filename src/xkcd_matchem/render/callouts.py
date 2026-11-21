@@ -54,10 +54,10 @@ def draw_curved_arrow(
         zorder=18.0,
     )
     if label:
-        mid_x = 0.5 * (start[0] + end[0])
-        mid_y = 0.5 * (start[1] + end[1]) + 0.15 * abs(end[0] - start[0]) * (
-            1.0 if rad >= 0.0 else -1.0
-        )
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        mid_x = 0.5 * (start[0] + end[0]) + 0.65 * rad * dy
+        mid_y = 0.5 * (start[1] + end[1]) - 0.65 * rad * dx
         ax.text(
             mid_x,
             mid_y,
@@ -109,25 +109,32 @@ def annotate_distance(
     atoms: structure.AtomsData,
     i: int,
     j: int,
-    camera: geometry.Camera | None = None,
+    camera: geometry.Camera | str | None = None,
     color: str = "#0072B2",
     offset: float = 0.25,
 ) -> float:
     """Annotates an interatomic distance (Angstrom) onto a 3D projected view."""
-    cam = geometry.Camera() if camera is None else camera
+    cam = geometry.resolve_camera(camera, cell=atoms.cell)
     pivot = (
         0.5 * (atoms.cell[0] + atoms.cell[1] + atoms.cell[2])
         if atoms.cell is not None
         else np.mean(atoms.positions, axis=0)
     )
-    xy, _ = geometry.project_points(atoms.positions, cam, center=pivot)
+    proj_span = geometry.scene_projection_span(
+        atoms.positions, cam, center=pivot, cell=atoms.cell
+    )
     vec = atoms.positions[j] - atoms.positions[i]
     if atoms.cell is not None and any(atoms.pbc):
         vec = geometry.minimum_image_vector(vec, atoms.cell, atoms.pbc)
     dist = float(np.linalg.norm(vec))
-
-    p1 = xy[i]
-    p2 = xy[j]
+    pts_2d, _ = geometry.project_points(
+        np.vstack([atoms.positions[i], atoms.positions[i] + vec]),
+        cam,
+        center=pivot,
+        span=proj_span,
+    )
+    p1 = pts_2d[0]
+    p2 = pts_2d[1]
     span = p2 - p1
     norm = max(float(np.linalg.norm(span)), 1e-6)
     perp = np.array([-span[1], span[0]], dtype=np.float64) / norm * offset
@@ -165,7 +172,7 @@ def annotate_angle(
     i: int,
     j: int,
     k: int,
-    camera: geometry.Camera | None = None,
+    camera: geometry.Camera | str | None = None,
     color: str = "#009E73",
 ) -> float:
     """Annotates the ``i-j-k`` bond angle centered at atom ``j`` in degrees."""
@@ -174,24 +181,43 @@ def annotate_angle(
     if atoms.cell is not None and any(atoms.pbc):
         v1 = geometry.minimum_image_vector(v1, atoms.cell, atoms.pbc)
         v2 = geometry.minimum_image_vector(v2, atoms.cell, atoms.pbc)
-    cos_th = float(
-        np.clip(
-            np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)),
-            -1.0,
-            1.0,
-        )
-    )
+    n1 = float(np.linalg.norm(v1))
+    n2 = float(np.linalg.norm(v2))
+    if n1 < 1e-9 or n2 < 1e-9:
+        return 0.0
+    cos_th = float(np.clip(np.dot(v1, v2) / (n1 * n2), -1.0, 1.0))
     deg = math.degrees(math.acos(cos_th))
-    cam = geometry.Camera() if camera is None else camera
+    cam = geometry.resolve_camera(camera, cell=atoms.cell)
     pivot = (
         0.5 * (atoms.cell[0] + atoms.cell[1] + atoms.cell[2])
         if atoms.cell is not None
         else np.mean(atoms.positions, axis=0)
     )
-    xy, _ = geometry.project_points(atoms.positions, cam, center=pivot)
-    dir_avg = (xy[i] - xy[j]) + (xy[k] - xy[j])
-    norm = max(float(np.linalg.norm(dir_avg)), 1e-6)
-    pos = xy[j] + 0.55 * (dir_avg / norm)
+    proj_span = geometry.scene_projection_span(
+        atoms.positions, cam, center=pivot, cell=atoms.cell
+    )
+    pts_2d, _ = geometry.project_points(
+        np.vstack(
+            [
+                atoms.positions[j],
+                atoms.positions[j] + v1,
+                atoms.positions[j] + v2,
+            ]
+        ),
+        cam,
+        center=pivot,
+        span=proj_span,
+    )
+    u1 = pts_2d[1] - pts_2d[0]
+    u2 = pts_2d[2] - pts_2d[0]
+    u1 /= max(float(np.linalg.norm(u1)), 1e-6)
+    u2 /= max(float(np.linalg.norm(u2)), 1e-6)
+    dir_avg = u1 + u2
+    norm = float(np.linalg.norm(dir_avg))
+    if norm < 1e-4:
+        dir_avg = np.array([-u1[1], u1[0]], dtype=np.float64)
+        norm = max(float(np.linalg.norm(dir_avg)), 1e-6)
+    pos = pts_2d[0] + 0.55 * (dir_avg / norm)
     bg = str(plt.rcParams.get("figure.facecolor", palettes.PAPER))
     ax.text(
         float(pos[0]),

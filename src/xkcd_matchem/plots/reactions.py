@@ -22,6 +22,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 from scipy import interpolate
 
+from xkcd_matchem.core import geometry
 from xkcd_matchem.core import trajectory
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import theme
@@ -37,6 +38,52 @@ def _is_local_peak(y_vals: np.ndarray, idx: int) -> bool:
         return bool(y_vals[-1] > y_vals[-2])
     return bool(
         y_vals[idx] >= y_vals[idx - 1] and y_vals[idx] >= y_vals[idx + 1]
+    )
+
+
+def _annotate_reaction_barrier(
+    ax: maxes.Axes,
+    xs: np.ndarray,
+    y_vals: np.ndarray,
+    unit: str,
+    barrier_col: str,
+    bg_color: str,
+) -> None:
+    """Draws activation-energy arrow relative to lowest preceding minimum."""
+    peak_idx = int(np.argmax(y_vals))
+    if not 0 < peak_idx < len(y_vals) - 1:
+        return
+    ref_idx = int(np.argmin(y_vals[:peak_idx]))
+    e_ref = float(y_vals[ref_idx])
+    e_act = float(y_vals[peak_idx] - e_ref)
+    ax.annotate(
+        "",
+        xy=(xs[peak_idx], y_vals[peak_idx]),
+        xytext=(xs[peak_idx], e_ref),
+        arrowprops={"arrowstyle": "<->", "color": barrier_col, "lw": 1.6},
+    )
+    ax.plot(
+        [xs[ref_idx] + 0.22, xs[peak_idx] + 0.10],
+        [e_ref, e_ref],
+        color=barrier_col,
+        linestyle=":",
+        lw=1.1,
+    )
+    ax.text(
+        xs[peak_idx],
+        0.5 * (e_ref + y_vals[peak_idx]),
+        f"Ea = {e_act:.2f} {unit}",
+        color=barrier_col,
+        ha="center",
+        va="center",
+        fontsize=9.0,
+        bbox={
+            "boxstyle": "round,pad=0.18",
+            "facecolor": bg_color,
+            "edgecolor": "none",
+            "alpha": 0.9,
+        },
+        zorder=6,
     )
 
 
@@ -101,42 +148,9 @@ def plot_reaction_profile(
             )
 
         if barriers and n_pts >= 3:
-            peak_idx = int(np.argmax(y_vals))
-            if 0 < peak_idx < n_pts - 1:
-                e_act = float(y_vals[peak_idx] - y_vals[0])
-                ax.annotate(
-                    "",
-                    xy=(xs[peak_idx], y_vals[peak_idx]),
-                    xytext=(xs[peak_idx], y_vals[0]),
-                    arrowprops={
-                        "arrowstyle": "<->",
-                        "color": barrier_col,
-                        "lw": 1.6,
-                    },
-                )
-                ax.plot(
-                    [xs[0] + 0.22, xs[peak_idx] + 0.10],
-                    [y_vals[0], y_vals[0]],
-                    color=barrier_col,
-                    linestyle=":",
-                    lw=1.1,
-                )
-                ax.text(
-                    xs[peak_idx],
-                    0.5 * (y_vals[0] + y_vals[peak_idx]),
-                    f"Ea = {e_act:.2f} {unit}",
-                    color=barrier_col,
-                    ha="center",
-                    va="center",
-                    fontsize=9.0,
-                    bbox={
-                        "boxstyle": "round,pad=0.18",
-                        "facecolor": preset_obj.axes_facecolor,
-                        "edgecolor": "none",
-                        "alpha": 0.9,
-                    },
-                    zorder=6,
-                )
+            _annotate_reaction_barrier(
+                ax, xs, y_vals, unit, barrier_col, preset_obj.axes_facecolor
+            )
 
         ax.set_ylim(
             float(np.min(y_vals)) - 0.30 * span,
@@ -152,6 +166,31 @@ def plot_reaction_profile(
     return ax
 
 
+def _neb_coordinates(
+    source: trajectory.Trajectory | Sequence[float] | np.ndarray,
+    n_img: int,
+) -> np.ndarray:
+    """Computes normalized 3N path-length coordinates in ``[0, 1]``."""
+    if not isinstance(source, trajectory.Trajectory) or n_img < 2:
+        return np.linspace(0.0, 1.0, n_img)
+    frames = source.frames
+    if len(frames) != n_img:
+        return np.linspace(0.0, 1.0, n_img)
+    n_atoms = len(frames[0])
+    if any(len(frame) != n_atoms for frame in frames):
+        return np.linspace(0.0, 1.0, n_img)
+    cum = np.zeros(n_img, dtype=np.float64)
+    for idx in range(1, n_img):
+        prev_f, curr_f = frames[idx - 1], frames[idx]
+        disp = curr_f.positions - prev_f.positions
+        if curr_f.cell is not None and any(curr_f.pbc):
+            disp = geometry.minimum_image_vector(disp, curr_f.cell, curr_f.pbc)
+        cum[idx] = cum[idx - 1] + float(np.linalg.norm(disp))
+    if cum[-1] <= 1e-12:
+        return np.linspace(0.0, 1.0, n_img)
+    return cum / cum[-1]
+
+
 def plot_neb(
     source: trajectory.Trajectory | Sequence[float] | np.ndarray,
     ax: maxes.Axes | None = None,
@@ -162,7 +201,7 @@ def plot_neb(
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
-    """Plots a continuous spline-interpolated NEB reaction barrier curve."""
+    """Plots a shape-preserving spline-interpolated NEB barrier curve."""
     if isinstance(source, trajectory.Trajectory):
         energies = source.energy_profile(relative=True, unit=unit)
     else:
@@ -174,14 +213,14 @@ def plot_neb(
     ts_col = series[5 % len(series)]
     preset_obj = theme.get_preset(preset)
     n_img = len(energies)
-    xi = np.linspace(0.0, 1.0, n_img)
+    xi = _neb_coordinates(source, n_img)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.4, 4.2))
         else:
             theme.style_existing_axes(ax, preset=preset)
-        if n_img >= 4:
-            spline = interpolate.CubicSpline(xi, energies, bc_type="natural")
+        if n_img >= 3 and bool(np.all(np.diff(xi) > 1e-12)):
+            spline = interpolate.PchipInterpolator(xi, energies)
             x_fine = np.linspace(0.0, 1.0, 120)
             y_fine = spline(x_fine)
             ax.plot(x_fine, y_fine, color=line_col, lw=2.2, label="NEB MEP")
@@ -200,7 +239,7 @@ def plot_neb(
         if annotate_ts and n_img >= 3:
             ts_idx = int(np.argmax(energies))
             ax.annotate(
-                f"TS: +{energies[ts_idx]:.2f} {unit}",
+                f"TS: {energies[ts_idx]:+.2f} {unit}",
                 xy=(xi[ts_idx], energies[ts_idx]),
                 xytext=(
                     xi[ts_idx],

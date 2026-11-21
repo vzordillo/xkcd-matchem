@@ -170,6 +170,18 @@ def _xrd_reflections(
     return hkl_v, two_thetas, np.real(f_hkl * np.conj(f_hkl)) * lp
 
 
+def _hkl_rank(hkl: tuple[int, int, int]) -> tuple[int, int, int, int]:
+    """Ranks symmetry-equivalent reflections to prefer canonical (hkl)."""
+    return (sum(val >= 0 for val in hkl), hkl[0], hkl[1], hkl[2])
+
+
+def _format_hkl(hkl: tuple[int, int, int]) -> str:
+    """Formats Miller index triples compactly or space-separated if needed."""
+    if all(0 <= val <= 9 for val in hkl):
+        return f"({hkl[0]}{hkl[1]}{hkl[2]})"
+    return f"({hkl[0]} {hkl[1]} {hkl[2]})"
+
+
 def compute_xrd(
     atoms: structure.AtomsData,
     wavelength: float = elements.CODATA2022.cu_kalpha1_angstrom,
@@ -209,36 +221,36 @@ def compute_xrd(
     hkl_valid, two_thetas, intensities = _xrd_reflections(
         atoms, wavelength, tt_min, tt_max, debye_waller_b
     )
-    grouped: dict[int, tuple[list[float], float, tuple[int, int, int]]] = {}
-    for idx, tt in enumerate(two_thetas):
-        inten = float(intensities[idx])
-        if inten <= 1e-10:
-            continue
-        bin_key = int(round(tt * 20.0))
-        hkl_t = tuple(int(v) for v in hkl_valid[idx])
-        if bin_key not in grouped:
-            grouped[bin_key] = (
-                [float(tt)],
-                inten,
-                (hkl_t[0], hkl_t[1], hkl_t[2]),
-            )
-        else:
-            tts, acc, rep_hkl = grouped[bin_key]
-            tts.append(float(tt))
-            best = (
-                (hkl_t[0], hkl_t[1], hkl_t[2])
-                if sum(x >= 0 for x in hkl_t) > sum(x >= 0 for x in rep_hkl)
-                else rep_hkl
-            )
-            grouped[bin_key] = (tts, acc + inten, best)
-
-    raw_peaks = sorted(
+    entries = sorted(
         (
-            (float(np.mean(tts)), tot, f"({rep[0]}{rep[1]}{rep[2]})")
-            for tts, tot, rep in grouped.values()
+            (
+                float(two_thetas[idx]),
+                float(intensities[idx]),
+                (
+                    int(hkl_valid[idx][0]),
+                    int(hkl_valid[idx][1]),
+                    int(hkl_valid[idx][2]),
+                ),
+            )
+            for idx in range(len(two_thetas))
+            if float(intensities[idx]) > 1e-10
         ),
         key=lambda item: item[0],
     )
+    grouped: list[tuple[list[float], float, tuple[int, int, int]]] = []
+    for tt, inten, hkl_t in entries:
+        if grouped and abs(tt - float(np.mean(grouped[-1][0]))) <= 0.01:
+            tts, acc, rep_hkl = grouped[-1]
+            tts.append(tt)
+            best = hkl_t if _hkl_rank(hkl_t) > _hkl_rank(rep_hkl) else rep_hkl
+            grouped[-1] = (tts, acc + inten, best)
+        else:
+            grouped.append(([tt], inten, hkl_t))
+
+    raw_peaks = [
+        (float(np.mean(tts)), tot, _format_hkl(rep))
+        for tts, tot, rep in grouped
+    ]
     max_raw = max((item[1] for item in raw_peaks), default=1.0)
     peaks = [
         Peak(position=pos, intensity=100.0 * val / max_raw, label=lbl)

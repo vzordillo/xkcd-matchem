@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from collections.abc import Sequence
 from importlib import util
 import pathlib
 
@@ -26,6 +27,7 @@ import numpy as np
 
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import geometry
+from xkcd_matchem.core import structure
 from xkcd_matchem.core import trajectory
 from xkcd_matchem.render import structure3d
 from xkcd_matchem.style import palettes
@@ -75,8 +77,9 @@ def plot_md_timeseries(
         if 1 < running_window <= len(ys):
             kernel = np.ones(running_window, dtype=np.float64) / running_window
             smooth = np.convolve(ys, kernel, mode="valid")
+            xs_smooth = np.convolve(xs, kernel, mode="valid")
             ax.plot(
-                xs[running_window - 1 :],
+                xs_smooth,
                 smooth,
                 color="#D55E00",
                 lw=2.2,
@@ -109,18 +112,26 @@ def plot_rdf(
         ax.plot(r_vals, g_vals, color=color, lw=2.2)
         ax.fill_between(r_vals, 0.0, g_vals, color=color, alpha=0.18)
         ax.axhline(1.0, color=palettes.MUTED_GRAY, linestyle="--", lw=1.3)
-        if len(g_vals) > 0:
+        if len(g_vals) > 0 and len(r_vals) >= 2:
             peak_idx = int(np.argmax(g_vals))
+            r_span = max(float(r_vals[-1] - r_vals[0]), 1e-6)
+            near_right = float(r_vals[peak_idx]) > float(r_vals[0]) + (
+                0.68 * r_span
+            )
+            text_x = float(r_vals[peak_idx]) + (
+                -0.14 * r_span if near_right else 0.12 * r_span
+            )
             ax.annotate(
                 f"r1 = {r_vals[peak_idx]:.2f} {unit}",
-                xy=(r_vals[peak_idx], g_vals[peak_idx]),
-                xytext=(
-                    r_vals[peak_idx] + 0.12 * float(r_vals[-1] - r_vals[0]),
-                    g_vals[peak_idx] * 0.9,
-                ),
+                xy=(float(r_vals[peak_idx]), float(g_vals[peak_idx])),
+                xytext=(text_x, float(g_vals[peak_idx]) * 0.9),
+                ha="right" if near_right else "left",
                 color="#D55E00",
                 arrowprops={"arrowstyle": "->", "color": "#D55E00", "lw": 1.3},
             )
+        if len(r_vals) >= 2:
+            ax.set_xlim(float(r_vals[0]), float(r_vals[-1]))
+        ax.set_ylim(bottom=0.0)
         ax.set_xlabel(f"Pair Distance r ({unit})")
         ax.set_ylabel("g(r)")
         theme.apply_xkcd_spines(ax, preset=preset)
@@ -153,6 +164,42 @@ def plot_rmsd(
     return ax
 
 
+def _trajectory_viewport(
+    selected: Sequence[structure.AtomsData],
+    cam: geometry.Camera,
+) -> tuple[float, float, float, float]:
+    """Computes a shared projected 2D viewport across trajectory frames."""
+    chunks: list[np.ndarray] = []
+    for atoms in selected:
+        if len(atoms) == 0:
+            continue
+        pivot = (
+            0.5 * (atoms.cell[0] + atoms.cell[1] + atoms.cell[2])
+            if atoms.cell is not None
+            else np.mean(atoms.positions, axis=0)
+        )
+        proj_span = geometry.scene_projection_span(
+            atoms.positions, cam, center=pivot, cell=atoms.cell
+        )
+        xy, _ = geometry.project_points(
+            atoms.positions, cam, center=pivot, span=proj_span
+        )
+        chunks.append(xy)
+        if atoms.cell is not None:
+            c2d, _, _ = geometry.cell_corners_projected(
+                atoms.cell, cam, center=pivot, span=proj_span
+            )
+            chunks.append(c2d)
+    all_pts = np.vstack(chunks)
+    margin = 1.45
+    return (
+        float(np.min(all_pts[:, 0])) - margin,
+        float(np.max(all_pts[:, 0])) + margin,
+        float(np.min(all_pts[:, 1])) - margin,
+        float(np.max(all_pts[:, 1])) + margin,
+    )
+
+
 def animate_trajectory(
     traj: trajectory.Trajectory,
     out_path: str | pathlib.Path,
@@ -169,11 +216,14 @@ def animate_trajectory(
             "pip install 'xkcd-matchem[animation]'"
         )
 
+    selected = traj.frames[:: max(1, stride)]
+    if not selected or all(len(frame) == 0 for frame in selected):
+        raise exceptions.StructureError("Trajectory has no frames to animate.")
     out = pathlib.Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    selected = traj.frames[:: max(1, stride)]
-    ref_cell = selected[0].cell if selected else None
+    ref_cell = selected[0].cell
     cam = geometry.resolve_camera(camera, cell=ref_cell)
+    x_lo, x_hi, y_lo, y_hi = _trajectory_viewport(selected, cam)
     with theme.xkcd_style(preset=preset):
         fig, ax = plt.subplots(figsize=(4.8, 4.2))
 
@@ -183,6 +233,8 @@ def animate_trajectory(
             structure3d.render_structure_3d(
                 atoms, ax=ax, camera=cam, palette=palette
             )
+            ax.set_xlim(x_lo, x_hi)
+            ax.set_ylim(y_lo, y_hi)
             ax.set_title(f"Frame {frame_idx + 1}/{len(selected)}")
 
         anim = animation.FuncAnimation(

@@ -400,6 +400,12 @@ def xkcd_style(
             _ACTIVE_FONT_STACK.pop()
 
 
+def _straighten_axis_gridlines(ax: maxes.Axes) -> None:
+    """Keeps native Matplotlib major/minor gridlines straight without wobble."""
+    ax.xaxis.set_tick_params(which="both", grid_sketch_params=0.0)
+    ax.yaxis.set_tick_params(which="both", grid_sketch_params=0.0)
+
+
 def style_existing_axes(
     ax: maxes.Axes,
     preset: str | ThemePreset = "classic",
@@ -438,6 +444,7 @@ def style_existing_axes(
         width=max(1.0, resolved.linewidth * 0.8),
         labelsize=resolved.font_size,
     )
+    _straighten_axis_gridlines(ax)
     for label_artist in (
         list(ax.get_xticklabels())
         + list(ax.get_yticklabels())
@@ -471,6 +478,8 @@ def apply_xkcd_spines(
     """
     if preset is not None:
         style_existing_axes(ax, preset=preset)
+    else:
+        _straighten_axis_gridlines(ax)
     ax.spines["top"].set_visible(show_top)
     ax.spines["right"].set_visible(show_right)
     for side in ("bottom", "left", "top", "right"):
