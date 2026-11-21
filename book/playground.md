@@ -1,11 +1,14 @@
 # Interactive 3D xkcd Studio
 
-Explore crystals, slabs, polyhedra, and molecules interactively right inside your browser — **no Python backend or MyBinder spin-up required**.
+Explore molecules, crystals, slabs, and coordination polyhedra directly in your browser — **completely offline, with no Python server or Binder wait time**.
 
-- **Drag** to orbit azimuth/elevation (`Shift + Drag` to roll, **Scroll** to zoom).
-- Switch between **Isometric**, **Perspective**, **Front**, **Side**, **Top**, and crystallographic **`a`, `b`, `c`, `a*`, `b*`, `c*`** viewpoints.
-- Build up to `3x3x3` supercells live, pick custom hex colors for **every chemical element** and the canvas background, tune the xkcd wiggle strength, or load your own `.xyz`, `POSCAR`, `.sdf`, or `.pdb` file.
-- Click **Copy Python** to grab the exact `xkcd_matchem` script matching your interactive view, or download **PNG** / **SVG**.
+## Try This in 30 Seconds
+
+1. **Orbit & zoom:** Drag on the canvas to rotate (`Shift + Drag` to roll, scroll wheel to zoom).
+2. **Snap to crystal axes:** Click **Iso**, **Persp**, **Front**, **Side**, **Top**, or crystallographic **`a`, `b`, `c`, `a*`, `b*`, `c*`** along the top bar.
+3. **Make it yours:** Switch rendering styles (`ball_and_stick`, `spacefill`, `stick`, `polyhedra`), tile up to `3x3x3` supercells, recolor any element with the swatch pickers, swap White / Paper / Chalk backgrounds, or adjust the xkcd wiggle slider.
+4. **Load your own structure:** Click **Open Structure File** to preview a local `.xyz`, `POSCAR`/`.vasp`, `.cif`, `.sdf`/`.mol`, or `.pdb` file right in the browser (files stay completely local on your machine).
+5. **Take it back to Python:** Click **Copy Python** for the exact `xkcd_matchem` script matching your current camera and colors, or export **PNG** / **SVG** immediately.
 
 <div style="margin: 1rem 0;">
   <p>
@@ -22,14 +25,14 @@ Explore crystals, slabs, polyhedra, and molecules interactively right inside you
   </iframe>
 </div>
 
-## Launching from Python or CLI
+## Launching from Python or the Terminal
 
-In a Jupyter Notebook or script:
+You can open the exact same offline studio inside a Jupyter notebook, save it as a shareable single-file `.html`, or launch it in your default browser:
 
 ```python
 import xkcd_matchem as xm
 
-# Embed inline inside Jupyter or export a standalone offline HTML viewer:
+# Render inline in Jupyter via _repr_html_()
 view = xm.view_structure(
     "tio2_slab.poscar",
     style="polyhedra",
@@ -37,14 +40,18 @@ view = xm.view_structure(
     supercell=(2, 2, 1),
     palette={"Ti": "#4E79A7", "O": "#E15759"},
 )
-view  # renders inline via _repr_html_()
+view
 
-# Open directly in your system browser:
+# Or open directly in your system web browser
 xm.view_structure("aspirin.xyz", backend="browser")
 ```
 
-From your terminal:
+From the command line:
 
 ```bash
 xkcd-matchem view tio2_slab.poscar --supercell 2 2 1 --view perspective --colors Ti=#E07A5F O=#3D405B --backend browser
 ```
+
+:::{note}
+Browser-side `.cif` drag-and-drop reads the explicit unit cell and fractional sites directly for fast previews. For full symmetry-operation expansion (`_symmetry_equiv_pos_as_xyz`), load your `.cif` in Python via `xm.view_structure("crystal.cif")` or `xkcd-matchem view crystal.cif`.
+:::

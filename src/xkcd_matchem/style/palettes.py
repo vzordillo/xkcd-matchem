@@ -58,7 +58,7 @@ OKABE_ITO_NAMED: dict[str, str] = {
     "reddish_purple": "#CC79A7",
 }
 
-# Crisp high-contrast hand-drawn defaults tuned for pure #FFFFFF white and ink.
+# Crisp high-contrast xkcd-style defaults tuned for pure #FFFFFF white and ink.
 _XKCD_ELEMENT_OVERRIDES: dict[str, str] = {
     "H": "#F5F5F5",
     "C": "#5A5F69",

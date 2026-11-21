@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Hand-drawn 2D/3D atomic, bond, polyhedron, and unit-cell primitives."""
+"""xkcd-style 2D/3D atomic, bond, polyhedron, and unit-cell primitives."""
 
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def draw_atom_sphere(
     alpha: float = 1.0,
     zorder: float = 3.0,
 ) -> None:
-    """Draws a hand-drawn shaded atomic sphere with a clean specular dot.
+    """Draws an xkcd-style shaded atomic sphere with a clean specular dot.
 
     Args:
       ax: Target Matplotlib ``Axes``.

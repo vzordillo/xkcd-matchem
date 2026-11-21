@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""ML parity plots, bar benchmarks, and hand-drawn pipeline diagrams."""
+"""ML parity plots, bar benchmarks, and xkcd-style pipeline diagrams."""
 
 from __future__ import annotations
 
@@ -113,7 +113,7 @@ def plot_bar_comparison(
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
-    """Plots a hand-drawn categorical bar comparison with customizable fill."""
+    """Plots an xkcd-style categorical bar comparison with customizable fill."""
     vals = np.asarray(values, dtype=np.float64)
     series = palettes.get_palette(palette)
     colors = [series[(i + 1) % len(series)] for i in range(len(labels))]
@@ -162,7 +162,7 @@ def plot_pipeline_diagram(
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
-    """Plots a multi-stage workflow flowchart with hand-drawn rounded boxes.
+    """Plots a multi-stage workflow flowchart with xkcd-style rounded boxes.
 
     Args:
       steps: Sequence of ``(stage_title, stage_detail)`` pairs.

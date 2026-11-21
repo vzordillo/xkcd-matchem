@@ -112,7 +112,7 @@ def plot_xrd(
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
-    """Computes (if crystal given) and plots a hand-drawn powder XRD pattern."""
+    """Computes (when given a crystal) and plots an xkcd-style powder XRD."""
     if isinstance(source, spectroscopy.Spectrum):
         spec = source
     else:

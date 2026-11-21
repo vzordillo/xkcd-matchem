@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Font management utilities for bundled SIL OFL 1.1 handwritten typefaces."""
+"""Font utilities for bundled SIL OFL 1.1 comic-style typefaces."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ def get_bundled_font_path(family: str) -> pathlib.Path:
 
 
 def ensure_fonts_registered() -> tuple[str, ...]:
-    """Registers all bundled handwritten fonts with Matplotlib's font manager.
+    """Registers bundled comic-style fonts with Matplotlib's font manager.
 
     Returns:
       Tuple of newly or previously registered font file names.
@@ -99,7 +99,7 @@ def ensure_fonts_registered() -> tuple[str, ...]:
 def resolve_font_chain(preferred: str = "Patrick Hand") -> list[str]:
     """Builds an ordered Matplotlib ``font.family`` fallback list.
 
-    Ensures bundled handwritten fonts are registered and appends DejaVu Sans
+    Ensures bundled comic-style fonts are registered and appends DejaVu Sans
     so scientific glyphs (angstrom, arrows, Greek letters, minus) render cleanly
 
     Args:

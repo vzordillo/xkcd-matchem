@@ -24,7 +24,7 @@ html:
   home_page_in_navbar: true
   extra_footer: >-
     Software licensed under Apache-2.0; tutorials and gallery licensed under
-    CC BY 4.0; bundled handwritten fonts licensed under SIL OFL 1.1.
+    CC BY 4.0; bundled comic-style fonts licensed under SIL OFL 1.1.
 
 parse:
   myst_enable_extensions:

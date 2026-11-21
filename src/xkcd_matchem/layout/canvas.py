@@ -35,7 +35,7 @@ def mm_to_inches(mm: float) -> float:
 
 @dataclasses.dataclass
 class Badge:
-    """Small hand-drawn pill badge rendered on the overlay axes."""
+    """Small xkcd-style pill badge rendered on the overlay axes."""
 
     text: str
     x_mm: float

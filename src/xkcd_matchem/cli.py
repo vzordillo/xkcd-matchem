@@ -62,30 +62,55 @@ def _resolve_cli_camera(args: argparse.Namespace) -> geometry.Camera | str:
 
 def _add_common_view_args(subparser: argparse.ArgumentParser) -> None:
     """Attaches shared camera, supercell, and palette customization flags."""
-    subparser.add_argument("--style", default="ball_and_stick")
-    subparser.add_argument("--preset", default="classic")
-    subparser.add_argument("--palette", default="xkcd")
+    subparser.add_argument(
+        "--style",
+        default="ball_and_stick",
+        help="3D style (ball_and_stick, spacefill, stick, polyhedra).",
+    )
+    subparser.add_argument(
+        "--preset",
+        default="classic",
+        help="Visual theme preset (classic, notebook, poster, minimal, ...).",
+    )
+    subparser.add_argument(
+        "--palette",
+        default="xkcd",
+        help="Element color scheme (xkcd, jmol, pastel, colorblind).",
+    )
     subparser.add_argument(
         "--colors",
         nargs="+",
         action="extend",
         default=None,
-        help="Element color overrides as Element=#HEX.",
+        help="Element color overrides as Element=#HEX (e.g. Ti=#E07A5F).",
     )
     subparser.add_argument(
         "--view",
         default="isometric",
         help="Camera preset (isometric, perspective, front, side, top, a/b/c).",
     )
-    subparser.add_argument("--azimuth", type=float, default=None)
-    subparser.add_argument("--elevation", type=float, default=None)
-    subparser.add_argument("--perspective", type=float, default=0.0)
+    subparser.add_argument(
+        "--azimuth", type=float, default=None, help="Camera azimuth in degrees."
+    )
+    subparser.add_argument(
+        "--elevation",
+        type=float,
+        default=None,
+        help="Camera elevation in degrees.",
+    )
+    subparser.add_argument(
+        "--perspective",
+        type=float,
+        default=0.0,
+        help="Perspective strength (0.0 for orthographic).",
+    )
     subparser.add_argument(
         "--supercell",
         type=int,
         nargs=3,
         default=[1, 1, 1],
         metavar=("NA", "NB", "NC"),
+        help="Periodic supercell repetitions along a, b, c.",
     )
 
 
@@ -93,7 +118,9 @@ def _build_parser() -> argparse.ArgumentParser:
     """Constructs the top-level CLI argument parser."""
     parser = argparse.ArgumentParser(
         prog="xkcd-matchem",
-        description="Hand-drawn xkcd plots for molecules and materials.",
+        description=(
+            "xkcd-style visualization suite for chemistry and materials."
+        ),
     )
     parser.add_argument(
         "--version",
@@ -101,37 +128,58 @@ def _build_parser() -> argparse.ArgumentParser:
         version=f"xkcd-matchem {_version.__version__}",
     )
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("samples", help="List bundled sample files.")
-    sub.add_parser("formats", help="List registered native file formats.")
+    sub.add_parser("samples", help="List bundled sample structure/data files.")
+    sub.add_parser("formats", help="List zero-dependency native file formats.")
 
-    info_p = sub.add_parser("info", help="Print parsed file summary.")
+    info_p = sub.add_parser(
+        "info", help="Inspect formula, atom count, and cell summary of a file."
+    )
     info_p.add_argument("input", help="File path or bundled sample filename.")
     info_p.add_argument(
-        "--format", dest="fmt", default=None, help="Format key."
+        "--format", dest="fmt", default=None, help="Explicit format key."
     )
 
-    render_p = sub.add_parser("render", help="Render structure to image/PDF.")
+    render_p = sub.add_parser(
+        "render", help="Render a structure to PNG, SVG, or PDF."
+    )
     render_p.add_argument("input", help="Input structure file or sample name.")
-    render_p.add_argument("-o", "--output", default="structure.png")
-    render_p.add_argument("--mode", default="3d", choices=("3d", "2d"))
+    render_p.add_argument(
+        "-o", "--output", default="structure.png", help="Output image path."
+    )
+    render_p.add_argument(
+        "--mode",
+        default="3d",
+        choices=("3d", "2d"),
+        help="Render in 3D depth-sorted or 2D skeletal mode.",
+    )
     _add_common_view_args(render_p)
 
     view_p = sub.add_parser(
-        "view", help="Open structure in interactive 3D studio HTML/browser."
+        "view",
+        help="Open a structure in the offline Interactive 3D Studio.",
     )
     view_p.add_argument("input", help="Input structure file or sample name.")
-    view_p.add_argument("-o", "--output", default=None)
+    view_p.add_argument(
+        "-o", "--output", default=None, help="Optional HTML output path."
+    )
     view_p.add_argument(
         "--backend",
         default="html",
         choices=("html", "browser", "matplotlib"),
+        help="Viewer target: standalone html file, system browser, or mpl.",
     )
     _add_common_view_args(view_p)
 
-    xrd_p = sub.add_parser("xrd", help="Compute and plot powder XRD.")
+    xrd_p = sub.add_parser(
+        "xrd", help="Simulate and plot a Cu Ka1 powder XRD pattern."
+    )
     xrd_p.add_argument("input", help="Input periodic crystal file or sample.")
-    xrd_p.add_argument("-o", "--output", default="xrd.png")
-    xrd_p.add_argument("--preset", default="classic")
+    xrd_p.add_argument(
+        "-o", "--output", default="xrd.png", help="Output image path."
+    )
+    xrd_p.add_argument(
+        "--preset", default="classic", help="Visual theme preset name."
+    )
     return parser
 
 

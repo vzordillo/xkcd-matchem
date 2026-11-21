@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Hand-drawn arrows, callouts, bond distances, angles, and element legends."""
+"""xkcd-style arrows, callouts, bond distances, angles, and element legends."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def draw_curved_arrow(
     linewidth: float = 1.8,
     label: str | None = None,
 ) -> None:
-    """Draws a hand-drawn curved reaction or mechanism arrow."""
+    """Draws an xkcd-style curved reaction or mechanism arrow."""
     ink = str(plt.rcParams.get("axes.edgecolor", palettes.INK))
     col = ink if color is None else color
     ax.annotate(
@@ -78,7 +78,7 @@ def draw_callout(
     color: str = "#D55E00",
     fontsize: float = 10.0,
 ) -> None:
-    """Draws a hand-drawn boxed callout pointing to an annotated coordinate."""
+    """Draws an xkcd-style boxed callout pointing to an annotated coordinate."""
     bg = str(plt.rcParams.get("figure.facecolor", palettes.PAPER))
     ax.annotate(
         text,

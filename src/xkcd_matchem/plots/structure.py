@@ -385,7 +385,7 @@ def plot_molecule(
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
 ) -> maxes.Axes:
-    """Plots a molecule in hand-drawn 3D depth-sorted or 2D skeletal view.
+    """Plots a molecule in xkcd-style 3D depth-sorted or 2D skeletal view.
 
     Args:
       source: ``AtomsData``, file path, or bundled sample filename.

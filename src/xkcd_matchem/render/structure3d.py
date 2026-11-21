@@ -363,7 +363,7 @@ def render_structure_3d(
     miller_planes: Sequence[tuple[int, int, int]] | None = None,
     pad: float = 0.85,
 ) -> maxes.Axes:
-    """Renders a 3D molecule or crystal in clean hand-drawn depth-sorted style.
+    """Renders a 3D molecule or crystal in clean xkcd-style depth-sorted view.
 
     Args:
       atoms: Input ``AtomsData`` structure.

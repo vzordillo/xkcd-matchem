@@ -37,7 +37,7 @@ class ThemePreset:
 
     Attributes:
       name: Preset identifier.
-      font: Primary handwritten or sans-serif font family name.
+      font: Primary comic-style or sans-serif font family name.
       sketch_scale: Matplotlib ``path.sketch`` wiggle amplitude.
       sketch_length: Matplotlib ``path.sketch`` wiggle wavelength.
       sketch_randomness: Matplotlib ``path.sketch`` randomness factor.
@@ -236,7 +236,7 @@ def build_rc_params(
 
     Configures ``path.effects=[]`` to avoid Matplotlib's white outline artifact,
     embeds TrueType fonts for PDF, converts SVG text to paths, aligns mathtext
-    with the selected handwritten typeface, and keeps ``DejaVu Sans`` plus
+    with the selected comic-style typeface, and keeps ``DejaVu Sans`` plus
     ``stixsans`` as scientific symbol fallbacks.
 
     Args:
@@ -330,7 +330,7 @@ def xkcd_style(
     ink: str | None = None,
     overrides: Mapping[str, Any] | None = None,
 ) -> Iterator[None]:
-    """Context manager applying non-leaking hand-drawn xkcd-matchem styling.
+    """Context manager applying non-leaking xkcd-matchem styling.
 
     Args:
       preset: Base preset name or custom ``ThemePreset``.
@@ -369,7 +369,7 @@ def style_existing_axes(
 
     Useful when callers pass pre-created ``fig, ax = plt.subplots(...)`` from
     outside an ``xkcd_style()`` context so ticks, labels, and spines match
-    uniformly in the same handwritten typeface.
+    uniformly in the same comic-style typeface.
 
     Args:
       ax: Target Matplotlib ``Axes`` (mutated in place).
@@ -417,7 +417,7 @@ def apply_xkcd_spines(
     linewidth: float = 1.6,
     preset: str | ThemePreset | None = "classic",
 ) -> maxes.Axes:
-    """Configures crisp hand-drawn axis spines and consistent ticks on an Axes.
+    """Configures crisp xkcd-style axis spines and consistent ticks on an Axes.
 
     Args:
       ax: Target Matplotlib ``Axes``.
