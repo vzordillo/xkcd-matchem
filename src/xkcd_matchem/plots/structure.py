@@ -330,6 +330,7 @@ def _draw_slab_atoms_and_bonds(
     ],
     palette: str | Mapping[str, str],
     clip_rect: patches.Rectangle,
+    show_bonds: bool = True,
 ) -> int:
     """Depth-sorts and draws clipped bonds and spheres in slab side view."""
     x_coord, xy_side, ey, ez, period_y, height_c = side_geom
@@ -337,6 +338,8 @@ def _draw_slab_atoms_and_bonds(
         palettes.get_element_color(sym, scheme=palette) for sym in atoms.symbols
     ]
     items = _build_slab_side_items(atoms, x_coord, xy_side, ey, ez, colors)
+    if not show_bonds:
+        items = [it for it in items if it[1] == "atom"]
     widths = _estimate_slab_widths(ax, period_y, height_c)
     before = len(ax.patches)
     for rank, (_, kind, payload) in enumerate(items):
@@ -364,6 +367,7 @@ def _render_slab_side_view(
     vacuum_margin: float,
     vacuum_callout: bool,
     true_vac: float,
+    show_bonds: bool = True,
 ) -> None:
     """Draws a crisp 2D orthographic slab side view looking along ``a``."""
     x_coord, xy_side, z_coord, ey, ez, period_y, height_c = (
@@ -376,6 +380,7 @@ def _render_slab_side_view(
         (x_coord, xy_side, ey, ez, period_y, height_c),
         palette,
         clip_rect,
+        show_bonds=show_bonds,
     )
 
     ax.text(
@@ -436,6 +441,8 @@ def plot_molecule(
     show_legend: bool = True,
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
+    *,
+    show_bonds: bool | None = None,
 ) -> maxes.Axes:
     """Plots a molecule in xkcd-style 3D depth-sorted or 2D skeletal view.
 
@@ -452,6 +459,7 @@ def plot_molecule(
       show_legend: Whether to draw an inline bottom element legend.
       preset: Visual theme preset name or custom ``ThemePreset``.
       title: Optional title shown above the panel.
+      show_bonds: Optional override to hide bonds (``False``) in 3D view.
 
     Returns:
       Matplotlib ``Axes`` containing the rendered molecule.
@@ -473,6 +481,7 @@ def plot_molecule(
                 palette=palette,
                 show_cell=False,
                 show_labels=show_labels,
+                show_bonds=show_bonds,
             )
             if show_legend:
                 _pad_structure_view(ax, bottom_frac=0.14, top_frac=0.04)
@@ -500,8 +509,13 @@ def plot_crystal(
     title: str | None = None,
     *,
     crystal_axes: bool | str | None = None,
+    show_bonds: bool | None = None,
 ) -> maxes.Axes:
-    """Plots a periodic crystal or supercell with clean unit cell & axes."""
+    """Plots a periodic crystal or supercell with unit cell, axes & bonds.
+
+    Pass ``show_bonds=False`` to show pure atomic lattice sites inside the
+    unit cell without any bond network.
+    """
     atoms = _coerce_atoms(source).wrap_positions()
     should_center = (
         not miller_planes if center_in_cell is None else center_in_cell
@@ -527,6 +541,7 @@ def plot_crystal(
             show_cell=show_cell,
             crystal_axes=crystal_axes,
             show_labels=show_labels,
+            show_bonds=show_bonds,
             miller_planes=miller_planes,
         )
         if show_legend:
@@ -552,6 +567,7 @@ def plot_slab(
     title: str | None = None,
     *,
     crystal_axes: bool | str | None = None,
+    show_bonds: bool = True,
 ) -> maxes.Axes:
     """Plots a surface slab in shaded side view or trimmed isometric view."""
     atoms = _coerce_atoms(source).wrap_positions()
@@ -572,6 +588,7 @@ def plot_slab(
                 vacuum_margin=margin_v,
                 vacuum_callout=vacuum_callout,
                 true_vac=true_vac,
+                show_bonds=show_bonds,
             )
             callouts.draw_element_legend(ax, atoms.symbols, scheme=palette)
         else:
@@ -588,6 +605,7 @@ def plot_slab(
                 palette=palette,
                 show_cell=True,
                 crystal_axes=crystal_axes,
+                show_bonds=show_bonds,
             )
             xlim = ax.get_xlim()
             ylim = ax.get_ylim()

@@ -83,6 +83,17 @@ def test_render_2d_crystal_slab_and_polyhedra() -> None:
     assert len(ax_axes_only.texts) >= 3
     plt.close(ax_axes_only.figure)
 
+    ax_no_bonds = struct_plots.plot_crystal("nacl.cif", show_bonds=False)
+    # Only the 12 unit-cell box edges are drawn as Line2D (zero bonds).
+    assert len(ax_no_bonds.lines) == 12
+    plt.close(ax_no_bonds.figure)
+
+    ax_slab_nb = struct_plots.plot_slab(
+        "tio2_slab.poscar", view="side", show_bonds=False
+    )
+    assert len(ax_slab_nb.lines) == 0
+    plt.close(ax_slab_nb.figure)
+
     ax_origin = struct_plots.plot_coordination(
         "tio2_slab.poscar",
         "Ti",

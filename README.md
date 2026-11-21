@@ -56,13 +56,32 @@
 | :---: | :---: |
 | ![xkcd Periodic Table](book/_static/gallery/periodic_table.png) | ![Materials informatics plots](book/_static/gallery/materials_informatics.png) |
 
-| Background Grids, Hatched Shading & Vintage Scrolls | MatChem Icons & GNN Structure Graphs |
+| Background Grids, Hatched Shading & Vintage Scrolls | MatChem Icons & 3D GNN Structure Graphs |
 | :---: | :---: |
 | ![Grids, hatching, and parchment scrolls](book/_static/gallery/scrolls_grids_shading.png) | ![MatChem icons and crystal graphs](book/_static/gallery/icons_and_graphs.png) |
+
+Want pure atomic lattice sites without bonds (`show_bonds=False`) or **planar flat 2D GNN crystal & periodic quotient multigraphs** (`layout="planar"`, `multi_edges=True`)?
+
+![Bond-free crystals and planar 2D GNN graphs](book/_static/gallery/crystal_graphs_2d.png)
 
 Putting together a research poster? Opt into `xm.Board`, `Container`, `Card`, `ScrollCard`, and `Badge` for millimeter-accurate layouts — you can group and **stack multiple cards vertically or side by side inside container boxes**:
 
 ![Opt-in poster board](book/_static/gallery/poster_board.png)
+
+---
+
+## Feature Overview
+
+| Category | Capabilities |
+| :--- | :--- |
+| **Molecules (3D & 2D)** | Depth-sorted 3D `ball_and_stick`, `spacefill`, and `stick` renderers with seamless two-tone bonds and specular highlights; 2D skeletal plots with automatic organic double/triple bond perception (`infer_bond_orders`) and inward ring double bonds; optional bond-free atom clouds (`show_bonds=False`); 3D distance & angle annotations (`annotate_distance`, `annotate_angle`). |
+| **Crystals, Slabs, Polyhedra & Miller Planes** | Periodic crystals and supercells (`repeat`, `center_in_cell`); bond-free atomic lattice views (`show_bonds=False`); decoupled unit-cell box (`show_cell`) and standalone VESTA-style corner/origin/edge crystallographic axes (`crystal_axes="corner" \| "origin" \| "edges" \| False`); exact positive & negative `(hkl)` Miller plane slices; bond-free ConvexHull coordination polyhedra (`plot_coordination`); surface slab side & trimmed isometric views with automatic vacuum callouts (`plot_slab`). |
+| **Electronic Structure & Volumetric Data** | Band structures (`plot_bands`), aligned Band + DOS (`plot_bands_dos`), total/spin-polarized/orbital-projected DOS (`plot_dos`), molecular orbital ladders (`plot_mo_diagram`), and orthonormal real-space volumetric slices from `.cube` / `CHGCAR` / `LOCPOT` (`plot_volumetric_slice`). |
+| **Spectroscopy & Diffraction** | IR, Raman, UV-Vis, and NMR stick + broadened spectra (`plot_spectrum`, `broaden_peaks`) and powder X-ray diffraction (`plot_xrd`, `compute_xrd`) using Cromer-Mann (LA-3816) + exact H 1s scattering factors. |
+| **Reactions, MD & Thermodynamics** | Multi-step catalytic free-energy profiles (`plot_reaction_profile`), climbing-image NEB barriers (`plot_neb`), periodic-unwrapped MD RMSD/time-series (`plot_md_timeseries`, `plot_rmsd`), exact minimum-image RDF (`plot_rdf`), binary & ternary convex hulls (`plot_phase_diagram_2d`, `plot_ternary_phase_diagram`), Birch-Murnaghan EOS fits (`plot_eos`), Pourbaix diagrams (`plot_pourbaix`), and ML parity benchmarks (`plot_parity`). |
+| **Periodic Table, Informatics & Graph Networks** | 118-element xkcd Periodic Table (`plot_periodic_table`: chemical families, property heatmaps with hatched missing tiles, formula spotlights); `pymatviz`-inspired space-group sunburst/bar distributions (`plot_spacegroup_distribution`) and hatched KDE histograms (`plot_histogram`); 3D camera-matched GNN crystal graphs, flat planar 2D GNN crystal graphs (`layout="planar"`), periodic quotient multigraphs (`multi_edges=True, show_shift_labels=True`), and synthesis/phase-transformation pill networks (`plot_graph_network`, `plot_structure_graph`). |
+| **Themes, Grids, Shading, Icons & Layouts** | 6 built-in presets (`classic`, `notebook`, `poster`, `minimal`, `dark_chalk`, `blueprint`) plus `register_preset`, `register_palette`, `register_element_palette`, and `style_existing_axes`; bundled `xkcd Script` default + SIL OFL 1.1 alternates (`Patrick Hand`, `Comic Neue`) and custom `.ttf` loading (`set_default_font`); 5 background paper grids (`ruled`, `graph`, `dotgrid`, `isometric`, `blueprint`); 10+ hatched/stippled shading styles (`shade=`); 16 vector MatChem icons & element badges (`draw_icon`, `draw_element_badge`, `plot_icon_sheet`); millimeter poster `Board` with stacked `Card`s inside `Container`s, `Badge`s, and portrait/landscape vintage parchment `ScrollCard`s (`plot_scroll_card`, `board.add_scroll_card`). |
+| **Interactive 3D, Motion, I/O & CLI** | Offline browser/Jupyter **Interactive 3D Studio** (`view_structure`, `export_interactive_html`) with orbit/zoom/roll, live style/palette/axes/show-bonds toggles, supercells, local drag-drop upload, PNG/SVG export, and Copy Python; looping GIF animations (`animate_trajectory`); 26 zero-dependency native file readers + 6 optional ecosystem adapters (`ASE`, `pymatgen`, `RDKit`, `cclib`, `MDAnalysis`, `MDTraj`); `xkcd-matchem` CLI (`samples`, `formats`, `info`, `render`, `view`, `xrd`). |
 
 ---
 
@@ -99,9 +118,10 @@ All filenames below work out of the box using bundled examples — swap in any p
 ```python
 import xkcd_matchem as xm
 
-# Molecules, crystals, slabs, and coordination polyhedra
+# Molecules, crystals (with or without bonds), slabs, and coordination polyhedra
 xm.plot_molecule("aspirin.xyz", title="Aspirin 3D")
 xm.plot_crystal("si_diamond.cif", miller_planes=[(1, 1, 1)], crystal_axes="corner", title="Si (111)")
+xm.plot_crystal("nacl.cif", show_bonds=False, crystal_axes="corner", title="NaCl Sites Only")
 xm.plot_slab("tio2_slab.poscar", supercell=(3, 2, 1), view="side")
 xm.plot_coordination("tio2_slab.poscar", "Ti", "O", title="TiO2 Coordination Polyhedra")
 
@@ -113,10 +133,11 @@ xm.plot_xrd("nacl.cif", label_peaks=4)
 xm.plot_neb(xm.load_trajectory("sn2_neb.xyz"))
 xm.animate_trajectory(xm.load_trajectory("sn2_neb.xyz"), "sn2_path.gif", fps=6)
 
-# Periodic table, materials informatics, scrolls, icons, and crystal GNN graphs
+# Periodic table, materials informatics, scrolls, icons, and 3D/2D crystal GNN graphs
 xm.plot_periodic_table(element_property="electronegativity", missing_shade="hatch")
 xm.plot_spacegroup_distribution({225: 32, 194: 26, 62: 28, 14: 22}, mode="sunburst", shade="cycle")
 xm.plot_structure_graph("si_diamond.cif", layout="camera", show_cell=True)
+xm.plot_structure_graph("si_diamond.cif", layout="planar")
 xm.plot_scroll_card("Lab Checklist", items=[("Step 1", "Relax cell"), ("Step 2", "Plot in xkcd")], background_grid="ruled")
 
 # Open the offline Interactive 3D Studio in Jupyter or a browser
@@ -217,6 +238,84 @@ All **26 built-in readers** work with zero extra dependencies beyond NumPy, SciP
 | **Quantum Chem & Grids** | Gaussian `.cube`, `.gjf`, `.log`, `.fchk`, ORCA `.inp`, `.out` |
 
 Need specialized formats outside these built-in readers? Optional bridges to **ASE**, **pymatgen**, **RDKit**, **cclib**, **MDAnalysis**, and **MDTraj** are ready to plug in. See [Supported Formats & Contracts](book/reference/supported_formats.md) for full details.
+
+---
+
+## Repository Architecture & How to Navigate
+
+The codebase is split into seven focused subpackages under `src/xkcd_matchem/`, accompanied by an executable Jupyter Book (`book/`), a gallery generator (`scripts/`), and a self-contained test suite (`tests/`):
+
+```text
+xkcd-matchem/
+├── src/xkcd_matchem/
+│   ├── __init__.py          # Flat top-level public API (`import xkcd_matchem as xm`)
+│   ├── cli.py               # `xkcd-matchem` CLI (`samples`, `formats`, `info`, `render`, `view`, `xrd`)
+│   ├── core/                # Scientific data models & geometry (zero Matplotlib imports)
+│   │   ├── structure.py     #   AtomsData, Bond, supercells, cell centering
+│   │   ├── geometry.py      #   Camera, 3D projections, LLL minimum-image PBC, Miller planes
+│   │   ├── bonding.py       #   Periodic bond inference, organic bond-order perception, polyhedra
+│   │   ├── electronic.py    #   BandStructure, DensityOfStates, MolecularOrbitals, VolumetricGrid
+│   │   ├── spectroscopy.py  #   Spectrum broadening & Cromer-Mann powder XRD engine
+│   │   ├── trajectory.py    #   Trajectory, unwrapped RMSD, exact periodic RDF
+│   │   └── exceptions.py    #   Custom error hierarchy
+│   ├── data/                # Verified scientific tables, bundled samples, fonts & HTML templates
+│   │   ├── elements.py      #   CODATA 2022, 118-element IUPAC/BODR/Alvarez/Mantina table
+│   │   ├── scattering.py    #   Cromer-Mann (LA-3816) + exact H 1s form factors
+│   │   ├── samples/         #   15 ready-to-run molecules, crystals, DFT, MD & cube files
+│   │   ├── fonts/           #   Bundled `xkcd Script` (CC BY-NC 3.0) + `Patrick Hand` / `Comic Neue` (OFL)
+│   │   └── templates/       #   Offline HTML5/Canvas/SVG template (`viewer.html`) for 3D Studio
+│   ├── io/                  # Format auto-detection, 26 native parsers & optional adapters
+│   │   ├── loader.py        #   Unified `load()`, `load_trajectory()`, `save()`
+│   │   ├── native/          #   Zero-dependency VASP, CIF, QE, XYZ, PDB, SDF, LAMMPS, ORCA, Gaussian, ...
+│   │   └── adapters/        #   Optional lazy bridges (ASE, pymatgen, RDKit, cclib, MDAnalysis, MDTraj)
+│   ├── style/               # Themes, palettes, fonts, background grids & hatched shading
+│   │   ├── theme.py         #   `xkcd_style()` context manager, 6 presets, `register_preset()`
+│   │   ├── fonts.py         #   Font registration, `set_default_font()`, `use_xkcd_script()`
+│   │   ├── palettes.py      #   Okabe-Ito, Jmol, xkcd, pastel & colorblind schemes
+│   │   └── patterns.py      #   Grid papers (`ruled`/`graph`/`dotgrid`/`blueprint`) & hatched fills
+│   ├── render/              # Low-level 2D/3D drawing primitives, icons & interactive viewer
+│   │   ├── primitives.py    #   Shaded spheres, coaxial two-tone bonds, unit cell, crystal axes, Miller slices
+│   │   ├── structure3d.py   #   Depth-sorted 3D painter's-algorithm renderer
+│   │   ├── structure2d.py   #   2D skeletal molecular renderer with inward ring double bonds
+│   │   ├── callouts.py      #   Element legends, curved arrows, distance/angle annotations
+│   │   ├── icons.py         #   16 vector MatChem icons & element badges
+│   │   └── interactive.py   #   Jupyter & standalone HTML exporter for Interactive 3D Studio
+│   ├── plots/               # High-level one-line domain plotters
+│   │   ├── structure.py     #   `plot_molecule`, `plot_crystal`, `plot_slab`, `plot_coordination`
+│   │   ├── electronic.py    #   `plot_bands`, `plot_dos`, `plot_bands_dos`, `plot_mo_diagram`, `plot_volumetric_slice`
+│   │   ├── spectroscopy.py  #   `plot_spectrum`, `plot_xrd`
+│   │   ├── reactions.py     #   `plot_reaction_profile`, `plot_neb`
+│   │   ├── trajectory.py    #   `plot_md_timeseries`, `plot_rmsd`, `plot_rdf`, `animate_trajectory`
+│   │   ├── thermo.py        #   `plot_phase_diagram_2d`, `plot_eos`, `plot_pourbaix`, `plot_parity`
+│   │   ├── ptable.py        #   `plot_periodic_table` (118-element families, heatmaps, spotlights)
+│   │   ├── materials.py     #   `plot_ternary_phase_diagram`, `plot_spacegroup_distribution`, `plot_histogram`
+│   │   ├── graphs.py        #   `plot_graph_network`, `plot_structure_graph` (3D camera & flat 2D planar)
+│   │   └── charts.py        #   `plot_bar_comparison`, `plot_pipeline_diagram`
+│   └── layout/              # Opt-in poster boards, stacked cards, parchment scrolls & export
+│       ├── canvas.py        #   `Board`, `Container`, `Card`, `Badge` (mm coordinates)
+│       ├── scroll.py        #   Portrait & landscape vintage parchment `ScrollCard` templates
+│       └── export.py        #   `save_figure()` (PNG, SVG, PDF)
+├── book/                    # Jupyter Book documentation (11 executable tutorials + reference + 3D playground)
+│   ├── tutorials/           #   Step-by-step notebooks `01_...` through `11_...`
+│   ├── reference/           #   API reference, supported formats & scientific attributions
+│   └── _static/             #   Generated gallery PNGs/GIFs & embedded `interactive_studio.html`
+├── scripts/
+│   └── generate_gallery.py  # Reproduces every gallery PNG, GIF, and the offline 3D Studio HTML
+└── tests/                   # Pytest unit, visual smoke & Google-style AST compliance tests
+```
+
+### Quick Navigation Guide
+
+| If you want to… | Start here |
+| :--- | :--- |
+| **Learn by runnable examples** | Open [`book/tutorials/`](book/tutorials/) (`01`–`04` & `06` for basics; `05`, `07`–`11` for advanced topics) |
+| **Spin crystals right in a browser** | Open [`book/_static/interactive_studio.html`](book/_static/interactive_studio.html) or run `xm.view_structure("tio2_slab.poscar")` |
+| **Look up a plotting function** | See [`book/reference/api.md`](book/reference/api.md) or browse [`src/xkcd_matchem/plots/`](src/xkcd_matchem/plots/) |
+| **Check file parser rules or add a reader** | See [`book/reference/supported_formats.md`](book/reference/supported_formats.md) and [`src/xkcd_matchem/io/native/`](src/xkcd_matchem/io/native/) |
+| **Tweak themes, fonts, grids, or hatching** | Edit [`src/xkcd_matchem/style/`](src/xkcd_matchem/style/) (`theme.py`, `fonts.py`, `palettes.py`, `patterns.py`) |
+| **Inspect 3D geometry, bonds, or Miller math** | Check [`src/xkcd_matchem/core/`](src/xkcd_matchem/core/) (`geometry.py`, `bonding.py`) and [`src/xkcd_matchem/render/`](src/xkcd_matchem/render/) |
+| **Regenerate all gallery PNGs & GIFs** | Run `python scripts/generate_gallery.py` |
+| **Run linters, tests, and docs locally** | `ruff check src tests scripts && pylint src/xkcd_matchem && pytest && jupyter-book build book/` |
 
 ---
 

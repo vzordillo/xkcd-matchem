@@ -190,3 +190,29 @@ def test_icons_and_graph_networks() -> None:
     )
     assert len(ax_sg.patches) >= 8
     plt.close(ax_sg.figure)
+
+    ax_planar = xm.plot_structure_graph("si_diamond.cif", layout="planar")
+    assert len(ax_planar.patches) >= 8
+    plt.close(ax_planar.figure)
+
+    a_si = 5.4309
+    prim = 0.5 * np.array(
+        [[0.0, a_si, a_si], [a_si, 0.0, a_si], [a_si, a_si, 0.0]]
+    )
+    si_prim = xm.AtomsData(
+        symbols=["Si", "Si"],
+        positions=np.vstack(
+            [np.zeros(3), 0.25 * (prim[0] + prim[1] + prim[2])]
+        ),
+        cell=prim,
+        pbc=(True, True, True),
+    )
+    ax_multi = xm.plot_structure_graph(
+        si_prim,
+        layout="planar",
+        multi_edges=True,
+        show_shift_labels=True,
+        directed=True,
+    )
+    assert len(ax_multi.patches) >= 2
+    plt.close(ax_multi.figure)

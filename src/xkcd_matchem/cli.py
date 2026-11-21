@@ -152,6 +152,16 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=("3d", "2d"),
         help="Render in 3D depth-sorted or 2D skeletal mode.",
     )
+    render_p.add_argument(
+        "--no-bonds",
+        action="store_true",
+        help="Show only atoms (no bond sticks) in 3D view.",
+    )
+    render_p.add_argument(
+        "--crystal-axes",
+        default=None,
+        help="Crystal axes mode (corner, origin, edges, off).",
+    )
     _add_common_view_args(render_p)
 
     view_p = sub.add_parser(
@@ -195,6 +205,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
     if atoms.is_periodic and rep != (1, 1, 1):
         atoms = atoms.repeat((rep[0], rep[1], rep[2]))
     cam = _resolve_cli_camera(args)
+    show_bonds = False if args.no_bonds else None
     if atoms.is_periodic and args.mode == "3d":
         ax = struct_plots.plot_crystal(
             atoms,
@@ -203,6 +214,8 @@ def _cmd_render(args: argparse.Namespace) -> int:
             preset=args.preset,
             camera=cam,
             title=atoms.formula(),
+            crystal_axes=args.crystal_axes,
+            show_bonds=show_bonds,
         )
     else:
         ax = struct_plots.plot_molecule(
@@ -213,6 +226,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
             preset=args.preset,
             camera=cam,
             title=atoms.formula(),
+            show_bonds=show_bonds,
         )
     out_path = export.save_figure(ax.figure, args.output)
     plt.close(ax.figure)

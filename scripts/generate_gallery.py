@@ -884,6 +884,59 @@ def _make_icons_and_graphs_gallery(out_dir: pathlib.Path) -> None:
         plt.close(fig)
 
 
+def _make_crystal_graphs_2d_gallery(out_dir: pathlib.Path) -> None:
+    """Generates bond-free crystal sites and planar flat 2D GNN graphs."""
+    a_si = 5.4309
+    prim_cell = 0.5 * np.array(
+        [[0.0, a_si, a_si], [a_si, 0.0, a_si], [a_si, a_si, 0.0]],
+        dtype=np.float64,
+    )
+    si_prim = xm.AtomsData(
+        symbols=["Si", "Si"],
+        positions=np.vstack(
+            [
+                0.25 * (prim_cell[0] + prim_cell[1] + prim_cell[2]),
+                np.zeros(3),
+            ]
+        ),
+        cell=prim_cell,
+        pbc=(True, True, True),
+    )
+    with xm.xkcd_style("classic"):
+        fig, axes = plt.subplots(1, 3, figsize=(16.0, 5.4), dpi=165)
+        fig.patch.set_facecolor(xm.style.PAPER)
+        xm.plot_crystal(
+            "nacl.cif",
+            show_bonds=False,
+            crystal_axes="corner",
+            ax=axes[0],
+            title="NaCl Unit Cell (show_bonds=False)",
+        )
+        xm.plot_structure_graph(
+            "si_diamond.cif",
+            layout="planar",
+            ax=axes[1],
+            title="Planar 2D GNN Graph (Si Diamond)",
+        )
+        xm.plot_structure_graph(
+            si_prim,
+            layout="planar",
+            multi_edges=True,
+            show_shift_labels=True,
+            directed=True,
+            ax=axes[2],
+            title="2D Quotient Multigraph (Si Primitive)",
+        )
+        fig.suptitle(
+            "Bond-Free Crystals & Planar Flat 2D Crystal GNN Graphs",
+            fontsize=15,
+            y=0.98,
+        )
+        fig.tight_layout(rect=(0.0, 0.02, 1.0, 0.92), w_pad=2.0)
+        xm.save_figure(fig, out_dir / "crystal_graphs_2d.png", dpi=165)
+        plt.close(fig)
+
+
 def main() -> None:
     """Generates all gallery PNGs, GIFs, and static interactive assets."""
     matplotlib.use("Agg")
@@ -899,6 +952,7 @@ def main() -> None:
     _make_materials_informatics_gallery(_OUT_DIR)
     _make_scrolls_and_grids_gallery(_OUT_DIR)
     _make_icons_and_graphs_gallery(_OUT_DIR)
+    _make_crystal_graphs_2d_gallery(_OUT_DIR)
     _make_readme_gifs(_OUT_DIR)
     _export_docs_assets()
     print(f"Generated gallery images, GIFs, and studio in {_BOOK_STATIC}")

@@ -105,3 +105,10 @@ Drop playful vector icons (`flask`, `crystal`, `battery`, `graphene`, `catalyst`
 See [Tutorial 11: Periodic Table, Scrolls, Grids, Icons & Graphs](tutorials/11_periodic_table_scrolls_and_informatics.ipynb).
 
 ![Icons and GNN structure graphs](_static/gallery/icons_and_graphs.png)
+
+## Bond-Free Crystals & Planar Flat 2D Crystal GNN Graphs
+
+Need pure atomic lattice sites inside a unit cell without any bond network? Pass `show_bonds=False` to `plot_crystal()`, `plot_slab()`, or `plot_molecule()` (or toggle **Show bonds** in the Interactive 3D Studio). For flat 2D topological and crystallographic quotient multigraphs with fanned periodic translation edges (`000`, `100`, `010`, `001`), use `plot_structure_graph(..., layout="planar")` and `multi_edges=True, show_shift_labels=True`.
+See [Tutorial 11: Periodic Table, Scrolls, Grids, Icons & Graphs](tutorials/11_periodic_table_scrolls_and_informatics.ipynb).
+
+![Bond-free crystals and planar 2D GNN graphs](_static/gallery/crystal_graphs_2d.png)
