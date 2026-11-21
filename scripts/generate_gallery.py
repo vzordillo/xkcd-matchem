@@ -785,6 +785,7 @@ def _make_scrolls_and_grids_gallery(out_dir: pathlib.Path) -> None:
         ],
         bullet="checked",
         background_grid="ruled",
+        align_to_grid=True,
     )
     sc_land = board.add_scroll_card(
         120.0,
@@ -793,7 +794,7 @@ def _make_scrolls_and_grids_gallery(out_dir: pathlib.Path) -> None:
         80.0,
         orientation="landscape",
         title="Landscape Scroll: Synthesis Roadmap",
-        background_grid="dotgrid",
+        background_grid=None,
         inner_pad_mm=(4.0, 4.0, 13.5, 3.5),
     )
     xm.plot_pipeline_diagram(
@@ -830,11 +831,12 @@ def _make_icons_and_graphs_gallery(out_dir: pathlib.Path) -> None:
             ax=ax_icons,
             title="xkcd MatChem Icons & Element Badges",
         )
-        cam = xm.Camera.from_preset("isometric")
+        cam = xm.Camera(azimuth=25.0, elevation=14.0)
         xm.plot_crystal(
             "si_diamond.cif",
             camera=cam,
             boundary_atoms=False,
+            show_labels="index",
             ax=ax_crys,
             title="1. Actual Crystal (8-Atom Basis)",
         )
@@ -846,6 +848,12 @@ def _make_icons_and_graphs_gallery(out_dir: pathlib.Path) -> None:
             ax=ax_graph,
             title="2. Matching GNN Graph (Same View)",
         )
+        xlim_c, ylim_c = ax_crys.get_xlim(), ax_crys.get_ylim()
+        ax_crys.set_aspect("equal", adjustable="box")
+        ax_crys.set_xlim(xlim_c)
+        ax_crys.set_ylim(ylim_c)
+        ax_graph.set_xlim(xlim_c)
+        ax_graph.set_ylim(ylim_c)
 
         synth_nodes = [
             "Anatase\nTiO2",

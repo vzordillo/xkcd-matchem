@@ -27,6 +27,7 @@ from xkcd_matchem.core import exceptions
 BLUEPRINT_BG = "#163A5F"
 BLUEPRINT_INK = "#F0F6FC"
 BLUEPRINT_GRID = "#64B5F6"
+BG_GRID_GID = "xkcd_matchem_bg_grid"
 
 BACKGROUND_STYLES: tuple[str, ...] = (
     "none",
@@ -107,6 +108,74 @@ def resolve_hatch(
     return resolve_hatch(seq[index % len(seq)], index=index)
 
 
+def clear_background_grid(ax: maxes.Axes) -> maxes.Axes:
+    """Removes background grid artists added by ``apply_background_grid``.
+
+    Only strips artists tagged with ``BG_GRID_GID`` so plotted data, text,
+    patches, and axes spines remain untouched.
+
+    Args:
+      ax: Target Matplotlib ``Axes``.
+
+    Returns:
+      The cleaned ``Axes`` instance.
+    """
+    for line in list(ax.lines):
+        if line.get_gid() == BG_GRID_GID:
+            line.remove()
+    for coll in list(ax.collections):
+        if coll.get_gid() == BG_GRID_GID:
+            coll.remove()
+    return ax
+
+
+def compute_background_grid_coords(
+    style: str | None,
+    *,
+    spacing: float = 0.08,
+    spacing_x: float | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Returns exact axes-fraction ``(xs, ys)`` coordinates for a grid style.
+
+    ``xs`` is ordered left-to-right and ``ys`` is ordered top-to-bottom so
+    ``ys[0]`` corresponds to the top notebook line and ``ys[1]`` to the next
+    line down.
+
+    Args:
+      style: Background style key (or ``None`` / ``"none"``).
+      spacing: Vertical grid/rule spacing in axes-fraction units.
+      spacing_x: Optional horizontal spacing override for grid/dot styles.
+
+    Returns:
+      Tuple ``(xs, ys)`` of 1D float64 arrays in ``(0, 1)``.
+    """
+    if style is None:
+        return np.zeros((0,), dtype=np.float64), np.zeros(
+            (0,), dtype=np.float64
+        )
+    key = style.strip().lower()
+    if key in ("none", "isometric"):
+        return np.zeros((0,), dtype=np.float64), np.zeros(
+            (0,), dtype=np.float64
+        )
+    step_y = max(0.03, min(0.25, float(spacing)))
+    step_x = (
+        step_y if spacing_x is None else max(0.02, min(0.25, float(spacing_x)))
+    )
+    if key in ("lines", "ruled"):
+        ys = np.arange(step_y, 1.0 - 1e-9, step_y)[::-1]
+        return np.zeros((0,), dtype=np.float64), ys
+    if key in ("grid", "graph", "blueprint"):
+        xs = np.arange(step_x, 1.0 - 1e-9, step_x)
+        ys = np.arange(step_y, 1.0 - 1e-9, step_y)[::-1]
+        return xs, ys
+    if key in ("dots", "dotgrid"):
+        xs = np.arange(0.5 * step_x, 1.0 - 1e-9, step_x)
+        ys = np.arange(0.5 * step_y, 1.0 - 1e-9, step_y)[::-1]
+        return xs, ys
+    return np.zeros((0,), dtype=np.float64), np.zeros((0,), dtype=np.float64)
+
+
 def _draw_axes_rule_lines(
     ax: maxes.Axes,
     xs: Sequence[tuple[float, float]],
@@ -128,6 +197,7 @@ def _draw_axes_rule_lines(
             clip_on=True,
         )
         line.set_sketch_params(0.0, 0.0, 0.0)
+        line.set_gid(BG_GRID_GID)
         ax.add_line(line)
 
 
@@ -154,25 +224,31 @@ def _draw_isometric_grid(
 
 def apply_background_grid(
     ax: maxes.Axes,
-    style: str = "grid",
+    style: str | None = "grid",
     *,
     color: str | None = None,
     alpha: float | None = None,
     spacing: float = 0.08,
+    spacing_x: float | None = None,
     margin_line: bool = True,
 ) -> maxes.Axes:
     """Applies a customizable notebook, graph, dot, isometric, or blueprint bg.
 
     All patterns render in axes-fraction coordinates at low ``zorder`` so they
-    remain cleanly aligned regardless of data range or axis scaling.
+    remain cleanly aligned regardless of data range or axis scaling. Calling
+    with ``style=None`` or ``"none"`` removes any existing background grid.
 
     Args:
       ax: Target Matplotlib ``Axes``.
-      style: One of ``"none"``, ``"lines"``/``"ruled"``, ``"grid"``/``"graph"``,
-        ``"dots"``/``"dotgrid"``, ``"isometric"``, or ``"blueprint"``.
+      style: One of ``None``, ``"none"``, ``"lines"``/``"ruled"``,
+        ``"grid"``/``"graph"``, ``"dots"``/``"dotgrid"``, ``"isometric"``,
+        or ``"blueprint"``.
       color: Optional grid line/dot color override.
       alpha: Optional grid opacity override in ``[0, 1]``.
-      spacing: Base grid spacing in axes-fraction units (default ``0.08``).
+      spacing: Vertical grid/rule spacing in axes-fraction units
+        (default ``0.08``).
+      spacing_x: Optional horizontal spacing override in axes-fraction units
+        (defaults to ``spacing``).
       margin_line: Whether ``"ruled"``/``"lines"`` draws a subtle left margin.
 
     Returns:
@@ -181,7 +257,8 @@ def apply_background_grid(
     Raises:
       StyleError: If ``style`` is not a recognized background grid key.
     """
-    key = style.strip().lower()
+    clear_background_grid(ax)
+    key = "none" if style is None else style.strip().lower()
     if key not in BACKGROUND_STYLES:
         raise exceptions.StyleError(
             f"Unknown background_grid {style!r}. Valid: {BACKGROUND_STYLES}"
@@ -190,26 +267,36 @@ def apply_background_grid(
         return ax
 
     step = max(0.03, min(0.25, float(spacing)))
+    step_x = (
+        step if spacing_x is None else max(0.02, min(0.25, float(spacing_x)))
+    )
     ax.patch.set_sketch_params(0.0, 0.0, 0.0)
+    xs_grid, ys_grid = compute_background_grid_coords(
+        key, spacing=step, spacing_x=step_x
+    )
 
     if key == "blueprint":
         ax.set_facecolor(BLUEPRINT_BG)
         g_col = BLUEPRINT_GRID if color is None else color
         g_alpha = 0.30 if alpha is None else alpha
-        major = np.arange(step, 1.0, step)
-        minor = np.arange(0.5 * step, 1.0, step)
+        minor_x = np.arange(0.5 * step_x, 1.0 - 1e-9, step_x)
+        minor_y = np.arange(0.5 * step, 1.0 - 1e-9, step)
         _draw_axes_rule_lines(
             ax,
-            [(float(x), float(x)) for x in minor] + [(0.0, 1.0) for _ in minor],
-            [(0.0, 1.0) for _ in minor] + [(float(y), float(y)) for y in minor],
+            [(float(x), float(x)) for x in minor_x]
+            + [(0.0, 1.0) for _ in minor_y],
+            [(0.0, 1.0) for _ in minor_x]
+            + [(float(y), float(y)) for y in minor_y],
             g_col,
             g_alpha * 0.55,
             0.55,
         )
         _draw_axes_rule_lines(
             ax,
-            [(float(x), float(x)) for x in major] + [(0.0, 1.0) for _ in major],
-            [(0.0, 1.0) for _ in major] + [(float(y), float(y)) for y in major],
+            [(float(x), float(x)) for x in xs_grid]
+            + [(0.0, 1.0) for _ in ys_grid],
+            [(0.0, 1.0) for _ in xs_grid]
+            + [(float(y), float(y)) for y in ys_grid],
             g_col,
             g_alpha,
             0.95,
@@ -219,11 +306,10 @@ def apply_background_grid(
     g_col = "#8FA3B8" if color is None else color
     if key in ("lines", "ruled"):
         g_alpha = 0.34 if alpha is None else alpha
-        ys = np.arange(step, 1.0, step)
         _draw_axes_rule_lines(
             ax,
-            [(0.0, 1.0) for _ in ys],
-            [(float(y), float(y)) for y in ys],
+            [(0.0, 1.0) for _ in ys_grid],
+            [(float(y), float(y)) for y in ys_grid],
             g_col,
             g_alpha,
             0.85,
@@ -239,22 +325,19 @@ def apply_background_grid(
             )
     elif key in ("grid", "graph"):
         g_alpha = 0.28 if alpha is None else alpha
-        coords = np.arange(step, 1.0, step)
         _draw_axes_rule_lines(
             ax,
-            [(float(x), float(x)) for x in coords]
-            + [(0.0, 1.0) for _ in coords],
-            [(0.0, 1.0) for _ in coords]
-            + [(float(y), float(y)) for y in coords],
+            [(float(x), float(x)) for x in xs_grid]
+            + [(0.0, 1.0) for _ in ys_grid],
+            [(0.0, 1.0) for _ in xs_grid]
+            + [(float(y), float(y)) for y in ys_grid],
             g_col,
             g_alpha,
             0.75,
         )
     elif key in ("dots", "dotgrid"):
         g_alpha = 0.45 if alpha is None else alpha
-        xs = np.arange(0.5 * step, 1.0, step)
-        ys = np.arange(0.5 * step, 1.0, step)
-        gx, gy = np.meshgrid(xs, ys)
+        gx, gy = np.meshgrid(xs_grid, ys_grid)
         pts = ax.scatter(
             gx.ravel(),
             gy.ravel(),
@@ -267,6 +350,7 @@ def apply_background_grid(
             clip_on=True,
         )
         pts.set_sketch_params(0.0, 0.0, 0.0)
+        pts.set_gid(BG_GRID_GID)
     elif key == "isometric":
         g_alpha = 0.24 if alpha is None else alpha
         _draw_isometric_grid(ax, g_col, g_alpha, step * 1.4)

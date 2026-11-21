@@ -357,10 +357,12 @@ class Board:
         title: str | None = None,
         subtitle: str | None = None,
         items: Sequence[str | tuple[str, str]] | None = None,
-        bullet: str = "check",
+        bullet: str | None = "check",
         parchment_color: str = scroll.PARCHMENT_LIGHT,
         roller_color: str = scroll.PARCHMENT_ROLLER,
         background_grid: str | None = None,
+        align_to_grid: bool = True,
+        grid_spacing: float | None = None,
         inner_pad_mm: tuple[float, float, float, float] | None = None,
     ) -> scroll.ScrollCard:
         """Adds a parchment scroll card in portrait or landscape view."""
@@ -380,6 +382,8 @@ class Board:
                 scroll.PARCHMENT_INK,
             ),
             background_grid=background_grid,
+            align_to_grid=align_to_grid,
+            grid_spacing=grid_spacing,
             preset=self.preset,
             inner_pad_mm=inner_pad_mm,
         )

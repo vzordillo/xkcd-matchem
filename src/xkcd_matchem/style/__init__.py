@@ -37,6 +37,8 @@ __all__ = [
     "apply_background_grid",
     "apply_xkcd_spines",
     "build_rc_params",
+    "clear_background_grid",
+    "compute_background_grid_coords",
     "ensure_fonts_registered",
     "fetch_xkcd_script",
     "get_bundled_font_path",
@@ -78,6 +80,8 @@ WARM_PAPER = palettes.WARM_PAPER
 apply_background_grid = patterns.apply_background_grid
 apply_xkcd_spines = theme.apply_xkcd_spines
 build_rc_params = theme.build_rc_params
+clear_background_grid = patterns.clear_background_grid
+compute_background_grid_coords = patterns.compute_background_grid_coords
 ensure_fonts_registered = fonts.ensure_fonts_registered
 fetch_xkcd_script = fonts.fetch_xkcd_script
 get_bundled_font_path = fonts.get_bundled_font_path

@@ -66,9 +66,49 @@ def test_scroll_cards_portrait_and_landscape() -> None:
         items=[("Step 1", "Parse CIF"), ("Step 2", "Render")],
         orientation="portrait",
         background_grid="ruled",
+        align_to_grid=True,
     )
     assert sc_p.orientation == "portrait"
+    assert len(sc_p.line_ys) >= 2
+    # Text baselines align right above the top two ruled lines.
+    item_texts = sc_p.axes.texts
+    assert len(item_texts) == 4
+    assert item_texts[0].get_va() == "baseline"
+    assert abs(item_texts[0].get_position()[1] - sc_p.line_y(0)) < 0.02
+    assert abs(item_texts[2].get_position()[1] - sc_p.line_y(1)) < 0.02
+    # Removing the background grid strips all rule lines but preserves text.
+    assert len(sc_p.axes.lines) >= 2
+    sc_p.clear_background_grid()
+    assert len(sc_p.axes.lines) == 0
+    assert len(sc_p.axes.texts) == 4
+    assert sc_p.background_grid is None
     plt.close(fig_p)
+
+    # Graph-grid alignment snaps both horizontal baselines and vertical cols.
+    fig_g, sc_g = xm.plot_scroll_card(
+        title="Graph Notebook",
+        orientation="portrait",
+        background_grid="graph",
+    )
+    assert len(sc_g.grid_xs) >= 4
+    sc_g.write_line(0, "Header")
+    sc_g.write_line(2, "Indented note", col=2)
+    assert abs(sc_g.axes.texts[0].get_position()[0] - sc_g.grid_x(0)) < 1e-9
+    assert abs(sc_g.axes.texts[1].get_position()[0] - sc_g.grid_x(2)) < 1e-9
+    assert abs(sc_g.axes.texts[1].get_position()[1] - sc_g.line_y(2)) < 0.02
+    plt.close(fig_g)
+
+    # Explicit background_grid=None / "none" produces plain parchment.
+    fig_plain, sc_plain = xm.plot_scroll_card(
+        title="Plain Scroll",
+        items=["Free note A", "Free note B"],
+        bullet=None,
+        background_grid="none",
+    )
+    assert len(sc_plain.axes.lines) == 0
+    assert len(sc_plain.axes.collections) == 0
+    assert sc_plain.background_grid is None
+    plt.close(fig_plain)
 
     fig_l, sc_l = xm.plot_scroll_card(
         title="Landscape Map",
@@ -216,3 +256,46 @@ def test_icons_and_graph_networks() -> None:
     )
     assert len(ax_multi.patches) >= 2
     plt.close(ax_multi.figure)
+
+
+def test_si_diamond_crystal_and_graph_correspondence() -> None:
+    matplotlib.use("Agg")
+    si_raw = xm.load("si_diamond.cif")
+    si_wrap = si_raw.wrap_positions()
+    # Wrapping must never jump fractional 0.0 to 1.0 due to -0.0 noise.
+    assert np.allclose(si_raw.positions, si_wrap.positions, atol=1e-12)
+    frac = si_wrap.fractional_positions()
+    assert np.all(frac >= -1e-12)
+    assert np.all(frac < 1.0 - 1e-6)
+
+    cam = xm.Camera(azimuth=-65.0, elevation=18.0)
+    ax_crys = xm.plot_crystal(
+        "si_diamond.cif",
+        camera=cam,
+        boundary_atoms=False,
+        show_labels="index",
+        show_legend=False,
+    )
+    ax_graph = xm.plot_structure_graph(
+        "si_diamond.cif",
+        layout="camera",
+        camera=cam,
+        show_cell=True,
+    )
+    # Every labeled atom Si0..Si7 must project to the exact same 2D coords.
+    crys_pos = {
+        t.get_text(): t.get_position()
+        for t in ax_crys.texts
+        if t.get_text().startswith("Si")
+    }
+    graph_pos = {
+        t.get_text(): t.get_position()
+        for t in ax_graph.texts
+        if t.get_text().startswith("Si")
+    }
+    assert set(crys_pos) == {f"Si{i}" for i in range(8)}
+    assert set(graph_pos) == set(crys_pos)
+    for key, pos_val in crys_pos.items():
+        assert np.allclose(pos_val, graph_pos[key], atol=1e-9)
+    plt.close(ax_crys.figure)
+    plt.close(ax_graph.figure)

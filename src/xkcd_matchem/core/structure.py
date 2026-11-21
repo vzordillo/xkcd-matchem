@@ -206,14 +206,22 @@ class AtomsData:
             )
         return self.positions @ np.linalg.inv(self.cell)
 
-    def wrap_positions(self) -> AtomsData:
-        """Returns a copy with periodic coordinates wrapped into ``[0, 1)``."""
+    def wrap_positions(self, tol: float = 1e-9) -> AtomsData:
+        """Returns a copy with periodic coordinates wrapped into ``[0, 1)``.
+
+        Snaps values within ``tol`` of ``0.0`` or ``1.0`` strictly to ``0.0``
+        so floating-point negative-zero noise (e.g. ``-1e-17``) never jumps
+        atoms across to the opposite cell face.
+        """
         if self.cell is None or not any(self.pbc):
             return self.copy()
         frac = self.fractional_positions()
         for axis, periodic in enumerate(self.pbc):
             if periodic:
-                frac[:, axis] = np.mod(frac[:, axis], 1.0)
+                wrapped_ax = np.mod(frac[:, axis], 1.0)
+                wrapped_ax[np.isclose(wrapped_ax, 1.0, atol=tol)] = 0.0
+                wrapped_ax[np.isclose(wrapped_ax, 0.0, atol=tol)] = 0.0
+                frac[:, axis] = wrapped_ax
         wrapped = self.copy()
         wrapped.positions = frac @ self.cell
         return wrapped
@@ -238,10 +246,12 @@ class AtomsData:
         active_axes = tuple(ax for ax in axes if 0 <= ax < 3 and self.pbc[ax])
         if not active_axes:
             return self.wrap_positions()
-        frac = np.mod(self.fractional_positions(), 1.0)
+        frac = self.wrap_positions().fractional_positions()
         shift = geometry.best_fractional_shift(frac, axes=active_axes)
         for ax in active_axes:
-            frac[:, ax] = np.mod(frac[:, ax] + shift[ax], 1.0)
+            shifted = np.mod(frac[:, ax] + shift[ax], 1.0)
+            shifted[np.isclose(shifted, 1.0, atol=1e-9)] = 0.0
+            frac[:, ax] = shifted
         centered = self.copy()
         centered.positions = frac @ self.cell
         return centered

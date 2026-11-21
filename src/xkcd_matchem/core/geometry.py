@@ -236,14 +236,16 @@ def cell_vectors_from_parameters(
     al = math.radians(alpha)
     be = math.radians(beta)
     ga = math.radians(gamma)
-    cos_al = math.cos(al)
-    cos_be = math.cos(be)
-    cos_ga = math.cos(ga)
+    cos_al = 0.0 if abs(math.cos(al)) < 1e-14 else math.cos(al)
+    cos_be = 0.0 if abs(math.cos(be)) < 1e-14 else math.cos(be)
+    cos_ga = 0.0 if abs(math.cos(ga)) < 1e-14 else math.cos(ga)
     sin_ga = math.sin(ga)
     va = np.array([a, 0.0, 0.0], dtype=np.float64)
     vb = np.array([b * cos_ga, b * sin_ga, 0.0], dtype=np.float64)
     cx = c * cos_be
     cy = c * (cos_al - cos_be * cos_ga) / max(sin_ga, 1e-12)
+    if abs(cy) < 1e-14:
+        cy = 0.0
     cz_sq = max(0.0, c * c - cx * cx - cy * cy)
     vc = np.array([cx, cy, math.sqrt(cz_sq)], dtype=np.float64)
     return np.vstack([va, vb, vc])

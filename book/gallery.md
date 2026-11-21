@@ -94,7 +94,7 @@ See [Tutorial 11: Periodic Table, Scrolls, Grids, Icons & Graphs](tutorials/11_p
 
 ## Background Grids, Hatched Shading & Vintage Scroll Cards
 
-Layer notebook/graph/dotgrid/isometric/blueprint paper backgrounds (`background_grid=`, `apply_background_grid()`), hatched or stippled fills (`shade="cycle" | "crosshatch" | "dots"`), and portrait or landscape vintage parchment scroll cards (`plot_scroll_card()`, `board.add_scroll_card()`).
+Layer notebook/graph/dotgrid/isometric/blueprint paper backgrounds (`background_grid=`, `apply_background_grid()`, `clear_background_grid()`), hatched or stippled fills (`shade="cycle" | "crosshatch" | "dots"`), and portrait or landscape vintage parchment scroll cards (`plot_scroll_card()`, `board.add_scroll_card()`) with notebook-style line/grid text alignment (`align_to_grid=True`, `card.write_line()`) or clean grid-free parchment (`background_grid=None`).
 See [Tutorial 11: Periodic Table, Scrolls, Grids, Icons & Graphs](tutorials/11_periodic_table_scrolls_and_informatics.ipynb).
 
 ![Scrolls, grids, and hatched shading](_static/gallery/scrolls_grids_shading.png)

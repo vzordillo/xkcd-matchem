@@ -290,6 +290,25 @@ def _add_polyhedra_items(
             items.append((mean_d - 0.03, "tri", (tri_xy, c_col)))
 
 
+def _format_atom_label(
+    atoms: structure.AtomsData,
+    idx: int,
+    show_labels: bool | str,
+) -> str | None:
+    """Resolves per-atom label for ``False``, ``True``, or ``'index'``."""
+    if not show_labels:
+        return None
+    if isinstance(show_labels, str):
+        key = show_labels.strip().lower()
+        if key in ("none", "off", "false"):
+            return None
+        if key == "index":
+            return f"{atoms.symbols[idx]}{idx}"
+    if atoms.atom_labels is not None:
+        return str(atoms.atom_labels[idx])
+    return atoms.symbols[idx]
+
+
 def _draw_queue_item(
     ax: maxes.Axes,
     kind: str,
@@ -303,7 +322,7 @@ def _draw_queue_item(
         float,
         float,
         float,
-        bool,
+        bool | str,
         str,
     ],
 ) -> None:
@@ -328,7 +347,7 @@ def _draw_queue_item(
             radius=radii[idx],
             facecolor=colors[idx],
             linewidth=atom_lw,
-            label=atoms.symbols[idx] if show_labels else None,
+            label=_format_atom_label(atoms, idx, show_labels),
             highlight=style != "stick",
             zorder=z_layer,
         )
@@ -547,7 +566,7 @@ def render_structure_3d(
     style: str = "ball_and_stick",
     palette: str | Mapping[str, str] = "xkcd",
     show_cell: bool | str = True,
-    show_labels: bool = False,
+    show_labels: bool | str = False,
     show_bonds: bool | None = None,
     radius_scale: float = 1.0,
     bond_scale: float = 1.20,
@@ -632,7 +651,7 @@ def _build_3d_painter_queue(
     depth: np.ndarray,
     colors: list[str],
     radii: list[float],
-    opts: tuple[str, str | Mapping[str, str], bool, bool, float],
+    opts: tuple[str, str | Mapping[str, str], bool | str, bool, float],
     polyhedra: tuple[str, str | None]
     | Sequence[bonding.CoordinationPolyhedron]
     | None,
@@ -772,7 +791,7 @@ def _render_prepared_3d(
         tuple[bool, str | None, str, str],
         tuple[float, float, float, float],
     ],
-    opts: tuple[str, str | Mapping[str, str], bool, bool, float],
+    opts: tuple[str, str | Mapping[str, str], bool | str, bool, float],
     polyhedra: tuple[str, str | None]
     | Sequence[bonding.CoordinationPolyhedron]
     | None,

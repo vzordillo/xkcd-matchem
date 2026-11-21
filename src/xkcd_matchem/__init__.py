@@ -69,6 +69,8 @@ __all__ = [
     "apply_background_grid",
     "atomic_form_factor",
     "broaden_peaks",
+    "clear_background_grid",
+    "compute_background_grid_coords",
     "compute_xrd",
     "core",
     "data",
@@ -204,6 +206,8 @@ annotate_distance = render.annotate_distance
 apply_background_grid = style.apply_background_grid
 atomic_form_factor = data.atomic_form_factor
 broaden_peaks = core.broaden_peaks
+clear_background_grid = style.clear_background_grid
+compute_background_grid_coords = style.compute_background_grid_coords
 compute_xrd = core.compute_xrd
 draw_callout = render.draw_callout
 draw_crystal_axes = render.draw_crystal_axes

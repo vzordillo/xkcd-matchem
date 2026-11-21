@@ -82,34 +82,46 @@ def _spring_layout(
     return pos / span
 
 
-def _bipartite_concentric_pos(
+def _bipartite_columns_pos(
     n_nodes: int,
     adj: Sequence[set[int]],
 ) -> np.ndarray | None:
-    """Places balanced 2-colorable 8-node graphs on two concentric squares."""
-    if n_nodes != 8 or any(not nbrs for nbrs in adj):
+    """Places 2-colorable crystal graphs cleanly in two parallel columns."""
+    if n_nodes < 4 or n_nodes > 12 or any(not nbrs for nbrs in adj):
         return None
-    color_map: dict[int, int] = {0: 0}
-    queue = [0]
-    while queue:
-        cur = queue.pop(0)
-        for nb in sorted(adj[cur]):
-            if nb not in color_map:
-                color_map[nb] = 1 - color_map[cur]
-                queue.append(nb)
-            elif color_map[nb] == color_map[cur]:
-                return None
-    g0 = [i for i in range(n_nodes) if color_map.get(i, 0) == 0]
-    g1 = [i for i in range(n_nodes) if color_map.get(i, 0) == 1]
-    if len(g0) != 4 or len(g1) != 4:
+    color_map: dict[int, int] = {}
+    for start in range(n_nodes):
+        if start in color_map:
+            continue
+        color_map[start] = 0
+        queue = [start]
+        while queue:
+            cur = queue.pop(0)
+            for nb in sorted(adj[cur]):
+                if nb not in color_map:
+                    color_map[nb] = 1 - color_map[cur]
+                    queue.append(nb)
+                elif color_map[nb] == color_map[cur]:
+                    return None
+    g0 = [i for i in range(n_nodes) if color_map[i] == 0]
+    g1 = [i for i in range(n_nodes) if color_map[i] == 1]
+    if not g0 or not g1:
         return None
     pos_out = np.zeros((n_nodes, 2), dtype=np.float64)
-    a0 = np.linspace(np.pi / 4, 2.0 * np.pi + np.pi / 4, 4, endpoint=False)
-    a1 = np.linspace(0.0, 2.0 * np.pi, 4, endpoint=False)
-    for k, idx in enumerate(g0):
-        pos_out[idx] = [1.05 * math.cos(a0[k]), 1.05 * math.sin(a0[k])]
-    for k, idx in enumerate(g1):
-        pos_out[idx] = [0.46 * math.cos(a1[k]), 0.46 * math.sin(a1[k])]
+    ys0 = (
+        np.linspace(1.05, -1.05, len(g0))
+        if len(g0) > 1
+        else np.array([0.0], dtype=np.float64)
+    )
+    ys1 = (
+        np.linspace(1.05, -1.05, len(g1))
+        if len(g1) > 1
+        else np.array([0.0], dtype=np.float64)
+    )
+    for idx, y_val in zip(g0, ys0, strict=True):
+        pos_out[idx] = [-0.95, float(y_val)]
+    for idx, y_val in zip(g1, ys1, strict=True):
+        pos_out[idx] = [0.95, float(y_val)]
     return pos_out
 
 
@@ -130,7 +142,7 @@ def _planar_layout(
             adj[u].add(v)
             adj[v].add(u)
 
-    bip_pos = _bipartite_concentric_pos(n_nodes, adj)
+    bip_pos = _bipartite_columns_pos(n_nodes, adj)
     if bip_pos is not None:
         return bip_pos
 
@@ -270,7 +282,7 @@ def _draw_all_graph_edges(
     style_cfg: tuple[bool, bool, str, str, float],
 ) -> None:
     """Draws all network edges with symmetric multi-edge arc fanning."""
-    directed, curved, ink_col, bg_color, shrink_pt = style_cfg
+    directed, curve_dashed, ink_col, bg_color, shrink_pt = style_cfg
     pair_totals: dict[tuple[int, int], int] = {}
     for u, v, _ in norm_edges:
         if u < n_nodes and v < n_nodes:
@@ -292,10 +304,10 @@ def _draw_all_graph_edges(
             rad = float(rads[mult])
             if u > v:
                 rad = -rad
-        elif is_dash:
-            rad = 0.22
+        elif is_dash and curve_dashed:
+            rad = 0.18
         else:
-            rad = 0.14 if curved else 0.0
+            rad = 0.0
         _draw_graph_edge(
             ax,
             xy[u],
@@ -501,13 +513,20 @@ def plot_graph_network(
             theme.style_existing_axes(ax, preset=preset)
         if background_grid:
             patterns.apply_background_grid(ax, style=background_grid)
+        curve_dashed = layout.strip().lower() != "planar"
         _draw_all_graph_edges(
             ax,
             n_nodes,
             norm_edges,
             xy,
             dashed_flags,
-            (directed, False, ink_col, preset_obj.axes_facecolor, shrink_pt),
+            (
+                directed,
+                curve_dashed,
+                ink_col,
+                preset_obj.axes_facecolor,
+                shrink_pt,
+            ),
         )
         base_r = _draw_graph_nodes(
             ax, nodes, xy, node_colors, series, ink_col, node_shape=node_shape
@@ -718,7 +737,7 @@ def plot_structure_graph(
     Returns:
       Matplotlib ``Axes`` containing the structure graph.
     """
-    atoms = _load_graph_atoms(source)
+    atoms = _load_graph_atoms(source).wrap_positions()
     nodes = [f"{sym}{idx}" for idx, sym in enumerate(atoms.symbols)]
     node_cols = [
         palettes.get_element_color(sym, scheme=palette) for sym in atoms.symbols

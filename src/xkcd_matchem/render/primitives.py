@@ -122,7 +122,8 @@ def draw_atom_sphere(
         )
         ax.add_patch(spot)
     if label:
-        fontsize = max(6.5, min(11.5, radius * 24.0))
+        scale_f = 16.5 if len(label) >= 3 else 24.0
+        fontsize = max(6.5, min(11.0, radius * scale_f))
         ax.text(
             x,
             y,
