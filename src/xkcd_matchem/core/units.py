@@ -18,6 +18,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from collections.abc import Sequence
 import dataclasses
+import pathlib
+import types
 from typing import Any
 from typing import overload
 
@@ -37,17 +39,19 @@ __all__ = [
 ]
 
 
-INTERNAL_UNITS: dict[str, str] = {
-    "position": "A",
-    "cell": "A",
-    "energy": "eV",
-    "force": "eV/A",
-    "pressure": "GPa",
-    "time": "fs",
-    "reciprocal_length": "A^-1",
-    "temperature": "K",
-    "potential": "V",
-}
+INTERNAL_UNITS: Mapping[str, str] = types.MappingProxyType(
+    {
+        "position": "A",
+        "cell": "A",
+        "energy": "eV",
+        "force": "eV/A",
+        "pressure": "GPa",
+        "time": "fs",
+        "reciprocal_length": "A^-1",
+        "temperature": "K",
+        "potential": "V",
+    }
+)
 
 _ATOMIC_TIME_TO_FS = 0.024188843265864
 _HA_BOHR3_TO_GPA = (
@@ -230,16 +234,60 @@ def convert_pressure(
     return np.asarray(arr * scale, dtype=np.float64)
 
 
+def _freeze_value(value: Any) -> Any:
+    """Recursively converts mutable containers/arrays into immutable values."""
+    result: Any = value
+    if isinstance(value, np.ndarray):
+        arr = np.array(value, copy=True)
+        arr.flags.writeable = False
+        result = arr
+    elif isinstance(value, (np.generic, pathlib.PurePath, str, bytes)):
+        result = value
+    elif isinstance(value, Mapping):
+        result = types.MappingProxyType(
+            {str(k): _freeze_value(v) for k, v in value.items()}
+        )
+    elif isinstance(value, (set, frozenset)):
+        try:
+            ordered = sorted(value)
+        except TypeError:
+            ordered = list(value)
+        result = tuple(_freeze_value(item) for item in ordered)
+    elif isinstance(value, Sequence):
+        result = tuple(_freeze_value(item) for item in value)
+    return result
+
+
+def _to_jsonable(value: Any) -> Any:
+    """Recursively converts frozen/scientific objects to JSON-safe Python."""
+    result: Any = value
+    if isinstance(value, Mapping):
+        result = {str(k): _to_jsonable(v) for k, v in value.items()}
+    elif isinstance(value, np.ndarray):
+        result = _to_jsonable(value.tolist())
+    elif isinstance(value, np.generic):
+        result = value.item()
+    elif isinstance(value, pathlib.PurePath):
+        result = str(value)
+    elif isinstance(value, bytes):
+        result = value.decode("utf-8", errors="replace")
+    elif not isinstance(value, str) and isinstance(
+        value, (tuple, list, set, frozenset, Sequence)
+    ):
+        result = [_to_jsonable(item) for item in value]
+    return result
+
+
 @dataclasses.dataclass(frozen=True)
 class ScientificProvenance:
     """Immutable metadata record for numerical analysis & parser provenance.
 
     Attributes:
       algorithm: Identifier or name of the numerical model/estimator.
-      units: Mapping of physical quantities to unit symbols.
+      units: Read-only mapping of physical quantities to unit symbols.
       source: Optional input file path or origin identifier.
       parser: Optional parser or adapter name.
-      parameters: Immutable ``(key, value)`` parameter pairs (or mapping input).
+      parameters: Deeply immutable ``(key, value)`` parameter pairs.
       assumptions: Explicit physical/numerical modeling assumptions.
       package_version: ``xkcd-matchem`` version string.
     """
@@ -248,32 +296,38 @@ class ScientificProvenance:
     units: Mapping[str, str] = dataclasses.field(
         default_factory=lambda: dict(INTERNAL_UNITS)
     )
-    source: str | None = None
+    source: str | pathlib.Path | None = None
     parser: str | None = None
     parameters: tuple[tuple[str, Any], ...] | Mapping[str, Any] = ()
     assumptions: Sequence[str] = ()
     package_version: str = _version.__version__
 
     def __post_init__(self) -> None:
-        """Freezes mutable input mappings and sequences into immutable forms."""
+        """Freezes mutable input mappings, arrays, and sequences deeply."""
         if not self.algorithm or not str(self.algorithm).strip():
             raise exceptions.StructureError(
                 "ScientificProvenance algorithm must be a non-empty string."
             )
-        norm_units = {str(k): str(v) for k, v in dict(self.units).items()}
-        if isinstance(self.parameters, Mapping):
-            norm_params = tuple(
-                (str(k), v) for k, v in self.parameters.items()
-            )
-        else:
-            norm_params = tuple((str(k), v) for k, v in self.parameters)
+        norm_units = types.MappingProxyType(
+            {str(k): str(v) for k, v in dict(self.units).items()}
+        )
+        raw_pairs = (
+            self.parameters.items()
+            if isinstance(self.parameters, Mapping)
+            else self.parameters
+        )
+        norm_params = tuple(
+            (str(k), _freeze_value(v)) for k, v in raw_pairs
+        )
         norm_assumptions = tuple(str(item) for item in self.assumptions)
+        norm_source = str(self.source) if self.source is not None else None
         object.__setattr__(self, "units", norm_units)
         object.__setattr__(self, "parameters", norm_params)
         object.__setattr__(self, "assumptions", norm_assumptions)
+        object.__setattr__(self, "source", norm_source)
 
     def to_dict(self) -> dict[str, Any]:
-        """Serializes provenance metadata into a plain JSON-ready dictionary."""
+        """Serializes provenance metadata into a plain JSON-safe dictionary."""
         param_pairs = (
             tuple(self.parameters.items())
             if isinstance(self.parameters, Mapping)
@@ -281,10 +335,12 @@ class ScientificProvenance:
         )
         return {
             "algorithm": self.algorithm,
-            "units": dict(self.units),
-            "source": self.source,
+            "units": {str(k): str(v) for k, v in self.units.items()},
+            "source": _to_jsonable(self.source),
             "parser": self.parser,
-            "parameters": dict(param_pairs),
+            "parameters": {
+                str(k): _to_jsonable(v) for k, v in param_pairs
+            },
             "assumptions": list(self.assumptions),
             "package_version": self.package_version,
         }

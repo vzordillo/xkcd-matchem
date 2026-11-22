@@ -24,6 +24,7 @@ import numpy as np
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import structure
 from xkcd_matchem.core import trajectory
+from xkcd_matchem.core import units
 from xkcd_matchem.data import elements
 from xkcd_matchem.io import registry
 from xkcd_matchem.io.native import _limits
@@ -129,8 +130,76 @@ def _parse_single_frame(
     return atoms, start + 2 + n_atoms
 
 
-def read_xyz_trajectory(path: str | pathlib.Path) -> trajectory.Trajectory:
-    """Reads all frames from an XYZ or extended XYZ file into ``Trajectory``."""
+def _resolve_xyz_times(
+    frames: list[structure.AtomsData],
+    time_unit: str | None,
+) -> tuple[np.ndarray | None, str | None]:
+    """Extracts extXYZ frame times and resolves explicit time unit metadata."""
+    if time_unit is not None:
+        units.convert_time(0.0, time_unit, "fs")
+    if not all("time" in frame.metadata for frame in frames):
+        return None, None
+    try:
+        raw_times = np.array(
+            [float(frame.metadata["time"]) for frame in frames],
+            dtype=np.float64,
+        )
+    except ValueError:
+        return None, None
+
+    if time_unit is not None:
+        return units.convert_time(raw_times, time_unit, "fs"), "fs"
+
+    resolved_times = raw_times
+    resolved_unit = "unspecified"
+    if all("time_unit" in frame.metadata for frame in frames):
+        frame_units = [
+            str(frame.metadata["time_unit"]).strip() for frame in frames
+        ]
+        if all(frame_units):
+            if len({u.lower() for u in frame_units}) == 1:
+                u_str = frame_units[0]
+                try:
+                    resolved_times = units.convert_time(raw_times, u_str, "fs")
+                    resolved_unit = "fs"
+                except exceptions.StructureError:
+                    resolved_unit = u_str
+            else:
+                try:
+                    resolved_times = np.array(
+                        [
+                            units.convert_time(float(val), u_s, "fs")
+                            for val, u_s in zip(
+                                raw_times, frame_units, strict=True
+                            )
+                        ],
+                        dtype=np.float64,
+                    )
+                    resolved_unit = "fs"
+                except exceptions.StructureError:
+                    resolved_unit = "unspecified"
+    return resolved_times, resolved_unit
+
+
+def read_xyz_trajectory(
+    path: str | pathlib.Path,
+    *,
+    time_unit: str | None = None,
+) -> trajectory.Trajectory:
+    """Reads all frames from an XYZ or extended XYZ file into ``Trajectory``.
+
+    Args:
+      path: Path to an ``.xyz`` or ``.extxyz`` trajectory file.
+      time_unit: Optional unit of ``time=...`` comment metadata (e.g. ``"ps"``
+        or ``"fs"``). When supplied (or when frames specify ``time_unit=...``
+        with a recognized unit), ``times`` are converted to canonical ``"fs"``
+        and ``metadata["time_unit"] = "fs"``. When ``time=...`` appears with
+        no unit information, ``times`` are preserved as parsed and
+        ``metadata["time_unit"]`` is set to ``"unspecified"``.
+
+    Returns:
+      Parsed ``Trajectory`` instance.
+    """
     p = pathlib.Path(path)
     _limits.check_file_size(p)
     lines = p.read_text(encoding="utf-8").splitlines()
@@ -146,16 +215,8 @@ def read_xyz_trajectory(path: str | pathlib.Path) -> trajectory.Trajectory:
         frames.append(frame)
     if not frames:
         raise exceptions.ParseError(f"No XYZ frames found in {p}.")
-    times: np.ndarray | None = None
+    times, resolved_unit = _resolve_xyz_times(frames, time_unit)
     temps: np.ndarray | None = None
-    if all("time" in frame.metadata for frame in frames):
-        try:
-            times = np.array(
-                [float(frame.metadata["time"]) for frame in frames],
-                dtype=np.float64,
-            )
-        except ValueError:
-            times = None
     if all("temperature" in frame.metadata for frame in frames):
         try:
             temps = np.array(
@@ -164,11 +225,14 @@ def read_xyz_trajectory(path: str | pathlib.Path) -> trajectory.Trajectory:
             )
         except ValueError:
             temps = None
+    meta: dict[str, Any] = {"source": str(p)}
+    if resolved_unit is not None:
+        meta["time_unit"] = resolved_unit
     return trajectory.Trajectory(
         frames=frames,
         times=times,
         temperatures=temps,
-        metadata={"source": str(p)},
+        metadata=meta,
     )
 
 

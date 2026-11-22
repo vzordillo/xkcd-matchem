@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+import math
 import pathlib
 from typing import Any
 
@@ -23,8 +25,10 @@ import numpy as np
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import structure
 from xkcd_matchem.core import trajectory
+from xkcd_matchem.core import units
 from xkcd_matchem.data import elements
 from xkcd_matchem.io import registry
+from xkcd_matchem.io.native import _limits
 
 
 _LAMMPS_ATOM_STYLES: dict[str, tuple[int, int, int]] = {
@@ -152,14 +156,18 @@ def _build_lammps_bonds(
     return bonds
 
 
-def read_lammps_data(
-    path: str | pathlib.Path,
-    atom_style: str | None = None,
-    type_map: dict[int, str] | None = None,
-) -> structure.AtomsData:
-    """Reads a LAMMPS ``read_data`` topology/coordinate file."""
-    p = pathlib.Path(path)
-    lines = p.read_text(encoding="utf-8").splitlines()
+def _read_lammps_data_sections(
+    p: pathlib.Path,
+    atom_style: str | None,
+) -> tuple[
+    np.ndarray,
+    dict[int, float],
+    list[list[str]],
+    list[list[str]],
+    str | None,
+]:
+    """Streams header bounds, Masses, Atoms, and Bonds from a LAMMPS file."""
+    atom_limit = _limits.max_atoms()
     bounds = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0)}
     tilt = [0.0, 0.0, 0.0]
     masses: dict[int, float] = {}
@@ -168,39 +176,47 @@ def read_lammps_data(
     section = ""
     detected_style = atom_style
 
-    for raw in lines:
-        head, _, tail = raw.partition("#")
-        line = head.strip()
-        if not line:
-            continue
-        if line.endswith(("xlo xhi", "ylo yhi", "zlo zhi")):
+    with p.open("r", encoding="utf-8") as fh:
+        for raw_idx, raw in enumerate(fh):
+            head, _, tail = raw.partition("#")
+            line = head.strip()
+            if not line:
+                continue
             parts = line.split()
-            bounds[parts[2][0]] = (float(parts[0]), float(parts[1]))
-            continue
-        if line.endswith("xy xz yz"):
-            parts = line.split()
-            tilt = [float(parts[0]), float(parts[1]), float(parts[2])]
-            continue
-        first_tok = line.split()[0]
-        if first_tok in ("Masses", "Atoms", "Bonds", "Velocities", "Angles"):
-            section = first_tok
-            if first_tok == "Atoms" and detected_style is None:
-                comment_tok = tail.strip().split()
-                if comment_tok:
-                    detected_style = comment_tok[0].lower()
-            continue
-        if section == "Masses" and len(line.split()) >= 2:
-            parts = line.split()
-            masses[int(parts[0])] = float(parts[1])
-        elif section == "Atoms":
-            atom_rows.append(line.split())
-        elif section == "Bonds":
-            bond_rows.append(line.split())
-
-    if not atom_rows:
-        raise exceptions.ParseError(
-            f"No Atoms section in LAMMPS data file: {p}"
-        )
+            if section == "" and len(parts) == 2 and parts[1] == "atoms":
+                try:
+                    _limits.check_atom_count(int(parts[0]), source=p)
+                except ValueError as exc:
+                    if raw_idx > 0:
+                        raise exceptions.ParseError(
+                            f"Invalid LAMMPS atom count {line!r} in {p}."
+                        ) from exc
+                else:
+                    continue
+            if line.endswith(("xlo xhi", "ylo yhi", "zlo zhi")):
+                bounds[parts[2][0]] = (float(parts[0]), float(parts[1]))
+            elif line.endswith("xy xz yz"):
+                tilt = [float(parts[0]), float(parts[1]), float(parts[2])]
+            elif parts[0] in (
+                "Masses",
+                "Atoms",
+                "Bonds",
+                "Velocities",
+                "Angles",
+            ):
+                section = parts[0]
+                if section == "Atoms" and detected_style is None:
+                    comment_tok = tail.strip().split()
+                    if comment_tok:
+                        detected_style = comment_tok[0].lower()
+            elif section == "Masses" and len(parts) >= 2:
+                masses[int(parts[0])] = float(parts[1])
+            elif section == "Atoms":
+                if len(atom_rows) + 1 > atom_limit:
+                    _limits.check_atom_count(len(atom_rows) + 1, source=p)
+                atom_rows.append(parts)
+            elif section == "Bonds":
+                bond_rows.append(parts)
 
     cell = np.array(
         [
@@ -210,6 +226,25 @@ def read_lammps_data(
         ],
         dtype=np.float64,
     )
+    return cell, masses, atom_rows, bond_rows, detected_style
+
+
+def read_lammps_data(
+    path: str | pathlib.Path,
+    atom_style: str | None = None,
+    type_map: dict[int, str] | None = None,
+) -> structure.AtomsData:
+    """Reads a LAMMPS ``read_data`` topology/coordinate file."""
+    p = pathlib.Path(path)
+    _limits.check_file_size(p)
+    cell, masses, atom_rows, bond_rows, detected_style = (
+        _read_lammps_data_sections(p, atom_style)
+    )
+    if not atom_rows:
+        raise exceptions.ParseError(
+            f"No Atoms section in LAMMPS data file: {p}"
+        )
+    _limits.check_atom_count(len(atom_rows), source=p)
     symbols, coords, id_to_idx, img_arr = _parse_lammps_atom_rows(
         atom_rows,
         masses,
@@ -356,85 +391,185 @@ def _extract_lammpstrj_positions(
     return pos, extra_meta
 
 
-def _parse_lammpstrj_frame(
-    lines: list[str],
-    idx: int,
-    source: str,
-    type_map: dict[int, str] | None = None,
-) -> tuple[structure.AtomsData, float, int]:
-    """Parses one ``ITEM: TIMESTEP`` block from a LAMMPS dump trajectory."""
-    if idx + 9 >= len(lines):
-        raise exceptions.ParseError(f"Truncated LAMMPS dump frame in {source}.")
-    timestep = int(lines[idx + 1].strip())
-    idx += 2
-    if not lines[idx].startswith("ITEM: NUMBER OF ATOMS"):
-        raise exceptions.ParseError(
-            f"Expected NUMBER OF ATOMS at line {idx + 1}."
-        )
-    n_atoms = int(lines[idx + 1].strip())
-    if n_atoms < 0:
-        raise exceptions.ParseError(
-            f"Negative atom count {n_atoms} in {source}."
-        )
-    idx += 2
-    bflags = lines[idx].replace("ITEM: BOX BOUNDS", "").split()
-    b_rows = [[float(v) for v in lines[idx + 1 + k].split()] for k in range(3)]
-    origin, cell, pbc_tuple = _lammpstrj_cell_and_origin(bflags, b_rows)
-    idx += 4
+def _next_stream_line(
+    line_iter: Iterator[tuple[int, str]],
+    err_msg: str,
+) -> tuple[int, str]:
+    """Reads the next ``(line_no, line)`` pair from a streaming dump file."""
+    try:
+        return next(line_iter)
+    except StopIteration as exc:
+        raise exceptions.ParseError(err_msg) from exc
 
-    cols = lines[idx].replace("ITEM: ATOMS", "").split()
-    idx += 1
-    if idx + n_atoms > len(lines):
+
+def _stream_lammpstrj_box(
+    line_iter: Iterator[tuple[int, str]],
+    source: pathlib.Path,
+    trunc_msg: str,
+) -> tuple[np.ndarray, np.ndarray, tuple[bool, bool, bool]]:
+    """Streams ``ITEM: BOX BOUNDS`` and its 3 row bounds from a dump file."""
+    box_line_no, box_hdr = _next_stream_line(line_iter, trunc_msg)
+    if not box_hdr.startswith("ITEM: BOX BOUNDS"):
         raise exceptions.ParseError(
-            f"Truncated LAMMPS dump atom table at line {idx + 1}."
+            f"Expected BOX BOUNDS at line {box_line_no} in {source}."
         )
-    rows = [lines[idx + k].split() for k in range(n_atoms)]
+    bflags = box_hdr.replace("ITEM: BOX BOUNDS", "").split()
+    b_rows = [
+        [float(v) for v in _next_stream_line(line_iter, trunc_msg)[1].split()]
+        for _ in range(3)
+    ]
+    return _lammpstrj_cell_and_origin(bflags, b_rows)
+
+
+def _stream_lammpstrj_frame(
+    line_iter: Iterator[tuple[int, str]],
+    source: pathlib.Path,
+    type_map: dict[int, str] | None = None,
+    *,
+    frame_index: int | None = None,
+) -> tuple[structure.AtomsData, int] | None:
+    """Streams one ``ITEM: TIMESTEP`` block from an open LAMMPS dump file."""
+    for _, raw in line_iter:
+        if raw.startswith("ITEM: TIMESTEP"):
+            break
+    else:
+        return None
+
+    if frame_index is not None:
+        _limits.check_frame_count(frame_index + 1, source=source)
+
+    trunc_msg = f"Truncated LAMMPS dump frame in {source}."
+    _, ts_line = _next_stream_line(line_iter, trunc_msg)
+    try:
+        timestep = int(ts_line.strip())
+    except ValueError as exc:
+        raise exceptions.ParseError(
+            f"Invalid LAMMPS timestep {ts_line.strip()!r} in {source}."
+        ) from exc
+
+    nat_line_no, nat_hdr = _next_stream_line(line_iter, trunc_msg)
+    if not nat_hdr.startswith("ITEM: NUMBER OF ATOMS"):
+        raise exceptions.ParseError(
+            f"Expected NUMBER OF ATOMS at line {nat_line_no}."
+        )
+    _, nat_line = _next_stream_line(line_iter, trunc_msg)
+    try:
+        n_atoms = int(nat_line.strip())
+    except ValueError as exc:
+        raise exceptions.ParseError(
+            f"Invalid atom count {nat_line.strip()!r} in {source}."
+        ) from exc
+    _limits.check_atom_count(n_atoms, source=source)
+
+    origin, cell, pbc_tuple = _stream_lammpstrj_box(
+        line_iter, source, trunc_msg
+    )
+
+    at_line_no, at_hdr = _next_stream_line(line_iter, trunc_msg)
+    if not at_hdr.startswith("ITEM: ATOMS"):
+        raise exceptions.ParseError(
+            f"Expected ITEM: ATOMS at line {at_line_no} in {source}."
+        )
+    cols = at_hdr.replace("ITEM: ATOMS", "").split()
+    table_err = f"Truncated LAMMPS dump atom table at line {at_line_no + 1}."
+    rows = [
+        _next_stream_line(line_iter, table_err)[1].split()
+        for _ in range(n_atoms)
+    ]
     col_idx = {name: k for k, name in enumerate(cols)}
     if "id" in col_idx:
         rows.sort(key=lambda r: int(r[col_idx["id"]]))
 
-    symbols = _lammpstrj_symbols(rows, col_idx, type_map)
+    src_str = str(source)
     pos, extra_meta = _extract_lammpstrj_positions(
-        rows, col_idx, origin, cell, source
+        rows, col_idx, origin, cell, src_str
     )
-    frame_meta: dict[str, Any] = {"timestep": timestep, "source": source}
+    frame_meta: dict[str, Any] = {"timestep": timestep, "source": src_str}
     frame_meta.update(extra_meta)
-    atoms = structure.AtomsData(
-        symbols=symbols,
-        positions=pos,
-        cell=cell,
-        pbc=pbc_tuple,
-        metadata=frame_meta,
+    return (
+        structure.AtomsData(
+            symbols=_lammpstrj_symbols(rows, col_idx, type_map),
+            positions=pos,
+            cell=cell,
+            pbc=pbc_tuple,
+            metadata=frame_meta,
+        ),
+        timestep,
     )
-    return atoms, float(timestep), idx + n_atoms
 
 
 def read_lammpstrj(
     path: str | pathlib.Path,
     type_map: dict[int, str] | None = None,
+    *,
+    timestep_size: float | None = None,
+    time_unit: str = "fs",
 ) -> trajectory.Trajectory:
-    """Reads a multi-frame ``.lammpstrj`` dump into a ``Trajectory``."""
-    p = pathlib.Path(path)
-    lines = p.read_text(encoding="utf-8").splitlines()
-    frames: list[structure.AtomsData] = []
-    times: list[float] = []
-    idx = 0
-    while idx < len(lines):
-        if not lines[idx].startswith("ITEM: TIMESTEP"):
-            idx += 1
-            continue
-        frame, t_val, idx = _parse_lammpstrj_frame(
-            lines, idx, str(p), type_map=type_map
+    """Streams a multi-frame ``.lammpstrj`` dump into a ``Trajectory``.
+
+    Args:
+      path: Path to a LAMMPS ``.lammpstrj`` dump file.
+      type_map: Optional ``{type_id: element_symbol}`` mapping when the dump
+        lacks an ``element`` column.
+      timestep_size: Optional MD integration step size per LAMMPS step index.
+        When ``None`` (default), ``Trajectory.times`` is ``None`` and integer
+        step counters are stored in ``metadata["timesteps"]``.
+      time_unit: Unit of ``timestep_size`` (for example ``"fs"`` or ``"ps"``),
+        converted to canonical ``"fs"`` when ``timestep_size`` is supplied.
+
+    Returns:
+      Parsed ``Trajectory`` instance.
+    """
+    if timestep_size is not None and (
+        isinstance(timestep_size, bool)
+        or not (math.isfinite(timestep_size) and timestep_size > 0.0)
+    ):
+        raise exceptions.ParseError(
+            f"Invalid timestep_size={timestep_size!r}; expected a finite "
+            "positive number."
         )
-        frames.append(frame)
-        times.append(t_val)
+    p = pathlib.Path(path)
+    _limits.check_file_size(p)
+    frames: list[structure.AtomsData] = []
+    timesteps: list[int] = []
+    with p.open("r", encoding="utf-8") as fh:
+        line_iter = (
+            (line_no, raw.rstrip("\r\n"))
+            for line_no, raw in enumerate(fh, start=1)
+        )
+        while True:
+            parsed = _stream_lammpstrj_frame(
+                line_iter,
+                p,
+                type_map=type_map,
+                frame_index=len(frames),
+            )
+            if parsed is None:
+                break
+            _limits.check_frame_count(len(frames) + 1, source=p)
+            frame, step = parsed
+            frames.append(frame)
+            timesteps.append(step)
 
     if not frames:
         raise exceptions.ParseError(f"No LAMMPS dump frames found in {p}.")
+    step_arr = np.array(timesteps, dtype=np.int64)
+    meta: dict[str, Any] = {"source": str(p), "timesteps": step_arr}
+    times: np.ndarray | None = None
+    if timestep_size is None:
+        meta["time_unit"] = None
+    else:
+        dt = float(timestep_size)
+        times = units.convert_time(
+            step_arr.astype(np.float64) * dt, time_unit, "fs"
+        )
+        meta["time_unit"] = "fs"
+        meta["timestep_size"] = dt
+        meta["timestep_unit"] = str(time_unit)
     return trajectory.Trajectory(
         frames=frames,
-        times=np.array(times, dtype=np.float64),
-        metadata={"source": str(p)},
+        times=times,
+        metadata=meta,
     )
 
 
@@ -442,16 +577,18 @@ def read_lammpstrj_first(
     path: str | pathlib.Path,
     type_map: dict[int, str] | None = None,
 ) -> structure.AtomsData:
-    """Reads only the first snapshot from a ``.lammpstrj`` dump file."""
+    """Streams only the first snapshot from a ``.lammpstrj`` dump file."""
     p = pathlib.Path(path)
-    lines = p.read_text(encoding="utf-8").splitlines()
-    idx = 0
-    while idx < len(lines) and not lines[idx].startswith("ITEM: TIMESTEP"):
-        idx += 1
-    if idx >= len(lines):
+    _limits.check_file_size(p)
+    with p.open("r", encoding="utf-8") as fh:
+        line_iter = (
+            (line_no, raw.rstrip("\r\n"))
+            for line_no, raw in enumerate(fh, start=1)
+        )
+        parsed = _stream_lammpstrj_frame(line_iter, p, type_map=type_map)
+    if parsed is None:
         raise exceptions.ParseError(f"No LAMMPS dump frames found in {p}.")
-    frame, _, _ = _parse_lammpstrj_frame(lines, idx, str(p), type_map=type_map)
-    return frame
+    return parsed[0]
 
 
 registry.register_format(

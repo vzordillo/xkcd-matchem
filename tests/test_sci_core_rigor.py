@@ -38,7 +38,9 @@ from xkcd_matchem.core import wulff
 from xkcd_matchem.data import elements
 from xkcd_matchem.io import loader
 from xkcd_matchem.io.native import lammps
+from xkcd_matchem.io.native import xyz
 from xkcd_matchem.plots import thermo
+from xkcd_matchem.plots import trajectory as traj_plots
 from xkcd_matchem.style import theme
 
 
@@ -517,3 +519,228 @@ def test_lammps_image_flags_unwrapping_variable_cell_and_rdf(
         ("Cu", "Au"), r_max=9.5, n_bins=12, same_species_correction=False
     )
     assert np.allclose(g_ab_1, g_ab_2, rtol=1e-12)
+
+
+def test_lammps_and_extxyz_time_semantics_and_timeseries_labels(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verifies D02 LAMMPS/extXYZ time semantics and plot_md_timeseries axes."""
+    dump_path = tmp_path / "steps.lammpstrj"
+    dump_path.write_text(
+        "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\n"
+        "ITEM: BOX BOUNDS pp pp pp\n0.0 10.0\n0.0 10.0\n0.0 10.0\n"
+        "ITEM: ATOMS id type element x y z\n1 1 Cu 1.0 1.0 1.0\n"
+        "ITEM: TIMESTEP\n100\nITEM: NUMBER OF ATOMS\n1\n"
+        "ITEM: BOX BOUNDS pp pp pp\n0.0 10.0\n0.0 10.0\n0.0 10.0\n"
+        "ITEM: ATOMS id type element x y z\n1 1 Cu 1.5 1.0 1.0\n"
+        "ITEM: TIMESTEP\n200\nITEM: NUMBER OF ATOMS\n1\n"
+        "ITEM: BOX BOUNDS pp pp pp\n0.0 10.0\n0.0 10.0\n0.0 10.0\n"
+        "ITEM: ATOMS id type element x y z\n1 1 Cu 2.0 1.0 1.0\n",
+        encoding="utf-8",
+    )
+
+    # 1. Default LAMMPS trajectory: times is None, raw steps in metadata.
+    trj_raw = lammps.read_lammpstrj(dump_path)
+    assert trj_raw.times is None
+    assert trj_raw.metadata["time_unit"] is None
+    assert np.array_equal(trj_raw.metadata["timesteps"], [0, 100, 200])
+    assert trj_raw.metadata["timesteps"].dtype == np.int64
+    assert [f.metadata["timestep"] for f in trj_raw.frames] == [0, 100, 200]
+
+    # 2. Explicit timestep_size in fs and ps converts cleanly to canonical fs.
+    trj_fs = lammps.read_lammpstrj(
+        dump_path, timestep_size=0.5, time_unit="fs"
+    )
+    assert trj_fs.times is not None
+    assert np.allclose(trj_fs.times, [0.0, 50.0, 100.0])
+    assert trj_fs.metadata["time_unit"] == "fs"
+    assert trj_fs.metadata["timestep_size"] == pytest.approx(0.5)
+    assert trj_fs.metadata["timestep_unit"] == "fs"
+
+    trj_ps = loader.load_trajectory(
+        dump_path, timestep_size=0.002, time_unit="ps"
+    )
+    assert trj_ps.times is not None
+    assert np.allclose(trj_ps.times, [0.0, 200.0, 400.0])
+    assert trj_ps.metadata["time_unit"] == "fs"
+    assert trj_ps.metadata["timestep_unit"] == "ps"
+
+    for bad_dt in (0.0, -0.5, float("nan"), float("inf"), True):
+        with pytest.raises(exceptions.ParseError):
+            lammps.read_lammpstrj(dump_path, timestep_size=bad_dt)  # type: ignore[arg-type]
+
+    # 3. extXYZ time_unit: unspecified vs caller-supplied vs header-supplied.
+    water_trj = loader.load_trajectory("water_to_ice.xyz")
+    assert water_trj.times is not None
+    assert water_trj.metadata["time_unit"] == "unspecified"
+    water_ps = xyz.read_xyz_trajectory(
+        loader._resolve_input_path("water_to_ice.xyz"), time_unit="ps"
+    )
+    assert water_ps.times is not None
+    assert water_ps.metadata["time_unit"] == "fs"
+    assert np.allclose(water_ps.times, water_trj.times * 1000.0)
+
+    ext_ps = tmp_path / "tagged_ps.xyz"
+    ext_ps.write_text(
+        "1\ntime=0.25 time_unit=ps energy=-1.0\nH 0.0 0.0 0.0\n"
+        "1\ntime=0.75 time_unit=ps energy=-0.9\nH 0.2 0.0 0.0\n",
+        encoding="utf-8",
+    )
+    trj_ext_ps = xyz.read_xyz_trajectory(ext_ps)
+    assert trj_ext_ps.times is not None
+    assert np.allclose(trj_ext_ps.times, [250.0, 750.0])
+    assert trj_ext_ps.metadata["time_unit"] == "fs"
+
+    ext_fs = tmp_path / "tagged_fs.xyz"
+    ext_fs.write_text(
+        "1\ntime=10.0 time_unit=fs\nH 0.0 0.0 0.0\n"
+        "1\ntime=25.0 time_unit=fs\nH 0.3 0.0 0.0\n",
+        encoding="utf-8",
+    )
+    trj_ext_fs = xyz.read_xyz_trajectory(ext_fs)
+    assert trj_ext_fs.times is not None
+    assert np.allclose(trj_ext_fs.times, [10.0, 25.0])
+    assert trj_ext_fs.metadata["time_unit"] == "fs"
+
+    # 4. plot_md_timeseries x-axis label & data accuracy across all 4 regimes.
+    ax_step = traj_plots.plot_md_timeseries(trj_raw, quantity="rmsd")
+    assert ax_step.get_xlabel() == "Timestep"
+    assert np.allclose(ax_step.lines[0].get_xdata(), [0.0, 100.0, 200.0])
+    plt.close(ax_step.figure)
+
+    ax_fs = traj_plots.plot_md_timeseries(trj_fs, quantity="rmsd")
+    assert ax_fs.get_xlabel() == "Time (fs)"
+    assert np.allclose(ax_fs.lines[0].get_xdata(), [0.0, 50.0, 100.0])
+    plt.close(ax_fs.figure)
+
+    ax_unspec = traj_plots.plot_md_timeseries(water_trj, quantity="energy")
+    assert ax_unspec.get_xlabel() == "Time"
+    plt.close(ax_unspec.figure)
+
+    neb_trj = loader.load_trajectory("sn2_neb.xyz")
+    ax_idx = traj_plots.plot_md_timeseries(neb_trj, quantity="energy")
+    assert ax_idx.get_xlabel() == "Frame Index"
+    assert np.allclose(ax_idx.lines[0].get_xdata(), np.arange(len(neb_trj)))
+    plt.close(ax_idx.figure)
+
+
+def test_fermi_level_band_gap_tolerance_and_occ_threshold_rejection() -> None:
+    """Verifies D04 Fermi-level band-gap tolerance and occ_threshold guard."""
+    k_d = np.array([0.0, 0.5, 1.0], dtype=np.float64)
+    # Valence top sits at +4e-5 eV above E_F=0.0; CBM sits at +1.12 eV.
+    eigs_edge = np.array(
+        [[-0.50, 1.40], [4.0e-5, 1.25], [-0.25, 1.12]], dtype=np.float64
+    )
+    bs_no_occ = electronic.BandStructure(
+        k_distances=k_d, eigenvalues=eigs_edge, fermi_energy=0.0
+    )
+    bs_with_occ = electronic.BandStructure(
+        k_distances=k_d,
+        eigenvalues=eigs_edge,
+        occupations=np.array([[2.0, 0.0], [2.0, 0.0], [2.0, 0.0]]),
+        fermi_energy=0.0,
+    )
+
+    # Reject occ_threshold whenever Fermi-level mode is active.
+    with pytest.raises(exceptions.StructureError, match="fermi_tolerance_ev"):
+        bs_no_occ.analyze_band_gap(occ_threshold=0.5)
+    with pytest.raises(exceptions.StructureError, match="fermi_tolerance_ev"):
+        bs_with_occ.analyze_band_gap(
+            occupation_scale="fermi_level", occ_threshold=1.0
+        )
+
+    for bad_tol in (-1e-5, float("nan"), float("inf"), True):
+        with pytest.raises(exceptions.StructureError):
+            bs_no_occ.analyze_band_gap(fermi_tolerance_ev=bad_tol)  # type: ignore[arg-type]
+
+    # Default fermi_tolerance_ev=1e-4 accommodates +4e-5 eV VBM rounding.
+    res_loose = bs_no_occ.analyze_band_gap(fermi_tolerance_ev=1e-4)
+    assert res_loose.convention == "fermi_level"
+    assert not res_loose.is_metallic
+    assert res_loose.occupation_threshold == 0.0
+    assert res_loose.fermi_tolerance_ev == pytest.approx(1e-4)
+    assert res_loose.vbm == pytest.approx(4.0e-5)
+    assert res_loose.cbm == pytest.approx(1.12)
+    assert res_loose.fundamental_gap == pytest.approx(1.12 - 4.0e-5)
+
+    # Tightening fermi_tolerance_ev=1e-5 flags the +4e-5 eV crossing as metal.
+    res_tight = bs_no_occ.analyze_band_gap(fermi_tolerance_ev=1e-5)
+    assert res_tight.is_metallic
+    assert res_tight.fundamental_gap == 0.0
+    assert res_tight.fermi_tolerance_ev == pytest.approx(1e-5)
+
+    # Flat valence band at +0.005 eV above E_F=0.0 partitions via tolerance.
+    bs_flat = electronic.BandStructure(
+        k_distances=np.array([0.0, 1.0]),
+        eigenvalues=np.array([[0.005, 1.50], [0.005, 1.70]]),
+        fermi_energy=0.0,
+    )
+    assert bs_flat.analyze_band_gap(fermi_tolerance_ev=1e-4).is_indeterminate
+    res_flat = bs_flat.analyze_band_gap(fermi_tolerance_ev=0.01)
+    assert not res_flat.is_metallic
+    assert not res_flat.is_indeterminate
+    assert res_flat.fundamental_gap == pytest.approx(1.495)
+
+
+def test_scientific_provenance_deep_immutability_and_json_roundtrip(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verifies D05 deep freezing and JSON serialization of provenance."""
+    with pytest.raises(TypeError):
+        core.INTERNAL_UNITS["energy"] = "Ha"  # type: ignore[index]
+
+    raw_nested = {"smearing": np.float64(0.05), "tags": ["pbe", "paw"]}
+    raw_list = [1, 2, 3]
+    raw_arr = np.array([[1.0, 2.5], [3.5, 4.0]], dtype=np.float64)
+    src_path = tmp_path / "OUTCAR"
+    cfg_path = tmp_path / "INCAR"
+
+    prov = core.ScientificProvenance(
+        algorithm="band_gap_analysis",
+        units={"energy": "eV", "length": "A"},
+        source=src_path,
+        parser="vasp",
+        parameters={
+            "n_kpts": np.int64(41),
+            "converged": np.bool_(True),
+            "kmesh": raw_list,
+            "species": {"Si", "O"},
+            "matrix": raw_arr,
+            "nested": raw_nested,
+            "incar_path": cfg_path,
+        },
+        assumptions=["collinear spin"],
+    )
+
+    # Mutating original caller containers after construction has zero effect.
+    raw_nested["smearing"] = np.float64(9.9)
+    raw_list[0] = 99
+    raw_arr[0, 0] = -99.0
+
+    with pytest.raises(TypeError):
+        prov.units["energy"] = "Ha"  # type: ignore[index]
+
+    param_map = dict(prov.parameters)
+    with pytest.raises(TypeError):
+        param_map["nested"]["smearing"] = 0.2
+    with pytest.raises(TypeError):
+        param_map["nested"]["tags"][0] = "lda"
+    with pytest.raises(TypeError):
+        param_map["kmesh"][0] = 8
+    with pytest.raises(ValueError, match="read-only"):
+        param_map["matrix"][0, 0] = 42.0
+
+    as_dict = prov.to_dict()
+    assert isinstance(as_dict["units"], dict)
+    assert as_dict["source"] == str(src_path)
+    params_out = as_dict["parameters"]
+    assert type(params_out["n_kpts"]) is int
+    assert type(params_out["converged"]) is bool
+    assert params_out["kmesh"] == [1, 2, 3]
+    assert params_out["species"] == ["O", "Si"]
+    assert params_out["matrix"] == [[1.0, 2.5], [3.5, 4.0]]
+    assert params_out["nested"] == {"smearing": 0.05, "tags": ["pbe", "paw"]}
+    assert params_out["incar_path"] == str(cfg_path)
+
+    encoded = json.dumps(as_dict)
+    assert json.loads(encoded) == as_dict

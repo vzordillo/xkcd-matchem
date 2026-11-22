@@ -8,7 +8,7 @@ All **29 native readers** below (plus native writers for `xyz` and `vasp` POSCAR
 
 | Format Key | Extensions / Filenames | Parsed Type | Supported Scope & Validation |
 | --- | --- | --- | --- |
-| `xyz` | `.xyz`, `.extxyz` | `AtomsData` / `Trajectory` | Reads extended comment metadata (`Lattice="..."`, `pbc="..."`, `energy=`); native writer supported (`xm.save`) |
+| `xyz` | `.xyz`, `.extxyz` | `AtomsData` / `Trajectory` | Reads extended comment metadata (`Lattice="..."`, `pbc="..."`, `energy=`, `time=`); `read_xyz_trajectory(..., time_unit=...)` converts `time` to `fs` when `time_unit` is given on call or in frame headers (`time_unit=ps`/`fs`) and records `metadata["time_unit"] = "unspecified"` otherwise; native writer supported (`xm.save`) |
 | `pdb` | `.pdb`, `.ent` | `AtomsData` / `Trajectory` | Multi-`MODEL` frames, disambiguated metal elements (`FE  ` vs ` CA `), and explicit `CONECT` bond topology with inferred bond orders |
 | `sdf` | `.sdf`, `.mol` | `AtomsData` | MDL V2000 atom and bond tables with formal/aromatic bond orders and stereobond flags (`wedge`/`dash`/`wavy`) |
 | `mol2` | `.mol2` | `AtomsData` | Tripos `ATOM` and `BOND` blocks including formal/aromatic bond orders and partial atomic charges |
@@ -38,7 +38,7 @@ All **29 native readers** below (plus native writers for `xyz` and `vasp` POSCAR
 | Format Key | Extensions / Filenames | Parsed Type | Supported Scope & Validation |
 | --- | --- | --- | --- |
 | `lammps_data` | `.lmp`, `.data`, `data.lammps` | `AtomsData` | Reads `Atoms # <style>` tags or explicit `atom_style=` via `xm.io.native.lammps.read_lammps_data()` (`atomic`, `charge`, `bond`, `angle`, `molecular`, `full`) plus optional `type_map=`; rejects ambiguous 6- or 8+-column tables unless styled explicitly |
-| `lammpstrj` | `.lammpstrj` (or content-detected `ITEM: TIMESTEP`) | `Trajectory` | Handles orthogonal and triclinic `ITEM: BOX BOUNDS xy xz yz` boxes, wrapped (`x/y/z`, `xs/ys/zs`) plus `ix/iy/iz` periodic image flags (`metadata["unwrapped_positions"]`), and direct unwrapped `xu/yu/zu` coordinates (`metadata["coords_unwrapped"] = True`); requires an `element` column or explicit `type_map=` via `xm.io.native.lammps.read_lammpstrj()` |
+| `lammpstrj` | `.lammpstrj` (or content-detected `ITEM: TIMESTEP`) | `Trajectory` | Streams frames line-by-line (`read_lammpstrj_first` stops after frame 1); handles orthogonal and triclinic `ITEM: BOX BOUNDS xy xz yz` boxes, wrapped (`x/y/z`, `xs/ys/zs`) plus `ix/iy/iz` periodic image flags (`metadata["unwrapped_positions"]`), and direct unwrapped `xu/yu/zu` coordinates (`metadata["coords_unwrapped"] = True`); stores integer step counters in `metadata["timesteps"]` (`times=None` by default, or converted to `fs` when `timestep_size=` and `time_unit=` are supplied); requires an `element` column or explicit `type_map=` via `xm.io.native.lammps.read_lammpstrj()` |
 | `gro` | `.gro` | `AtomsData` | Converts GROMACS nanometers to Angstroms (orthogonal and triclinic boxes) |
 | `xvg` | `.xvg` | `Spectrum` | Parses Grace / GROMACS two-column curves along with title and axis-label metadata |
 
@@ -59,14 +59,14 @@ To protect interactive sessions and automated pipelines from malformed or advers
 
 | Environment Variable | Default Ceiling | Enforced On |
 | :--- | :--- | :--- |
-| `XM_MAX_ATOMS` | `200,000` atoms | Atom-table allocations in `.xyz`, VASP `POSCAR`/`CONTCAR`, `.cif`, and `.cube` |
+| `XM_MAX_ATOMS` | `200,000` atoms | Atom-table allocations in `.xyz`, VASP `POSCAR`/`CONTCAR`, `.cif`, `.cube`, and LAMMPS `.data` / `.lammpstrj` |
 | `XM_MAX_GRID_VOXELS` | `64,000,000` voxels (`nx × ny × nz`) | 3D volumetric grids in Gaussian `.cube` and VASP `CHGCAR`/`LOCPOT`/`AECCAR*` |
-| `XM_MAX_FRAMES` | `50,000` frames | Multi-frame trajectories (`.xyz`, `XDATCAR`, `.lammpstrj`) |
-| `XM_MAX_FILE_BYTES` | `209,715,200` bytes (`200 MiB`) | Input file size check prior to bulk loading |
+| `XM_MAX_FRAMES` | `50,000` frames | Multi-frame trajectories (`.xyz`, `XDATCAR`, streaming `.lammpstrj`) |
+| `XM_MAX_FILE_BYTES` | `209,715,200` bytes (`200 MiB`) | Input file size check prior to reading (including LAMMPS `.data` and streaming `.lammpstrj`) |
 
 ### Explicit Format Subset Boundaries
 
-- **LAMMPS `.lammpstrj` & `.data`:** `.lammpstrj` supports orthogonal and triclinic `BOX BOUNDS xy xz yz`, wrapped coordinates (`x/y/z`, `xs/ys/zs`) with optional `ix/iy/iz` periodic image flags (reconstructed losslessly into `metadata["unwrapped_positions"]`), and direct unwrapped `xu/yu/zu` coordinates (`metadata["coords_unwrapped"] = True`). `.data` supports `atomic`, `charge`, `bond`, `angle`, `molecular`, and `full` styles; ambiguous unstyled tables raise `ParseError`.
+- **LAMMPS `.lammpstrj` & `.data`:** `.lammpstrj` streams line-by-line under `XM_MAX_FILE_BYTES`, `XM_MAX_ATOMS`, and `XM_MAX_FRAMES`, supporting orthogonal and triclinic `BOX BOUNDS xy xz yz`, wrapped coordinates (`x/y/z`, `xs/ys/zs`) with optional `ix/iy/iz` periodic image flags (reconstructed losslessly into `metadata["unwrapped_positions"]`), and direct unwrapped `xu/yu/zu` coordinates (`metadata["coords_unwrapped"] = True`). Raw integer step counters are stored in `metadata["timesteps"]` with `times=None` unless `timestep_size=` (and optional `time_unit=`, default `"fs"`) is passed to `read_lammpstrj()` to convert step counts into physical `fs`. `.data` enforces `XM_MAX_FILE_BYTES` and `XM_MAX_ATOMS` across header and `Atoms` tables and supports `atomic`, `charge`, `bond`, `angle`, `molecular`, and `full` styles; ambiguous unstyled tables raise `ParseError`.
 - **CIF:** Supports 61 built-in ITA space groups (including Origin Choice 1/2 for `Fd-3m` #227) and explicit `_symmetry_equiv_pos_as_xyz` loops; for modulated, magnetic, or non-standard CIFs, use `xm.io.read_via_ase()` or `pymatgen`.
 - **Quantum ESPRESSO `pw.in`:** Requires explicit `CELL_PARAMETERS` when `ibrav != 0`, and explicit `celldm(1)` or `A` whenever `alat` units are used.
 - **Offline Interactive 3D Studio HTML:** `export_interactive_html()` escapes `<`, `>`, `&`, `\u2028`, and `\u2029` inside embedded JSON payloads and HTML-escapes document titles so untrusted filenames or titles can never break out of `<script>` tags.
