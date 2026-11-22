@@ -855,7 +855,8 @@ def create_conference_poster(
       dpi: Export resolution in dots per inch (default ``150``).
 
     Returns:
-      ``ConferencePosterLayout`` wrapping the ``Board`` and keyed ``Card``s.
+      ``ConferencePosterLayout`` wrapping the ``Board`` and keyed ``Card``
+      objects.
 
     Raises:
       StyleError: If ``size`` is unknown or ``section_titles`` is empty.
