@@ -79,6 +79,40 @@ jobs:
       - name: Verify distributions with twine
         run: twine check dist/*
 
+      - name: Verify release tag matches package and wheel version
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import zipfile
+
+          import xkcd_matchem as xm
+
+          tag = os.environ["TAG_NAME"]
+          expected = tag.removeprefix("v")
+          pkg_version = xm.__version__
+          assert pkg_version == expected, (
+              f"Release tag {tag!r} does not match "
+              f"xkcd_matchem.__version__ == {pkg_version!r}"
+          )
+          wheels = sorted(pathlib.Path("dist").glob("*.whl"))
+          assert len(wheels) == 1, f"Expected 1 wheel in dist/, got {wheels}"
+          with zipfile.ZipFile(wheels[0]) as zf:
+              meta_files = [
+                  name for name in zf.namelist()
+                  if name.endswith(".dist-info/METADATA")
+              ]
+              assert len(meta_files) == 1, meta_files
+              metadata = zf.read(meta_files[0]).decode("utf-8")
+          assert f"Version: {expected}\n" in metadata, (
+              f"Wheel METADATA version does not match {expected!r}"
+          )
+          print(f"Verified tag {tag} matches package & wheel {pkg_version}.")
+          PY
+
       - name: Verify built wheel in fresh isolated temp venv
         env:
           MPLBACKEND: Agg
