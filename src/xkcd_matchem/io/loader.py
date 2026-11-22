@@ -85,22 +85,32 @@ def load_trajectory(
     """Loads a multi-frame trajectory (XYZ/extXYZ, XDATCAR, LAMMPS, PDB)."""
     path = _resolve_input_path(source)
     key = fmt.lower() if fmt is not None else registry.detect_format(path).name
+    result: trajectory.Trajectory | None = None
     if key == "xyz":
-        return xyz.read_xyz_trajectory(path)
-    if key in ("xdatcar", "vasp"):
-        return vasp.read_xdatcar(path)
-    if key == "lammpstrj":
-        return lammps.read_lammpstrj(path)
-    if key == "pdb":
-        return pdb.read_pdb_trajectory(path)
-    obj = load(path, fmt=fmt)
-    if isinstance(obj, trajectory.Trajectory):
-        return obj
-    if isinstance(obj, structure.AtomsData):
-        return trajectory.Trajectory(frames=[obj])
-    raise exceptions.UnsupportedFormatError(
-        f"Format {key!r} does not produce a trajectory."
-    )
+        result = xyz.read_xyz_trajectory(path)
+    elif key == "xdatcar":
+        result = vasp.read_xdatcar(path)
+    elif key == "vasp":
+        result = (
+            vasp.read_xdatcar(path)
+            if "XDATCAR" in path.name.upper()
+            else trajectory.Trajectory(frames=[vasp.read_poscar(path)])
+        )
+    elif key == "lammpstrj":
+        result = lammps.read_lammpstrj(path)
+    elif key == "pdb":
+        result = pdb.read_pdb_trajectory(path)
+    else:
+        obj = load(path, fmt=fmt)
+        if isinstance(obj, trajectory.Trajectory):
+            result = obj
+        elif isinstance(obj, structure.AtomsData):
+            result = trajectory.Trajectory(frames=[obj])
+    if result is None:
+        raise exceptions.UnsupportedFormatError(
+            f"Format {key!r} does not produce a trajectory."
+        )
+    return result
 
 
 def save(

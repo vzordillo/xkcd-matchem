@@ -32,7 +32,7 @@ __XM_FONT_CSS__
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: "xkcd Script", system-ui, -apple-system, sans-serif;
+  font-family: "__XM_FONT_FAMILY__", system-ui, -apple-system, sans-serif;
   background: var(--ui-bg);
   color: var(--ui-ink);
 }
@@ -279,6 +279,22 @@ canvas#xm-canvas:active { cursor: grabbing; }
       </div>
     </div>
 
+    <div class="xm-group" id="xm-traj-group" style="display:none;">
+      <div class="xm-group-title">Trajectory Playback</div>
+      <div class="xm-row">
+        <button class="xm-btn" id="xm-traj-play">Play</button>
+        <input id="xm-traj-slider" type="range" min="0" max="0" step="1" value="0" />
+        <select id="xm-traj-fps" style="width:74px;">
+          <option value="4">4 fps</option>
+          <option value="8" selected>8 fps</option>
+          <option value="16">16 fps</option>
+        </select>
+      </div>
+      <div class="xm-row">
+        <span id="xm-traj-readout" class="xm-status">Frame 1 / 1</span>
+      </div>
+    </div>
+
     <div class="xm-group">
       <div class="xm-group-title">Appearance</div>
       <div class="xm-row">
@@ -330,6 +346,8 @@ canvas#xm-canvas:active { cursor: grabbing; }
         <label><input type="checkbox" id="xm-boundary-atoms" checked /> Boundary</label>
         <label><input type="checkbox" id="xm-center-cell" /> Center</label>
         <label><input type="checkbox" id="xm-legend" checked /> Legend</label>
+        <label><input type="checkbox" id="xm-show-vectors" checked /> Vectors</label>
+        <label><input type="checkbox" id="xm-show-iso" checked /> Isosurface</label>
       </div>
     </div>
 
@@ -406,10 +424,16 @@ canvas#xm-canvas:active { cursor: grabbing; }
     boundaryAtoms: true,
     centerInCell: false,
     showLegend: true,
+    showVectors: true,
+    showIso: true,
+    frameIdx: 0,
+    playing: false,
+    fps: 8,
     scale: currentSample.scale || 1.0,
     wiggle: 0.9,
     supercell: [1, 1, 1],
   };
+  let playTimer = null;
 
   const canvas = document.getElementById("xm-canvas");
   const ctx = canvas.getContext("2d");
@@ -620,7 +644,11 @@ canvas#xm-canvas:active { cursor: grabbing; }
     if (na === 1 && nb === 1 && nc === 1 && baseData.polyhedra) {
       polyhedra = baseData.polyhedra;
     }
-    return { symbols, positions, cell, pbc: baseData.pbc, bonds, polyhedra };
+    const vectors = (na === 1 && nb === 1 && nc === 1 && !addedBoundary && baseData.vectors)
+      ? baseData.vectors : null;
+    const isosurfaces = (na === 1 && nb === 1 && nc === 1 && baseData.isosurfaces)
+      ? baseData.isosurfaces : [];
+    return { symbols, positions, cell, pbc: baseData.pbc, bonds, polyhedra, vectors, isosurfaces };
   }
 
   function inferBondsJS(symbols, positions, cell, pbc) {
@@ -790,7 +818,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     ctx.fillRect(0, 0, width, height);
 
     const scene = buildActiveSceneData();
-    const { symbols, positions, cell, bonds, polyhedra } = scene;
+    const { symbols, positions, cell, bonds, polyhedra, vectors, isosurfaces } = scene;
     if (!positions.length) return;
 
     const pivot = [0, 0, 0];
@@ -944,6 +972,35 @@ canvas#xm-canvas:active { cursor: grabbing; }
       }
     }
 
+    if (state.showIso && isosurfaces && isosurfaces.length) {
+      const lDir = [-0.45, 0.55, 0.70];
+      const lNorm = Math.hypot(...lDir) || 1;
+      for (const iso of isosurfaces) {
+        const vProj = projectList(iso.vertices, pivot, basis, sceneSpan);
+        for (const [f0, f1, f2] of iso.faces) {
+          const pA = vProj[f0], pB = vProj[f1], pC = vProj[f2];
+          if (!pA || !pB || !pC) continue;
+          const e1 = [pB[0] - pA[0], pB[1] - pA[1], pB[2] - pA[2]];
+          const e2 = [pC[0] - pA[0], pC[1] - pA[1], pC[2] - pA[2]];
+          const cr = cross3(e1, e2);
+          const cn = norm3(cr) || 1;
+          const nd = Math.abs(dot3([cr[0] / cn, cr[1] / cn, cr[2] / cn], [lDir[0] / lNorm, lDir[1] / lNorm, lDir[2] / lNorm]));
+          const md = (pA[2] + pB[2] + pC[2]) / 3 - 0.02;
+          items.push({ depth: md, kind: "iso_tri", pts: [pA, pB, pC], col: iso.color, shade: 0.62 + 0.38 * nd });
+        }
+      }
+    }
+
+    if (state.showVectors && vectors && vectors.length === positions.length) {
+      const tipPts = positions.map((p, i) => [p[0] + vectors[i][0], p[1] + vectors[i][1], p[2] + vectors[i][2]]);
+      const tipProj = projectList(tipPts, pivot, basis, sceneSpan);
+      for (let i = 0; i < proj.length; i++) {
+        if (norm3(vectors[i]) < 1e-6) continue;
+        const dAvg = 0.5 * (proj[i][2] + tipProj[i][2]) + 0.05;
+        items.push({ depth: dAvg, kind: "vec", p0: proj[i], p1: tipProj[i], col: "#D55E00" });
+      }
+    }
+
     for (let i = 0; i < proj.length; i++) {
       items.push({ depth: proj[i][2], kind: "atom", p: proj[i], sym: symbols[i], idx: i });
     }
@@ -961,7 +1018,21 @@ canvas#xm-canvas:active { cursor: grabbing; }
     const outlineW = Math.max(1.1, Math.min(2.4, 0.042 * pxPerA));
 
     for (const item of items) {
-      if (item.kind === "tri") {
+      if (item.kind === "iso_tri") {
+        const s = item.pts.map(toScreen);
+        ctx.beginPath();
+        ctx.moveTo(s[0][0], s[0][1]);
+        ctx.lineTo(s[1][0], s[1][1]);
+        ctx.lineTo(s[2][0], s[2][1]);
+        ctx.closePath();
+        ctx.fillStyle = shadeHexRgba(item.col, 0.44, item.shade);
+        ctx.fill();
+        ctx.strokeStyle = shadeHexRgba(item.col, 0.55, item.shade * 0.85);
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      } else if (item.kind === "vec") {
+        drawVectorArrowCanvas(toScreen(item.p0), toScreen(item.p1), item.col, ink);
+      } else if (item.kind === "tri") {
         const s = item.pts.map(toScreen);
         ctx.beginPath();
         ctx.moveTo(s[0][0], s[0][1]);
@@ -993,7 +1064,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
         [cellCorners[0], cellCorners[2], "b"],
         [cellCorners[0], cellCorners[1], "c"],
       ];
-      ctx.font = 'bold 17px "xkcd Script", sans-serif';
+      ctx.font = 'bold 17px "__XM_FONT_FAMILY__", sans-serif';
       ctx.fillStyle = ink;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -1058,7 +1129,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
       ctx.closePath();
       ctx.fillStyle = colors[v.k];
       ctx.fill();
-      ctx.font = 'bold 15px "xkcd Script", sans-serif';
+      ctx.font = 'bold 15px "__XM_FONT_FAMILY__", sans-serif';
       ctx.fillStyle = colors[v.k];
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -1185,7 +1256,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     for (const s of symbols) if (!seen.includes(s)) seen.push(s);
     const step = Math.min(72, Math.max(46, (width - 40) / Math.max(seen.length, 1)));
     const startX = width * 0.5 - ((seen.length - 1) * step) * 0.5;
-    ctx.font = '15px "xkcd Script", sans-serif';
+    ctx.font = '15px "__XM_FONT_FAMILY__", sans-serif';
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
     seen.forEach((sym, i) => {
@@ -1209,6 +1280,47 @@ canvas#xm-canvas:active { cursor: grabbing; }
     const g = parseInt(c.slice(2, 4), 16);
     const b = parseInt(c.slice(4, 6), 16);
     return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  function shadeHexRgba(hex, alpha, factor) {
+    const c = hex.replace("#", "");
+    if (c.length !== 6) return `rgba(0,114,178,${alpha})`;
+    const clamp = (v) => Math.max(0, Math.min(255, Math.round(v * factor)));
+    const r = clamp(parseInt(c.slice(0, 2), 16));
+    const g = clamp(parseInt(c.slice(2, 4), 16));
+    const b = clamp(parseInt(c.slice(4, 6), 16));
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  function drawVectorArrowCanvas(s0, s1, col, ink) {
+    const dx = s1[0] - s0[0], dy = s1[1] - s0[1];
+    const len = Math.hypot(dx, dy);
+    if (len < 2) return;
+    const ux = dx / len, uy = dy / len;
+    const head = Math.min(10, len * 0.38);
+    const tipBase = [s1[0] - head * ux, s1[1] - head * uy];
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(s0[0], s0[1]);
+    ctx.lineTo(tipBase[0], tipBase[1]);
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = 4.0;
+    ctx.lineCap = "round";
+    ctx.stroke();
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(s1[0], s1[1]);
+    ctx.lineTo(tipBase[0] - 4.2 * uy, tipBase[1] + 4.2 * ux);
+    ctx.lineTo(tipBase[0] + 4.2 * uy, tipBase[1] - 4.2 * ux);
+    ctx.closePath();
+    ctx.fillStyle = col;
+    ctx.fill();
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = 1.0;
+    ctx.stroke();
+    ctx.restore();
   }
 
   function syncSwatches(symbols) {
@@ -1331,7 +1443,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     const w = Math.max(Math.round(rect.width), 640);
     const h = Math.max(Math.round(rect.height), 480);
     const scene = buildActiveSceneData();
-    const { symbols, positions, cell, bonds, polyhedra } = scene;
+    const { symbols, positions, cell, bonds, polyhedra, vectors, isosurfaces } = scene;
     const dark = isDarkBg(state.background);
     const ink = dark ? "#F5F5F0" : "#111111";
     const pivot = [0, 0, 0];
@@ -1439,6 +1551,22 @@ canvas#xm-canvas:active { cursor: grabbing; }
         }
       }
     }
+    if (state.showIso && isosurfaces && isosurfaces.length) {
+      for (const iso of isosurfaces) {
+        const vProj = projectList(iso.vertices, pivot, basis, sceneSpan);
+        for (const [f0, f1, f2] of iso.faces) {
+          const md = (vProj[f0][2] + vProj[f1][2] + vProj[f2][2]) / 3 - 0.02;
+          q.push({ d: md, t: "iso_tri", pts: [sc(vProj[f0]), sc(vProj[f1]), sc(vProj[f2])], c: iso.color });
+        }
+      }
+    }
+    if (state.showVectors && vectors && vectors.length === positions.length) {
+      const tipProj = projectList(positions.map((p, i) => [p[0] + vectors[i][0], p[1] + vectors[i][1], p[2] + vectors[i][2]]), pivot, basis, sceneSpan);
+      for (let i = 0; i < proj.length; i++) {
+        if (norm3(vectors[i]) < 1e-6) continue;
+        q.push({ d: 0.5 * (proj[i][2] + tipProj[i][2]) + 0.05, t: "vec", a: sc(proj[i]), b: sc(tipProj[i]), c: "#D55E00" });
+      }
+    }
     proj.forEach((p, i) => q.push({ d: p[2], t: "a", c: sc(p), r: visualRadius(symbols[i]) * pxPerA, fill: elementColor(symbols[i]) }));
     if (cellCorners) {
       for (const [u, v] of cellEdgesIdx) {
@@ -1449,7 +1577,13 @@ canvas#xm-canvas:active { cursor: grabbing; }
     }
     q.sort((x, y) => x.d - y.d);
     for (const it of q) {
-      if (it.t === "tri") {
+      if (it.t === "iso_tri") {
+        const ptsStr = it.pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+        parts.push(`<polygon points="${ptsStr}" fill="${it.c}" fill-opacity="0.42" stroke="${it.c}" stroke-width="0.4"/>`);
+      } else if (it.t === "vec") {
+        parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${ink}" stroke-width="3.8" stroke-linecap="round"/>`);
+        parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${it.c}" stroke-width="2.0" stroke-linecap="round"/>`);
+      } else if (it.t === "tri") {
         const ptsStr = it.pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
         parts.push(`<polygon points="${ptsStr}" fill="${it.c}" fill-opacity="0.42" stroke="${ink}" stroke-width="1.0"/>`);
       } else if (it.t === "b2") {
@@ -1485,7 +1619,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
       for (const [c0, c1, label] of [[cellCorners[0], cellCorners[4], "a"], [cellCorners[0], cellCorners[2], "b"], [cellCorners[0], cellCorners[1], "c"]]) {
         const p0 = sc(c0), p1 = sc(c1);
         const dx = p1[0] - p0[0], dy = p1[1] - p0[1], l = Math.hypot(dx, dy) || 1;
-        parts.push(`<text x="${(p1[0] + (dx / l) * 14).toFixed(1)}" y="${(p1[1] + (dy / l) * 14).toFixed(1)}" fill="${ink}" font-family="xkcd Script, sans-serif" font-size="17" font-weight="bold" text-anchor="middle" dominant-baseline="central">${label}</text>`);
+        parts.push(`<text x="${(p1[0] + (dx / l) * 14).toFixed(1)}" y="${(p1[1] + (dy / l) * 14).toFixed(1)}" fill="${ink}" font-family="__XM_FONT_FAMILY__, sans-serif" font-size="17" font-weight="bold" text-anchor="middle" dominant-baseline="central">${label}</text>`);
       }
     }
     if (cell && (state.axesMode === "corner" || state.axesMode === "origin")) {
@@ -1506,7 +1640,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
         if (seg < 2) continue;
         const ux = v.dx / seg, uy = v.dy / seg;
         parts.push(`<line x1="${ox.toFixed(1)}" y1="${oy.toFixed(1)}" x2="${tx.toFixed(1)}" y2="${ty.toFixed(1)}" stroke="${aCols[v.k]}" stroke-width="2.4" stroke-linecap="round"/>`);
-        parts.push(`<text x="${(tx + ux * 12).toFixed(1)}" y="${(ty + uy * 12).toFixed(1)}" fill="${aCols[v.k]}" font-family="xkcd Script, sans-serif" font-size="15" font-weight="bold" text-anchor="middle" dominant-baseline="central">${aNames[v.k]}</text>`);
+        parts.push(`<text x="${(tx + ux * 12).toFixed(1)}" y="${(ty + uy * 12).toFixed(1)}" fill="${aCols[v.k]}" font-family="__XM_FONT_FAMILY__, sans-serif" font-size="15" font-weight="bold" text-anchor="middle" dominant-baseline="central">${aNames[v.k]}</text>`);
       }
       parts.push(`<circle cx="${ox.toFixed(1)}" cy="${oy.toFixed(1)}" r="3.2" fill="${ink}"/>`);
     }
@@ -1519,7 +1653,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
       seen.forEach((sym, i) => {
         const lx = startX + i * step;
         parts.push(`<circle cx="${(lx - 10).toFixed(1)}" cy="${ly.toFixed(1)}" r="7" fill="${elementColor(sym)}" stroke="${ink}" stroke-width="1.25"/>`);
-        parts.push(`<text x="${(lx + 2).toFixed(1)}" y="${(ly + 1).toFixed(1)}" fill="${ink}" font-family="xkcd Script, sans-serif" font-size="15" dominant-baseline="central">${sym}</text>`);
+        parts.push(`<text x="${(lx + 2).toFixed(1)}" y="${(ly + 1).toFixed(1)}" fill="${ink}" font-family="__XM_FONT_FAMILY__, sans-serif" font-size="15" dominant-baseline="central">${sym}</text>`);
       });
     }
     parts.push("</svg>");
@@ -1722,6 +1856,75 @@ canvas#xm-canvas:active { cursor: grabbing; }
   document.getElementById("xm-legend").addEventListener("change", (e) => {
     state.showLegend = e.target.checked; renderFrame();
   });
+  document.getElementById("xm-show-vectors").addEventListener("change", (e) => {
+    state.showVectors = e.target.checked; renderFrame();
+  });
+  document.getElementById("xm-show-iso").addEventListener("change", (e) => {
+    state.showIso = e.target.checked; renderFrame();
+  });
+
+  function stopPlayback() {
+    if (playTimer !== null) {
+      clearInterval(playTimer);
+      playTimer = null;
+    }
+    state.playing = false;
+    document.getElementById("xm-traj-play").textContent = "Play";
+  }
+
+  function applyTrajectoryFrame(idx) {
+    const frames = currentSample.frames;
+    if (!frames || !frames.length) return;
+    const n = frames.length;
+    const fIdx = ((idx % n) + n) % n;
+    state.frameIdx = fIdx;
+    const fr = frames[fIdx];
+    baseData.positions = fr.positions.map((p) => p.slice());
+    if (fr.cell) baseData.cell = fr.cell.map((r) => r.slice());
+    if (fr.bonds) baseData.bonds = fr.bonds;
+    if (fr.vectors) baseData.vectors = fr.vectors;
+    document.getElementById("xm-traj-slider").value = String(fIdx);
+    const eStr = fr.energy !== undefined ? ` | E=${Number(fr.energy).toFixed(3)} eV` : "";
+    document.getElementById("xm-traj-readout").textContent = `Frame ${fIdx + 1} / ${n}${eStr}`;
+    renderFrame();
+  }
+
+  function syncTrajectoryControls() {
+    stopPlayback();
+    const grp = document.getElementById("xm-traj-group");
+    const frames = currentSample.frames;
+    if (frames && frames.length > 1) {
+      grp.style.display = "block";
+      const slider = document.getElementById("xm-traj-slider");
+      slider.max = String(frames.length - 1);
+      slider.value = "0";
+      applyTrajectoryFrame(0);
+    } else {
+      grp.style.display = "none";
+    }
+  }
+
+  document.getElementById("xm-traj-slider").addEventListener("input", (e) => {
+    stopPlayback();
+    applyTrajectoryFrame(parseInt(e.target.value, 10) || 0);
+  });
+  document.getElementById("xm-traj-play").addEventListener("click", () => {
+    const frames = currentSample.frames;
+    if (!frames || frames.length <= 1) return;
+    if (state.playing) { stopPlayback(); return; }
+    state.playing = true;
+    document.getElementById("xm-traj-play").textContent = "Pause";
+    playTimer = setInterval(() => {
+      applyTrajectoryFrame(state.frameIdx + 1);
+    }, Math.max(40, Math.round(1000 / Math.max(state.fps, 1))));
+  });
+  document.getElementById("xm-traj-fps").addEventListener("change", (e) => {
+    state.fps = parseInt(e.target.value, 10) || 8;
+    if (state.playing) {
+      stopPlayback();
+      document.getElementById("xm-traj-play").click();
+    }
+  });
   document.getElementById("xm-persp").addEventListener("input", (e) => {
     state.perspective = parseFloat(e.target.value);
     document.getElementById("xm-persp-val").textContent = state.perspective.toFixed(2);
@@ -1770,6 +1973,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
         state.style = currentSample.style;
         document.getElementById("xm-style").value = state.style;
       }
+      syncTrajectoryControls();
       renderFrame();
     });
   }
@@ -1782,6 +1986,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
       currentSample = parseUploadedFile(file.name, txt);
       baseData = cloneStruct(currentSample);
       state.supercell = [1, 1, 1];
+      syncTrajectoryControls();
       renderFrame();
       document.getElementById("xm-status").textContent = `Loaded ${file.name}`;
     } catch (err) {
@@ -1812,6 +2017,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
   });
 
   window.addEventListener("resize", renderFrame);
+  syncTrajectoryControls();
   renderFrame();
 })();
 </script>

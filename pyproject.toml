@@ -57,6 +57,7 @@ dev = [
   "pytest-cov>=5.0",
   "ruff>=0.4",
   "pylint>=3.2",
+  "mypy>=1.10",
   "build>=1.2",
 ]
 all = [
@@ -166,10 +167,10 @@ indent-string = "    "
 max-module-lines = 2000
 
 [tool.pylint.typecheck]
-ignored-modules = ["scipy.spatial"]
+ignored-modules = ["scipy.spatial", "scipy.special"]
 
 [tool.pylint.design]
-max-args = 16
+max-args = 20
 max-positional-arguments = 13
 max-locals = 28
 max-branches = 18
@@ -182,3 +183,13 @@ disable = [
   "duplicate-code",
   "import-outside-toplevel",
 ]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+ignore_missing_imports = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["xkcd_matchem"]
+disable_error_code = ["has-type"]

@@ -32,6 +32,8 @@ _SAMPLE_DESCRIPTIONS: dict[str, str] = {
     "benzene_orca.out": "Benzene SCF, MOs, IR & UV-Vis spectra (ORCA)",
     "si_qe_bands.dat": "Silicon electronic band structure path (QE bands.dat)",
     "si_qe_dos.dat": "Silicon density of states curve (QE dos.dat)",
+    "si_phonon_bands.yaml": "Silicon phonon dispersion branches (Phonopy YAML)",
+    "si_cohp.lobster": "Silicon covalent Si-Si bonding pCOHP & ICOHP (LOBSTER)",
     "sn2_neb.xyz": "Cl- + CH3Cl SN2 9-image reaction path (extended XYZ)",
     "cu_md.lammpstrj": "Cu cluster 10-frame MD trajectory (LAMMPS lammpstrj)",
     "water_rdf.xvg": "Liquid water O-O radial distribution (GROMACS XVG)",

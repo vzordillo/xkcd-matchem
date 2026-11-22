@@ -166,6 +166,54 @@ PRESETS: dict[str, ThemePreset] = {
         title_size=14.0,
         dpi=160,
     ),
+    "talk_16x9": ThemePreset(
+        name="talk_16x9",
+        font="xkcd Script",
+        sketch_scale=0.85,
+        sketch_length=115.0,
+        sketch_randomness=1.6,
+        figure_facecolor=palettes.PAPER,
+        axes_facecolor=palettes.PAPER,
+        ink_color=palettes.INK,
+        grid=False,
+        grid_alpha=0.22,
+        linewidth=2.2,
+        font_size=14.5,
+        title_size=18.0,
+        dpi=180,
+    ),
+    "talk_dark": ThemePreset(
+        name="talk_dark",
+        font="xkcd Script",
+        sketch_scale=0.95,
+        sketch_length=105.0,
+        sketch_randomness=1.8,
+        figure_facecolor=palettes.DARK_BOARD,
+        axes_facecolor=palettes.DARK_BOARD,
+        ink_color=palettes.DARK_CHALK,
+        grid=True,
+        grid_alpha=0.20,
+        linewidth=2.2,
+        font_size=14.5,
+        title_size=18.0,
+        dpi=180,
+    ),
+    "graphical_abstract": ThemePreset(
+        name="graphical_abstract",
+        font="xkcd Script",
+        sketch_scale=0.75,
+        sketch_length=120.0,
+        sketch_randomness=1.5,
+        figure_facecolor=palettes.PAPER,
+        axes_facecolor=palettes.PAPER,
+        ink_color=palettes.INK,
+        grid=False,
+        grid_alpha=0.2,
+        linewidth=1.6,
+        font_size=10.5,
+        title_size=12.5,
+        dpi=300,
+    ),
 }
 
 _CUSTOM_PRESETS: dict[str, ThemePreset] = {}
@@ -315,7 +363,9 @@ def build_rc_params(
         "axes.spines.top": False,
         "axes.spines.right": False,
         "axes.unicode_minus": False,
-        "axes.prop_cycle": matplotlib.cycler(color=series_colors),
+        "axes.prop_cycle": matplotlib.cycler(  # type: ignore[attr-defined]
+            color=series_colors
+        ),
         "grid.color": palettes.MUTED_GRAY,
         "grid.alpha": theme.grid_alpha,
         "grid.linestyle": "--",
@@ -393,7 +443,7 @@ def xkcd_style(
     if font is not None:
         _ACTIVE_FONT_STACK.append(font)
     try:
-        with plt.rc_context(rc):
+        with plt.rc_context(rc):  # type: ignore[arg-type]
             yield
     finally:
         if font is not None:

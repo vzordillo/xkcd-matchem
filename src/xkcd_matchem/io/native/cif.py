@@ -17,12 +17,15 @@ from __future__ import annotations
 
 import pathlib
 import re
+import warnings
 
 import numpy as np
 
 from xkcd_matchem.core import exceptions
+from xkcd_matchem.core import geometry
 from xkcd_matchem.core import structure
 from xkcd_matchem.data import elements
+from xkcd_matchem.data import spacegroups
 from xkcd_matchem.io import registry
 
 
@@ -90,45 +93,33 @@ def _tokenize_cif(text: str) -> list[str]:
     return tokens
 
 
-def _parse_affine_term(expr: str) -> tuple[np.ndarray, float]:
-    """Parses one symmetry axis expression like ``'-x+1/2'`` without eval."""
-    coeff = np.zeros(3, dtype=np.float64)
-    shift = 0.0
-    normalized = expr.replace(" ", "").lower()
-    terms = re.findall(r"[+-]?[^+-]+", normalized)
-    axis_map = {"x": 0, "y": 1, "z": 2}
-    for term in terms:
-        sign = -1.0 if term.startswith("-") else 1.0
-        body = term.lstrip("+-")
-        if body in axis_map:
-            coeff[axis_map[body]] += sign
-        elif body.endswith(("x", "y", "z")):
-            axis = axis_map[body[-1]]
-            pref = body[:-1]
-            factor = float(pref) if pref else 1.0
-            coeff[axis] += sign * factor
-        elif "/" in body:
-            num_s, den_s = body.split("/", maxsplit=1)
-            shift += sign * (float(num_s) / float(den_s))
+def _split_cif_data_blocks(
+    tokens: list[str],
+) -> list[tuple[str, list[str]]]:
+    """Partitions CIF tokens into named ``data_<name>`` blocks."""
+    blocks: list[tuple[str, list[str]]] = []
+    cur_name = ""
+    cur_tokens: list[str] = []
+    for tok in tokens:
+        if tok.lower().startswith("data_"):
+            if cur_tokens:
+                blocks.append((cur_name, cur_tokens))
+            cur_name = tok[5:]
+            cur_tokens = []
         else:
-            shift += sign * float(body)
-    return coeff, shift
+            cur_tokens.append(tok)
+    if cur_tokens or not blocks:
+        blocks.append((cur_name, cur_tokens))
+    return blocks
 
 
 def _parse_cif_symops(symops: list[str]) -> list[tuple[np.ndarray, np.ndarray]]:
     """Parses CIF affine symmetry strings into rotation/translation pairs."""
     parsed_ops: list[tuple[np.ndarray, np.ndarray]] = []
     for op_str in symops:
-        parts = op_str.split(",")
-        if len(parts) != 3:
-            continue
-        rot = np.zeros((3, 3), dtype=np.float64)
-        trans = np.zeros(3, dtype=np.float64)
-        for row_idx, expr in enumerate(parts):
-            c, s = _parse_affine_term(expr)
-            rot[row_idx] = c
-            trans[row_idx] = s
-        parsed_ops.append((rot, trans))
+        parsed = spacegroups.parse_symop_string(op_str)
+        if parsed is not None:
+            parsed_ops.append(parsed)
     return parsed_ops
 
 
@@ -136,11 +127,11 @@ def _apply_symops(
     frac_sites: np.ndarray,
     site_symbols: list[str],
     site_labels: list[str],
-    symops: list[str],
+    parsed_ops: list[tuple[np.ndarray, np.ndarray]],
+    cell: np.ndarray,
     site_occupancies: list[float] | None = None,
 ) -> tuple[np.ndarray, list[str], list[str], list[float] | None]:
     """Expands asymmetric unit sites using CIF symmetry operations."""
-    parsed_ops = _parse_cif_symops(symops) if symops else []
     if not parsed_ops:
         return frac_sites, site_symbols, site_labels, site_occupancies
 
@@ -153,24 +144,36 @@ def _apply_symops(
     expanded_syms: list[str] = []
     expanded_lbls: list[str] = []
     expanded_occs: list[float] = []
+
+    def _is_duplicate(cand: np.ndarray, sym: str) -> bool:
+        for existing, existing_sym in zip(
+            expanded_frac, expanded_syms, strict=True
+        ):
+            if existing_sym != sym:
+                continue
+            df = np.mod(cand - existing + 0.5, 1.0) - 0.5
+            if float(np.linalg.norm(df @ cell)) < 1e-2:
+                return True
+        return False
+
+    for pos, sym, lbl, occ in zip(
+        frac_sites, site_symbols, site_labels, occs_in, strict=True
+    ):
+        wrapped = np.mod(pos, 1.0)
+        wrapped = np.where(np.isclose(wrapped, 1.0, atol=1e-5), 0.0, wrapped)
+        if not _is_duplicate(wrapped, sym):
+            expanded_frac.append(wrapped)
+            expanded_syms.append(sym)
+            expanded_lbls.append(lbl)
+            expanded_occs.append(occ)
+
     for pos, sym, lbl, occ in zip(
         frac_sites, site_symbols, site_labels, occs_in, strict=True
     ):
         for rot, trans in parsed_ops:
             cand = np.mod(rot @ pos + trans, 1.0)
             cand = np.where(np.isclose(cand, 1.0, atol=1e-5), 0.0, cand)
-            duplicate = False
-            for existing, existing_sym in zip(
-                expanded_frac, expanded_syms, strict=True
-            ):
-                if existing_sym != sym:
-                    continue
-                diff = np.abs(cand - existing)
-                diff = np.minimum(diff, 1.0 - diff)
-                if np.linalg.norm(diff) < 1e-3:
-                    duplicate = True
-                    break
-            if not duplicate:
+            if not _is_duplicate(cand, sym):
                 expanded_frac.append(cand)
                 expanded_syms.append(sym)
                 expanded_lbls.append(lbl)
@@ -181,6 +184,102 @@ def _apply_symops(
         expanded_lbls,
         expanded_occs if site_occupancies is not None else None,
     )
+
+
+def _min_new_site_distance(
+    expanded_frac: np.ndarray,
+    n_input: int,
+    cell: np.ndarray,
+) -> float:
+    """Returns min periodic Cartesian distance involving generated sites."""
+    n_tot = len(expanded_frac)
+    if n_tot <= 1:
+        return float("inf")
+    d_min = float("inf")
+    for idx_i in range(n_tot):
+        for idx_j in range(idx_i + 1, n_tot):
+            if idx_i < n_input and idx_j < n_input:
+                continue
+            df = (
+                np.mod(expanded_frac[idx_i] - expanded_frac[idx_j] + 0.5, 1.0)
+                - 0.5
+            )
+            dist = float(np.linalg.norm(df @ cell))
+            d_min = min(d_min, dist)
+    return d_min
+
+
+def _expand_sites_with_table(
+    frac_arr: np.ndarray,
+    syms: list[str],
+    labels: list[str],
+    occs: list[float] | None,
+    scalars: dict[str, str],
+    cell: np.ndarray,
+    source: pathlib.Path,
+) -> tuple[np.ndarray, list[str], list[str], list[float] | None]:
+    """Expands CIF sites via implicit space-group lookup and origin checks."""
+    sg_name = (
+        scalars.get("_space_group_name_h-m_alt")
+        or scalars.get("_symmetry_space_group_name_h-m")
+        or ""
+    ).strip()
+    raw_num = (
+        scalars.get("_space_group_it_number")
+        or scalars.get("_symmetry_int_tables_number")
+        or ""
+    ).strip()
+    sg_num: int | None = int(raw_num) if raw_num.isdigit() else None
+    raw_input = (frac_arr, syms, labels, occs)
+    if (
+        (sg_num is None and not sg_name)
+        or sg_num == 1
+        or spacegroups.normalize_hm_symbol(sg_name) == "p1"
+    ):
+        return raw_input
+
+    candidates = spacegroups.lookup_spacegroup_candidates(
+        sg_name=sg_name, sg_number=sg_num
+    )
+    if not candidates:
+        warnings.warn(
+            f"CIF {source.name} declares space group {sg_name or sg_num!r} "
+            "without symmetry operations; returning asymmetric unit only. Use "
+            "pymatgen/ASE for full non-standard symmetry expansion.",
+            UserWarning,
+            stacklevel=3,
+        )
+        return raw_input
+
+    evaluated: list[
+        tuple[
+            float,
+            tuple[np.ndarray, list[str], list[str], list[float] | None],
+        ]
+    ] = []
+    for cand_ops in candidates:
+        exp = _apply_symops(
+            frac_arr, syms, labels, cand_ops, cell, site_occupancies=occs
+        )
+        if len(exp[0]) == len(frac_arr):
+            return exp
+        d_min = _min_new_site_distance(exp[0], len(frac_arr), cell)
+        evaluated.append((d_min, exp))
+
+    valid = [pair for pair in evaluated if pair[0] >= 0.85]
+    if valid:
+        return min(valid, key=lambda pair: len(pair[1][0]))[1]
+    best_d, best_exp = max(evaluated, key=lambda pair: pair[0])
+    if best_d >= 0.75:
+        return best_exp
+    warnings.warn(
+        f"CIF {source.name} implicit space-group expansion for "
+        f"{sg_name or sg_num!r} produced overlapping sites "
+        f"(d_min={best_d:.2f} A); returning input sites unexpanded.",
+        UserWarning,
+        stacklevel=3,
+    )
+    return raw_input
 
 
 def _extract_loops_and_scalars(
@@ -290,11 +389,13 @@ def _collect_cif_sites_and_symops(
     return symops, frac_list, syms, labels, occs if has_occ else None
 
 
-def read_cif(path: str | pathlib.Path) -> structure.AtomsData:
-    """Reads a Crystallographic Information File (CIF) into ``AtomsData``."""
-    p = pathlib.Path(path)
-    tokens = _tokenize_cif(p.read_text(encoding="utf-8"))
-    scalars, loops = _extract_loops_and_scalars(tokens)
+def _parse_cif_block(
+    block_name: str,
+    block_tokens: list[str],
+    source: pathlib.Path,
+) -> structure.AtomsData:
+    """Parses a single CIF data block into ``AtomsData``."""
+    scalars, loops = _extract_loops_and_scalars(block_tokens)
     try:
         a = _strip_uncertainty(scalars["_cell_length_a"])
         b = _strip_uncertainty(scalars["_cell_length_b"])
@@ -304,40 +405,115 @@ def read_cif(path: str | pathlib.Path) -> structure.AtomsData:
         gamma = _strip_uncertainty(scalars.get("_cell_angle_gamma", "90"))
     except (KeyError, ValueError) as exc:
         raise exceptions.ParseError(
-            f"Missing or invalid unit-cell tags in CIF: {p}"
+            f"Missing or invalid unit-cell tags in CIF: {source}"
         ) from exc
 
     symops, frac_list, syms, labels, occs = _collect_cif_sites_and_symops(loops)
-
     if not frac_list:
+        raise exceptions.ParseError(
+            f"No _atom_site_fract_* records in CIF: {source}"
+        )
+
+    cell = geometry.cell_vectors_from_parameters(a, b, c, alpha, beta, gamma)
+    frac_arr = np.array(frac_list, dtype=np.float64)
+    parsed_ops = _parse_cif_symops(symops) if symops else []
+    if parsed_ops:
+        exp_frac, exp_syms, exp_labels, exp_occs = _apply_symops(
+            frac_arr,
+            syms,
+            labels,
+            parsed_ops,
+            cell,
+            site_occupancies=occs,
+        )
+    else:
+        exp_frac, exp_syms, exp_labels, exp_occs = _expand_sites_with_table(
+            frac_arr, syms, labels, occs, scalars, cell, source
+        )
+    sg_name = (
+        scalars.get("_space_group_name_h-m_alt")
+        or scalars.get("_symmetry_space_group_name_h-m")
+        or ""
+    )
+    metadata: dict[str, object] = {
+        "source": str(source),
+        "space_group": sg_name,
+        "data_block": block_name,
+    }
+    occ_arr = (
+        np.asarray(exp_occs, dtype=np.float64)
+        if exp_occs is not None
+        else None
+    )
+    return structure.AtomsData.from_fractional(
+        symbols=exp_syms,
+        frac_positions=exp_frac,
+        cell=cell,
+        pbc=(True, True, True),
+        atom_labels=exp_labels,
+        occupancies=occ_arr,
+        metadata=metadata,
+    )
+
+
+def read_cif_all(path: str | pathlib.Path) -> list[structure.AtomsData]:
+    """Reads all structural ``data_`` blocks from a multi-structure CIF."""
+    p = pathlib.Path(path)
+    tokens = _tokenize_cif(p.read_text(encoding="utf-8"))
+    blocks = _split_cif_data_blocks(tokens)
+    structures: list[structure.AtomsData] = []
+    for block_name, block_tokens in blocks:
+        _, loops = _extract_loops_and_scalars(block_tokens)
+        if any("_atom_site_fract_x" in hdrs for hdrs, _ in loops):
+            structures.append(_parse_cif_block(block_name, block_tokens, p))
+    if not structures:
         raise exceptions.ParseError(
             f"No _atom_site_fract_* records in CIF: {p}"
         )
+    return structures
 
-    frac_arr = np.array(frac_list, dtype=np.float64)
-    exp_frac, exp_syms, exp_labels, exp_occs = _apply_symops(
-        frac_arr, syms, labels, symops, site_occupancies=occs
-    )
-    sg_name = scalars.get("_space_group_name_h-m_alt", "")
-    metadata: dict[str, object] = {
-        "source": str(p),
-        "space_group": sg_name,
-    }
-    if exp_occs is not None:
-        metadata["occupancies"] = exp_occs
-    return structure.AtomsData.from_cell_parameters(
-        symbols=exp_syms,
-        frac_positions=exp_frac,
-        a=a,
-        b=b,
-        c=c,
-        alpha=alpha,
-        beta=beta,
-        gamma=gamma,
-        pbc=(True, True, True),
-        atom_labels=exp_labels,
-        metadata=metadata,
-    )
+
+def read_cif(
+    path: str | pathlib.Path,
+    block: int | str | None = None,
+) -> structure.AtomsData:
+    """Reads a Crystallographic Information File (CIF) into ``AtomsData``.
+
+    Args:
+      path: Filesystem path to the ``.cif`` file.
+      block: Optional 0-based structural block index or ``data_<name>``
+        identifier when reading multi-block CIFs (defaults to the first block
+        containing atomic coordinates).
+
+    Returns:
+      Parsed ``AtomsData`` crystal structure.
+    """
+    p = pathlib.Path(path)
+    tokens = _tokenize_cif(p.read_text(encoding="utf-8"))
+    blocks = _split_cif_data_blocks(tokens)
+    struct_blocks: list[tuple[str, list[str]]] = []
+    for block_name, block_tokens in blocks:
+        _, loops = _extract_loops_and_scalars(block_tokens)
+        if any("_atom_site_fract_x" in hdrs for hdrs, _ in loops):
+            struct_blocks.append((block_name, block_tokens))
+    if not struct_blocks:
+        raise exceptions.ParseError(
+            f"No _atom_site_fract_* records in CIF: {p}"
+        )
+    if block is None:
+        return _parse_cif_block(*struct_blocks[0], p)
+    if isinstance(block, int):
+        if not 0 <= block < len(struct_blocks):
+            raise exceptions.ParseError(
+                f"CIF block index {block} out of range "
+                f"[0, {len(struct_blocks)})."
+            )
+        return _parse_cif_block(*struct_blocks[block], p)
+    key = str(block).strip().removeprefix("data_").lower()
+    for b_name, b_tokens in struct_blocks:
+        if b_name.lower() == key:
+            return _parse_cif_block(b_name, b_tokens, p)
+    raise exceptions.ParseError(f"CIF data block {block!r} not found in {p}.")
 
 
 registry.register_format(

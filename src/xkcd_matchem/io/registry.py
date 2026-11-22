@@ -90,23 +90,28 @@ _CONTENT_SIGNATURES: tuple[tuple[tuple[str, ...], str], ...] = (
     (("Quantum ESPRESSO",), "qe_out"),
     (("ITEM: TIMESTEP",), "lammpstrj"),
     (("xTB", "TOTAL ENERGY"), "xtb_out"),
+    (("PROCAR", "# of k-points:"), "procar"),
+    (("nqpoint:", "phonon:"), "phonopy_bands"),
+    (("Crystal Orbital", "Populations"), "lobster_cohp"),
 )
 
 
 def _match_by_name_or_suffix(p: pathlib.Path) -> FormatSpec | None:
-    """Matches exact/substring filename or suffix against registered formats."""
+    """Matches exact filename, extension suffix, or basename prefix."""
     upper_name = p.name.upper()
     for spec in _FORMAT_REGISTRY.values():
-        if any(
-            upper_name == fname.upper() or fname.upper() in upper_name
-            for fname in spec.filenames
-        ):
+        if any(upper_name == fname.upper() for fname in spec.filenames):
             return spec
     suffix = p.suffix.lower()
     if suffix:
         for spec in _FORMAT_REGISTRY.values():
             if suffix in spec.extensions:
                 return spec
+    for spec in _FORMAT_REGISTRY.values():
+        if any(
+            upper_name.startswith(fname.upper()) for fname in spec.filenames
+        ):
+            return spec
     return None
 
 

@@ -26,6 +26,7 @@ from xkcd_matchem.core import spectroscopy
 from xkcd_matchem.core import structure
 from xkcd_matchem.data import elements
 from xkcd_matchem.io import registry
+from xkcd_matchem.io.native import xyz
 
 
 def read_orca_inp(path: str | pathlib.Path) -> structure.AtomsData:
@@ -37,9 +38,16 @@ def read_orca_inp(path: str | pathlib.Path) -> structure.AtomsData:
     in_xyz = False
     for line in lines:
         stripped = line.strip()
-        if stripped.lower().startswith("* xyz") or stripped.lower().startswith(
-            "*xyz"
-        ):
+        if re.match(r"^\*\s*xyzfile\b", stripped, flags=re.IGNORECASE):
+            parts = stripped.split()
+            if len(parts) >= 5:
+                ext_path = p.parent / parts[-1]
+                if ext_path.is_file():
+                    return xyz.read_xyz(ext_path)
+            raise exceptions.ParseError(
+                f"ORCA * xyzfile target not found in {p}: {stripped!r}"
+            )
+        if re.match(r"^\*\s*xyz\b", stripped, flags=re.IGNORECASE):
             in_xyz = True
             continue
         if in_xyz:

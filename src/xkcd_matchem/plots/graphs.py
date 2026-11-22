@@ -19,6 +19,8 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 import math
 import pathlib
+from typing import Any
+from typing import cast
 
 from matplotlib import axes as maxes
 from matplotlib import colors as mcolors
@@ -350,7 +352,7 @@ def _draw_graph_nodes(
     node_shape: str = "circle",
     *,
     image_flags: Sequence[bool] | None = None,
-    node_depths: Sequence[float] | None = None,
+    node_depths: Sequence[float] | np.ndarray | None = None,
 ) -> float:
     """Draws shaded xkcd circular or rounded-pill network nodes."""
     n_nodes = len(nodes)
@@ -521,7 +523,7 @@ def plot_graph_network(
     else:
         dashed_set = {
             (min(int(a), int(b)), max(int(a), int(b)))
-            for a, b in (dashed_edges or ())  # type: ignore[misc]
+            for a, b in cast(Any, dashed_edges or ())
         }
         dashed_flags = [
             (min(u, v), max(u, v)) in dashed_set for u, v, _ in norm_edges

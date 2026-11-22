@@ -45,6 +45,7 @@ def test_apache_header_and_google_style_ast() -> None:
     internal_mods = _known_submodules()
     external_known_modules = {
         "matplotlib.axes",
+        "matplotlib.collections",
         "matplotlib.colors",
         "matplotlib.font_manager",
         "matplotlib.lines",
@@ -52,9 +53,11 @@ def test_apache_header_and_google_style_ast() -> None:
         "matplotlib.pyplot",
         "matplotlib.animation",
         "matplotlib.figure",
+        "matplotlib.transforms",
         "importlib.util",
         "scipy.optimize",
         "scipy.spatial",
+        "scipy.special",
         "scipy.stats",
         "scipy.interpolate",
         "ase.io",

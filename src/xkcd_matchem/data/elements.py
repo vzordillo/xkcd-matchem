@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from xkcd_matchem.core import exceptions
+from xkcd_matchem import _exceptions
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1741,13 +1741,13 @@ def get_element(identifier: int | str) -> ElementRecord:
     """
     if isinstance(identifier, int):
         if identifier not in ELEMENTS_BY_Z:
-            raise exceptions.StructureError(
+            raise _exceptions.StructureError(
                 f"Unknown atomic number: {identifier}"
             )
         return ELEMENTS_BY_Z[identifier]
     key = str(identifier).strip().lower()
     if key not in _ELEMENTS_BY_SYMBOL_LOWER:
-        raise exceptions.StructureError(
+        raise _exceptions.StructureError(
             f"Unknown element symbol: {identifier!r}"
         )
     return _ELEMENTS_BY_SYMBOL_LOWER[key]

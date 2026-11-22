@@ -16,13 +16,23 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+import pathlib
+from typing import Any
+from typing import cast
 
 from matplotlib import axes as maxes
+from matplotlib import collections
+from matplotlib import colors as mcolors
 from matplotlib import figure
 from matplotlib import pyplot as plt
 import numpy as np
 
 from xkcd_matchem.core import electronic
+from xkcd_matchem.core import exceptions
+from xkcd_matchem.core import geometry
+from xkcd_matchem.core import isosurface
+from xkcd_matchem.io import loader
+from xkcd_matchem.render import structure3d
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import patterns
 from xkcd_matchem.style import theme
@@ -46,6 +56,34 @@ def _split_kpath_breaks(
     )
 
 
+def _resolve_fatband_weights(
+    bands: electronic.BandStructure,
+    fatband: str | Sequence[str] | None,
+) -> np.ndarray | None:
+    """Aggregates requested orbital projection channels onto weights."""
+    if fatband is None:
+        return None
+    if not bands.projections:
+        raise exceptions.StructureError(
+            "BandStructure has no stored orbital projections for fatbands."
+        )
+    keys = [fatband] if isinstance(fatband, str) else list(fatband)
+    if not keys:
+        raise exceptions.StructureError("fatband channel list cannot be empty.")
+    total: np.ndarray | None = None
+    for key in keys:
+        if key not in bands.projections:
+            avail = ", ".join(sorted(bands.projections))
+            raise exceptions.StructureError(
+                f"Projection channel {key!r} missing. Available: {avail}"
+            )
+        arr = np.asarray(bands.projections[key], dtype=np.float64)
+        total = arr.copy() if total is None else (total + arr)
+    assert_non_none = total if total is not None else np.zeros((1, 1, 1))
+    peak = float(np.max(np.abs(assert_non_none)))
+    return np.clip(assert_non_none, 0.0, None) / max(peak, 1e-12)
+
+
 def plot_bands(
     bands: electronic.BandStructure,
     ax: maxes.Axes | None = None,
@@ -54,8 +92,12 @@ def plot_bands(
     palette: str | Sequence[str] = "okabe_ito",
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
+    *,
+    fatband: str | Sequence[str] | None = None,
+    fatband_scale: float = 0.28,
 ) -> maxes.Axes:
     """Plots electronic band dispersion along a reciprocal-space k-path."""
+    fb_weights = _resolve_fatband_weights(bands, fatband)
     eig = bands.shifted_eigenvalues() if shift_fermi else bands.eigenvalues
     e_ref = 0.0 if shift_fermi else bands.fermi_energy
     series = palettes.get_palette(palette)
@@ -91,6 +133,30 @@ def plot_bands(
                     linewidth=1.8,
                     label=lbl,
                 )
+        if fb_weights is not None:
+            for spin_idx in range(n_spin):
+                col = (
+                    series[5 % len(series)]
+                    if spin_idx == 0
+                    else series[6 % len(series)]
+                )
+                for ib in range(n_bands):
+                    kx, ky = _split_kpath_breaks(
+                        bands.k_distances, eig[spin_idx, :, ib]
+                    )
+                    _, kw = _split_kpath_breaks(
+                        bands.k_distances, fb_weights[spin_idx, :, ib]
+                    )
+                    half_w = fatband_scale * kw
+                    ax.fill_between(
+                        kx,
+                        ky - half_w,
+                        ky + half_w,
+                        color=col,
+                        alpha=0.28,
+                        linewidth=0.0,
+                        zorder=1.8,
+                    )
         ax.axhline(
             e_ref,
             color=palettes.MUTED_GRAY,
@@ -412,9 +478,9 @@ def plot_mo_diagram(
                 and abs(float(mo.energies[idx] - mo.energies[groups[-1][0]]))
                 <= degeneracy_tol
             ):
-                groups[-1].append(idx)
+                groups[-1].append(int(idx))
             else:
-                groups.append([idx])
+                groups.append([int(idx)])
 
         homo_idx = mo.homo_index
         lumo_idx = mo.lumo_index
@@ -567,6 +633,500 @@ def plot_volumetric_slice(
         xl, yl = axis_labels[axis.lower()] if is_ortho else ("u (A)", "v (A)")
         ax.set_xlabel(xl)
         ax.set_ylabel(yl)
+        theme.apply_xkcd_spines(ax, preset=preset)
+        if title:
+            ax.set_title(title)
+    return ax
+
+
+def _coerce_volumetric_grid(
+    source: electronic.VolumetricGrid | str | pathlib.Path,
+) -> electronic.VolumetricGrid:
+    """Coerces path, sample name, or ``VolumetricGrid`` into grid object."""
+    if isinstance(source, electronic.VolumetricGrid):
+        return source
+    loaded = loader.load(source)
+    if not isinstance(loaded, electronic.VolumetricGrid):
+        raise exceptions.StructureError(
+            f"Expected VolumetricGrid, got {type(loaded).__name__}."
+        )
+    return loaded
+
+
+def _collect_mesh_triangles(
+    mesh: isosurface.IsosurfaceMesh,
+    cam: geometry.Camera,
+    pivot: np.ndarray,
+    span: float,
+    base_hex: str,
+    basis: np.ndarray,
+    light_dir: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Projects one ``IsosurfaceMesh`` and computes triangle depths and RGB."""
+    if len(mesh.faces) == 0:
+        return (
+            np.zeros((0, 3, 2), dtype=np.float64),
+            np.zeros((0,), dtype=np.float64),
+            np.zeros((0, 3), dtype=np.float64),
+            np.zeros((0, 2), dtype=np.float64),
+        )
+    xy_v, depth_v = geometry.project_points(
+        mesh.vertices, cam, center=pivot, span=span
+    )
+    tris = xy_v[mesh.faces]
+    tri_depth = np.mean(depth_v[mesh.faces], axis=1)
+    n_rot = mesh.normals @ basis.T
+    lambert = 0.58 + 0.42 * np.clip(n_rot @ light_dir, 0.0, 1.0)
+    rgb_base = np.asarray(mcolors.to_rgb(base_hex), dtype=np.float64)
+    face_rgb = np.clip(rgb_base[None, :] * lambert[:, None], 0.0, 1.0)
+    return tris, tri_depth, face_rgb, xy_v
+
+
+def _build_isosurface_collection(
+    meshes: Sequence[tuple[isosurface.IsosurfaceMesh, str]],
+    grid: electronic.VolumetricGrid,
+    cam: geometry.Camera,
+    alpha: float,
+) -> tuple[collections.PolyCollection | None, np.ndarray | None]:
+    """Builds depth-sorted Lambert-shaded ``PolyCollection`` for iso lobes."""
+    if grid.atoms is not None and len(grid.atoms) > 0:
+        pivot = (
+            0.5 * (grid.atoms.cell[0] + grid.atoms.cell[1] + grid.atoms.cell[2])
+            if grid.atoms.cell is not None
+            else np.mean(grid.atoms.positions, axis=0)
+        )
+        span = geometry.scene_projection_span(
+            grid.atoms.positions, cam, center=pivot, cell=grid.atoms.cell
+        )
+    else:
+        ext = np.asarray(grid.data.shape, dtype=np.float64)[:, None]
+        pivot = grid.origin + 0.5 * np.sum(ext * grid.voxel_vectors, axis=0)
+        box_pts = np.vstack(
+            [mesh.vertices for mesh, _ in meshes if len(mesh.vertices)]
+        )
+        span = (
+            geometry.scene_projection_span(box_pts, cam, center=pivot)
+            if len(box_pts)
+            else 5.0
+        )
+
+    basis = geometry.rotation_matrix(cam.azimuth, cam.elevation, cam.roll)
+    light_dir = np.array([-0.45, 0.55, 0.70], dtype=np.float64)
+    light_dir /= float(np.linalg.norm(light_dir))
+    tri_chunks: list[np.ndarray] = []
+    dep_chunks: list[np.ndarray] = []
+    rgb_chunks: list[np.ndarray] = []
+    xy_chunks: list[np.ndarray] = []
+    for mesh, hex_col in meshes:
+        tris, deps, rgbs, xy_m = _collect_mesh_triangles(
+            mesh, cam, pivot, span, hex_col, basis, light_dir
+        )
+        if len(tris) > 0:
+            tri_chunks.append(tris)
+            dep_chunks.append(deps)
+            rgb_chunks.append(rgbs)
+            xy_chunks.append(xy_m)
+    if not tri_chunks:
+        return None, None
+
+    all_deps = np.concatenate(dep_chunks, axis=0)
+    order = np.argsort(all_deps)
+    poly_coll = collections.PolyCollection(
+        cast(Any, np.concatenate(tri_chunks, axis=0)[order]),
+        facecolors=np.concatenate(rgb_chunks, axis=0)[order],
+        edgecolors="face",
+        linewidths=0.25,
+        alpha=alpha,
+        zorder=900.0,
+    )
+    return poly_coll, np.vstack(xy_chunks)
+
+
+def _expand_isosurface_limits(
+    ax: maxes.Axes,
+    all_xy: np.ndarray,
+    has_atoms: bool,
+) -> None:
+    """Expands viewport limits cleanly around both atoms and isosurface."""
+    mx0, my0 = np.min(all_xy, axis=0)
+    mx1, my1 = np.max(all_xy, axis=0)
+    if has_atoms:
+        x0, x1 = ax.get_xlim()
+        y0, y1 = ax.get_ylim()
+        ax.set_xlim(min(x0, float(mx0) - 0.5), max(x1, float(mx1) + 0.5))
+        ax.set_ylim(min(y0, float(my0) - 0.5), max(y1, float(my1) + 0.5))
+        return
+    pad = 0.15 * max(float(mx1 - mx0), float(my1 - my0), 1.0)
+    ax.set_xlim(float(mx0) - pad, float(mx1) + pad)
+    ax.set_ylim(float(my0) - pad, float(my1) + pad)
+
+
+def plot_isosurface(
+    source: electronic.VolumetricGrid | str | pathlib.Path,
+    level: float | None = None,
+    *,
+    symmetric: bool | None = None,
+    camera: geometry.Camera | str | None = "isometric",
+    ax: maxes.Axes | None = None,
+    colors: tuple[str, str] = ("#0072B2", "#D55E00"),
+    alpha: float = 0.58,
+    show_atoms: bool = True,
+    palette: str = "xkcd",
+    preset: str | theme.ThemePreset = "classic",
+    title: str | None = None,
+) -> maxes.Axes:
+    """Plots a 3D shaded orbital or electron-density isosurface.
+
+    Args:
+      source: ``VolumetricGrid`` or path/sample (``.cube``, ``CHGCAR``).
+      level: Isovalue threshold. Defaults to ``0.25 * max(|data|)``.
+      symmetric: If ``True``, extracts both ``+level`` and ``-level`` lobes.
+      camera: ``Camera`` object or preset string.
+      ax: Optional target Matplotlib ``Axes``.
+      colors: ``(positive_hex, negative_hex)`` lobe colors.
+      alpha: Surface translucency opacity.
+      show_atoms: Whether to draw embedded atomic ball-and-stick structure.
+      palette: Atom element color palette when ``show_atoms=True``.
+      preset: Visual theme preset name or ``ThemePreset``.
+      title: Optional heading above the panel.
+
+    Returns:
+      Matplotlib ``Axes`` containing the rendered 3D isosurface.
+    """
+    grid = _coerce_volumetric_grid(source)
+    max_abs = max(float(np.max(np.abs(grid.data))), 1e-12)
+    iso_level = 0.25 * max_abs if level is None else float(level)
+    if abs(iso_level) < 1e-15:
+        raise exceptions.StructureError("Isosurface level must be non-zero.")
+    sym_flag = (
+        bool(float(np.min(grid.data)) < -0.05 * max_abs)
+        if symmetric is None
+        else bool(symmetric)
+    )
+
+    meshes: list[tuple[isosurface.IsosurfaceMesh, str]] = [
+        (isosurface.extract_isosurface(grid, iso_level), colors[0])
+    ]
+    if sym_flag:
+        meshes.append(
+            (isosurface.extract_isosurface(grid, -abs(iso_level)), colors[1])
+        )
+
+    cam = geometry.resolve_camera(
+        camera, cell=grid.atoms.cell if grid.atoms is not None else None
+    )
+    poly_coll, all_xy = _build_isosurface_collection(meshes, grid, cam, alpha)
+    ink_col = theme.get_preset(preset).ink_color
+    has_atoms = bool(
+        show_atoms and grid.atoms is not None and len(grid.atoms) > 0
+    )
+
+    with theme.xkcd_style(preset=preset):
+        if ax is None:
+            _, ax = plt.subplots(figsize=(5.6, 4.8))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
+        if has_atoms and grid.atoms is not None:
+            structure3d.render_structure_3d(
+                grid.atoms,
+                ax=ax,
+                camera=cam,
+                style="ball_and_stick",
+                palette=palette,
+                show_cell=False,
+                crystal_axes=False,
+                show_bonds=True,
+            )
+        if poly_coll is not None and all_xy is not None:
+            ax.add_collection(poly_coll)
+            _expand_isosurface_limits(ax, all_xy, has_atoms)
+        ax.set_aspect("equal")
+        ax.set_axis_off()
+        if title:
+            ax.set_title(title, color=ink_col)
+    return ax
+
+
+def plot_phonon_bands(
+    source: electronic.PhononBandStructure | str | pathlib.Path,
+    *,
+    ax: maxes.Axes | None = None,
+    unit: str = "THz",
+    ylim: tuple[float, float] | None = None,
+    highlight_imaginary: bool = True,
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
+    title: str | None = None,
+) -> maxes.Axes:
+    """Plots phonon dispersion branches along a reciprocal-space q-path.
+
+    Args:
+      source: ``PhononBandStructure`` or Phonopy ``band.yaml`` path/sample.
+      ax: Optional target Matplotlib ``Axes``.
+      unit: Display unit (``"THz"``, ``"cm-1"``, or ``"meV"``).
+      ylim: Optional vertical axis limits in ``unit``.
+      highlight_imaginary: Highlight soft/imaginary modes (< 0) in vermilion.
+      palette: Series palette name or hex color sequence.
+      preset: Visual theme preset name or ``ThemePreset``.
+      title: Optional plot heading.
+
+    Returns:
+      Matplotlib ``Axes`` containing the phonon dispersion diagram.
+    """
+    if isinstance(source, electronic.PhononBandStructure):
+        pbs = source
+    else:
+        loaded = loader.load(source)
+        if not isinstance(loaded, electronic.PhononBandStructure):
+            raise exceptions.StructureError(
+                f"Expected PhononBandStructure, got {type(loaded).__name__}."
+            )
+        pbs = loaded
+
+    freqs = pbs.frequencies_in(unit)
+    series = palettes.get_palette(palette)
+    ink_col = theme.get_preset(preset).ink_color
+    mode_col = series[5 % len(series)]
+    imag_col = "#D55E00"
+    imag_labeled = False
+
+    with theme.xkcd_style(preset=preset):
+        if ax is None:
+            _, ax = plt.subplots(figsize=(6.2, 4.4))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
+        n_modes = freqs.shape[1]
+        for mode_idx in range(n_modes):
+            qx, qy = _split_kpath_breaks(pbs.q_distances, freqs[:, mode_idx])
+            ax.plot(
+                qx,
+                qy,
+                color=mode_col,
+                linewidth=1.7,
+                label="Acoustic / Optical" if mode_idx == 0 else None,
+            )
+            if highlight_imaginary and bool(np.any(qy < -1e-2)):
+                imag_mask = qy < -1e-2
+                dilated = imag_mask.copy()
+                dilated[1:] |= imag_mask[:-1]
+                dilated[:-1] |= imag_mask[1:]
+                imag_y = np.where(dilated, qy, np.nan)
+                ax.plot(
+                    qx,
+                    imag_y,
+                    color=imag_col,
+                    linewidth=2.4,
+                    zorder=4.0,
+                    label="Imaginary Modes" if not imag_labeled else None,
+                )
+                imag_labeled = True
+
+        ax.axhline(0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=1.2)
+        if pbs.q_ticks and len(pbs.q_ticks) == len(pbs.q_labels):
+            for tick_q in pbs.q_ticks:
+                ax.axvline(tick_q, color=ink_col, linewidth=0.9, alpha=0.45)
+            ax.set_xticks(pbs.q_ticks)
+            ax.set_xticklabels(pbs.q_labels)
+        ax.set_xlim(float(pbs.q_distances[0]), float(pbs.q_distances[-1]))
+        if ylim is not None:
+            ax.set_ylim(ylim)
+        ax.set_xlabel("Wavevector Path")
+        ax.set_ylabel(f"Frequency ({unit})")
+        if imag_labeled:
+            ax.legend(loc="best", frameon=True)
+        theme.apply_xkcd_spines(ax, preset=preset)
+        if title:
+            ax.set_title(title)
+    return ax
+
+
+def _draw_cohp_series(
+    ax: maxes.Axes,
+    e_grid: np.ndarray,
+    vals: np.ndarray,
+    *,
+    col: str,
+    label: str,
+    vertical: bool,
+    shade_lobes: bool,
+    spin_dn: np.ndarray | None,
+) -> None:
+    """Plots one COHP/ICOHP interaction curve and optional lobe shading."""
+    if vertical:
+        ax.plot(vals, e_grid, color=col, lw=2.0, label=label, zorder=4.0)
+        if shade_lobes:
+            pos = np.where(vals >= 0.0, vals, 0.0)
+            neg = np.where(vals < 0.0, vals, 0.0)
+            patterns.shade_between(
+                ax, e_grid, 0.0, pos, color="#0072B2", shade="solid",
+                alpha=0.22, vertical=True,
+            )
+            patterns.shade_between(
+                ax, e_grid, 0.0, neg, color="#D55E00", shade="solid",
+                alpha=0.22, vertical=True,
+            )
+        if spin_dn is not None:
+            ax.plot(-spin_dn, e_grid, color=col, lw=1.6, linestyle="--")
+    else:
+        ax.plot(e_grid, vals, color=col, lw=2.0, label=label, zorder=4.0)
+        if shade_lobes:
+            pos = np.where(vals >= 0.0, vals, 0.0)
+            neg = np.where(vals < 0.0, vals, 0.0)
+            patterns.shade_between(
+                ax, e_grid, 0.0, pos, color="#0072B2", shade="solid",
+                alpha=0.22, vertical=False,
+            )
+            patterns.shade_between(
+                ax, e_grid, 0.0, neg, color="#D55E00", shade="solid",
+                alpha=0.22, vertical=False,
+            )
+        if spin_dn is not None:
+            ax.plot(e_grid, -spin_dn, color=col, lw=1.6, linestyle="--")
+
+
+def _configure_cohp_axes(
+    ax: maxes.Axes,
+    *,
+    vertical: bool,
+    pop_label: str,
+    ink_col: str,
+    xlim: tuple[float, float] | None,
+    ylim: tuple[float, float] | None,
+) -> None:
+    """Applies Fermi reference lines, limits, and labels to a COHP panel."""
+    if vertical:
+        ax.axhline(0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=1.2)
+        ax.axvline(0.0, color=ink_col, lw=1.0, alpha=0.55)
+        ax.set_xlabel(pop_label)
+        ax.set_ylabel("E - E_F (eV)")
+        if xlim is not None:
+            ax.set_xlim(xlim)
+        if ylim is not None:
+            ax.set_ylim(ylim)
+    else:
+        ax.axvline(0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=1.2)
+        ax.axhline(0.0, color=ink_col, lw=1.0, alpha=0.55)
+        ax.set_xlabel("E - E_F (eV)")
+        ax.set_ylabel(pop_label)
+        if ylim is not None:
+            ax.set_xlim(ylim)
+        if xlim is not None:
+            ax.set_ylim(xlim)
+
+
+def _resolve_cohp_inputs(
+    source: electronic.CohpData | str | pathlib.Path,
+    interactions: Sequence[str] | None,
+    integrated: bool,
+) -> tuple[
+    electronic.CohpData,
+    dict[str, np.ndarray],
+    dict[str, np.ndarray],
+    list[str],
+]:
+    """Loads COHP data and resolves spin tables and selected interactions."""
+    if isinstance(source, electronic.CohpData):
+        data = source
+    else:
+        loaded = loader.load(source)
+        if not isinstance(loaded, electronic.CohpData):
+            raise exceptions.StructureError(
+                f"Expected CohpData, got {type(loaded).__name__}."
+            )
+        data = loaded
+    table = data.icohp if integrated else data.cohp
+    dn_table = data.spin_down_icohp if integrated else data.spin_down_cohp
+    if not table:
+        raise exceptions.StructureError("COHP dataset contains no data table.")
+    selected = (
+        list(table.keys()) if interactions is None else list(interactions)
+    )
+    missing = [lbl for lbl in selected if lbl not in table]
+    if missing:
+        raise exceptions.StructureError(
+            f"Unknown COHP interaction labels: {missing!r}."
+        )
+    return data, table, dn_table, selected
+
+
+def plot_cohp(
+    source: electronic.CohpData | str | pathlib.Path,
+    *,
+    interactions: Sequence[str] | None = None,
+    minus_cohp: bool = True,
+    integrated: bool = False,
+    xlim: tuple[float, float] | None = None,
+    ylim: tuple[float, float] | None = (-8.0, 6.0),
+    orientation: str = "vertical",
+    shade_lobes: bool = True,
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
+    ax: maxes.Axes | None = None,
+    title: str | None = None,
+) -> maxes.Axes:
+    """Plots LOBSTER ``-pCOHP`` or ``-ICOHP`` bonding curves in xkcd style.
+
+    By chemical convention (``minus_cohp=True``), positive ``-pCOHP`` values
+    denote bonding states (shaded cerulean) while negative values denote
+    antibonding states (shaded vermilion).
+
+    Args:
+      source: ``CohpData`` instance or path/sample name to ``COHPCAR.lobster``.
+      interactions: Optional subset of interaction labels to plot.
+      minus_cohp: Negate ``pCOHP``/``ICOHP`` so bonding appears positive.
+      integrated: Plot cumulative ``ICOHP`` instead of differential ``pCOHP``.
+      xlim: Optional population-axis bounds.
+      ylim: Optional energy window around ``E_F`` in eV.
+      orientation: ``"vertical"`` (E - E_F on y-axis) or ``"horizontal"``.
+      shade_lobes: Shade bonding vs. antibonding lobes when ``not integrated``.
+      palette: Series palette name or hex color list.
+      preset: Visual theme preset name or ``ThemePreset``.
+      ax: Optional target Matplotlib ``Axes``.
+      title: Optional plot heading.
+
+    Returns:
+      Matplotlib ``Axes`` containing the COHP/ICOHP plot.
+
+    Raises:
+      StructureError: If input cannot be loaded or requested labels are absent.
+    """
+    data, table, dn_table, selected = _resolve_cohp_inputs(
+        source, interactions, integrated
+    )
+    sign = -1.0 if (minus_cohp and not data.is_coop) else 1.0
+    prefix = "ICOHP" if integrated else "COOP" if data.is_coop else "pCOHP"
+    e_grid = data.energies - data.fermi_energy
+    vertical = orientation.strip().lower() != "horizontal"
+    series = palettes.get_palette(palette)
+
+    with theme.xkcd_style(preset=preset):
+        if ax is None:
+            _, ax = plt.subplots(
+                figsize=(5.2, 5.4) if vertical else (6.8, 4.2)
+            )
+        else:
+            theme.style_existing_axes(ax, preset=preset)
+        for idx, lbl in enumerate(selected):
+            dn_vals = sign * dn_table[lbl] if lbl in dn_table else None
+            _draw_cohp_series(
+                ax,
+                e_grid,
+                sign * table[lbl],
+                col=series[(idx + 1) % len(series)],
+                label=lbl,
+                vertical=vertical,
+                shade_lobes=bool(shade_lobes and not integrated),
+                spin_dn=dn_vals,
+            )
+        _configure_cohp_axes(
+            ax,
+            vertical=vertical,
+            pop_label=f"-{prefix} (eV)" if sign < 0.0 else f"{prefix} (eV)",
+            ink_col=theme.get_preset(preset).ink_color,
+            xlim=xlim,
+            ylim=ylim,
+        )
+        ax.legend(loc="best", frameon=True, fontsize=8.5)
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)

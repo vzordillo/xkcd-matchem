@@ -25,6 +25,7 @@ import numpy as np
 
 from xkcd_matchem.core import bonding
 from xkcd_matchem.core import structure
+from xkcd_matchem.render import primitives
 from xkcd_matchem.style import palettes
 
 
@@ -40,7 +41,7 @@ def _pca_2d_projection(positions: np.ndarray) -> np.ndarray:
         float(np.min(proj[:, 0]))
     ):
         proj[:, 0] *= -1.0
-    return proj
+    return np.asarray(proj, dtype=np.float64)
 
 
 def _find_ring_centroids(
@@ -79,6 +80,60 @@ def _find_ring_centroids(
     return centroids
 
 
+def _draw_stereo_bond(
+    ax: maxes.Axes,
+    start: np.ndarray,
+    end: np.ndarray,
+    perp: np.ndarray,
+    stereo: str,
+    ink_color: str,
+) -> None:
+    """Draws wedge, dashed-wedge, or wavy stereo 2D bonds."""
+    if stereo == "wedge":
+        half_w = 0.14
+        tri = np.vstack([start, end + half_w * perp, end - half_w * perp])
+        ax.add_patch(
+            patches.Polygon(
+                tri,
+                closed=True,
+                facecolor=ink_color,
+                edgecolor=ink_color,
+                linewidth=1.0,
+                joinstyle="round",
+                zorder=2.5,
+            )
+        )
+    elif stereo == "dash":
+        n_ticks = 6
+        for step_k in range(1, n_ticks + 1):
+            frac = step_k / float(n_ticks + 1)
+            pt = start + frac * (end - start)
+            hw = 0.04 + 0.11 * frac
+            ax.plot(
+                [pt[0] - hw * perp[0], pt[0] + hw * perp[0]],
+                [pt[1] - hw * perp[1], pt[1] + hw * perp[1]],
+                color=ink_color,
+                lw=1.7,
+                solid_capstyle="round",
+                zorder=2.5,
+            )
+    elif stereo == "wavy":
+        ts = np.linspace(0.0, 1.0, 29)
+        pts = (
+            start[None, :]
+            + ts[:, None] * (end - start)[None, :]
+            + (0.09 * np.sin(ts * 4.0 * np.pi))[:, None] * perp[None, :]
+        )
+        ax.plot(
+            pts[:, 0],
+            pts[:, 1],
+            color=ink_color,
+            lw=1.9,
+            solid_capstyle="round",
+            zorder=2.5,
+        )
+
+
 def _draw_skeletal_bond(
     ax: maxes.Axes,
     p1: np.ndarray,
@@ -88,8 +143,9 @@ def _draw_skeletal_bond(
     shorten_i: float = 0.0,
     shorten_j: float = 0.0,
     ring_center: np.ndarray | None = None,
+    stereo: str = "none",
 ) -> None:
-    """Draws single, double, triple, or aromatic 2D skeletal lines."""
+    """Draws single, double, triple, aromatic, or stereo 2D bonds."""
     vec = p2 - p1
     length = float(np.linalg.norm(vec))
     if length < 1e-6:
@@ -98,6 +154,10 @@ def _draw_skeletal_bond(
     perp = np.array([-unit[1], unit[0]], dtype=np.float64)
     start = p1 + unit * shorten_i
     end = p2 - unit * shorten_j
+
+    if stereo in ("wedge", "dash", "wavy"):
+        _draw_stereo_bond(ax, start, end, perp, stereo, ink_color)
+        return
 
     if abs(order - 2.0) < 0.25:
         if ring_center is not None:
@@ -217,19 +277,17 @@ def _compute_visibility(
     return visible, hetero_h_count
 
 
-def _label_color(sym: str, palette: str | Mapping[str, str], ink: str) -> str:
-    """Resolves high-contrast heteroatom text color against white paper."""
+def _label_color(
+    sym: str,
+    palette: str | Mapping[str, str],
+    ink: str,
+    bg: str = palettes.PAPER,
+) -> str:
+    """Resolves high-contrast heteroatom text color against ``bg``."""
     if sym == "C":
         return ink
     col = palettes.get_element_color(sym, scheme=palette)
-    hex_c = col.lstrip("#")
-    if len(hex_c) == 6:
-        r = int(hex_c[0:2], 16) / 255.0
-        g = int(hex_c[2:4], 16) / 255.0
-        b = int(hex_c[4:6], 16) / 255.0
-        if (0.2126 * r + 0.7152 * g + 0.0722 * b) > 0.70:
-            return ink
-    return col
+    return primitives.ensure_readable_text_color(col, bg)
 
 
 def _atom_has_label(
@@ -294,7 +352,7 @@ def _draw_skeletal_labels(
             label = f"{sym}H{h_cnt}"
         if sym == "C":
             label = _terminal_carbon_label(idx, atoms, neighbors, visible)
-        text_col = _label_color(sym, palette, ink)
+        text_col = _label_color(sym, palette, ink, bg)
         ax.add_patch(
             patches.Circle(
                 (float(xy[idx, 0]), float(xy[idx, 1])),
@@ -376,6 +434,7 @@ def render_structure_2d(
             shorten_i=s_i,
             shorten_j=s_j,
             ring_center=ring_centroids.get(edge_key),
+            stereo=b.stereo,
         )
 
     _draw_skeletal_labels(

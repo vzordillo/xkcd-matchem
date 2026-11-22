@@ -287,6 +287,11 @@ def read_qe_out(path: str | pathlib.Path) -> structure.AtomsData:
     )
 
 
+def _split_touching_floats(text: str) -> str:
+    """Separates concatenated negative Fortran floats like ``1.23-4.56``."""
+    return re.sub(r"(?<=[0-9])-(?=[0-9.])", " -", text)
+
+
 def read_qe_bands(path: str | pathlib.Path) -> electronic.BandStructure:
     """Reads a Quantum ESPRESSO ``bands.x`` plain-text output file."""
     p = pathlib.Path(path)
@@ -298,10 +303,8 @@ def read_qe_bands(path: str | pathlib.Path) -> electronic.BandStructure:
         raise exceptions.ParseError(f"Invalid QE bands header in {p}.")
     nbnd = int(m_nb.group(1))
     nks = int(m_nk.group(1))
-    tokens = " ".join(lines[1:]).replace("/", " ").split()
-    if not m_nb or len(tokens) < nks * (3 + nbnd):
-        # Parse k-point + eigenvalues sequentially cleanly per block.
-        tokens = [tok for tok in " ".join(lines[1:]).split() if tok != "/"]
+    body = _split_touching_floats(" ".join(lines[1:]).replace("/", " "))
+    tokens = body.split()
     k_coords = np.zeros((nks, 3), dtype=np.float64)
     eig = np.zeros((1, nks, nbnd), dtype=np.float64)
     cursor = 0
@@ -332,7 +335,9 @@ def read_qe_dos(path: str | pathlib.Path) -> electronic.DensityOfStates:
             if m_ef:
                 fermi = float(m_ef.group(1))
             continue
-        rows.append([float(tok) for tok in stripped.split()])
+        rows.append(
+            [float(tok) for tok in _split_touching_floats(stripped).split()]
+        )
     arr = np.array(rows, dtype=np.float64)
     if arr.shape[1] >= 4:
         return electronic.DensityOfStates(

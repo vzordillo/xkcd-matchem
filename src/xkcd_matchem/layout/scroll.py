@@ -798,13 +798,13 @@ def _setup_scroll_axes(
     ax_w_mm = max(5.0, inner_box[2] - pad_mm[0] - pad_mm[1])
     ax_h_mm = max(5.0, inner_box[3] - pad_mm[2] - pad_mm[3])
     child_ax = fig.add_axes(
-        [
+        (
             (inner_box[0] + pad_mm[0]) / board_dims[0],
             (board_dims[1] - (inner_box[1] + inner_box[3] - pad_mm[3]))
             / board_dims[1],
             max(0.05, ax_w_mm / board_dims[0]),
             max(0.05, ax_h_mm / board_dims[1]),
-        ]
+        )
     )
     child_ax.set_facecolor(parch_color)
     child_ax.patch.set_sketch_params(0.0, 0.0, 0.0)
@@ -979,7 +979,7 @@ def plot_scroll_card(
             facecolor=preset_obj.figure_facecolor,
         )
         fig.patch.set_sketch_params(0.0, 0.0, 0.0)
-        overlay = fig.add_axes([0.0, 0.0, 1.0, 1.0])
+        overlay = fig.add_axes((0.0, 0.0, 1.0, 1.0))
         overlay.set_xlim(0.0, w_mm)
         overlay.set_ylim(h_mm, 0.0)
         overlay.set_axis_off()

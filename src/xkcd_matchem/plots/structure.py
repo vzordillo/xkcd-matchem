@@ -18,6 +18,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from collections.abc import Sequence
 import pathlib
+from typing import Any
+from typing import cast
 
 from matplotlib import axes as maxes
 from matplotlib import patches
@@ -98,9 +100,10 @@ def _trim_slab_vacuum(
     new_c_len = z_span + 2.0 * vacuum_margin
     shift = (vacuum_margin - z_min) * ez
     trimmed.positions = trimmed.positions + shift
-    new_cell = trimmed.cell.copy()
-    new_cell[2] = ez * new_c_len
-    trimmed.cell = new_cell
+    if trimmed.cell is not None:
+        new_cell = trimmed.cell.copy()
+        new_cell[2] = ez * new_c_len
+        trimmed.cell = new_cell
     return trimmed, true_vac
 
 
@@ -194,7 +197,7 @@ def _draw_slab_backdrop(
             period_y,
             height_c,
             facecolor="none",
-            edgecolor=palettes.INK,
+            edgecolor=primitives.resolve_ink(),
             linewidth=2.0,
             zorder=600.0,
         )
@@ -262,7 +265,7 @@ def _estimate_slab_widths(
     height_c: float,
 ) -> tuple[float, float]:
     """Estimates responsive bond and atom stroke widths for slab side views."""
-    fig_w, fig_h = ax.figure.get_size_inches()
+    fig_w, fig_h = cast(Any, ax.figure).get_size_inches()
     pos_ax = ax.get_position()
     pt_per_a = min(
         max(float(pos_ax.width * fig_w) * 72.0, 90.0) / max(period_y, 2.0),
@@ -281,13 +284,13 @@ def _paint_slab_item(
     colors: list[str],
     widths: tuple[float, float],
     kind: str,
-    payload: object,
+    payload: Any,
     z_ord: float,
 ) -> None:
     """Paints a single atom sphere, unified bond, or edge stub in slab view."""
     bond_w, atom_lw = widths
     if kind == "atom":
-        idx = int(payload)  # type: ignore[arg-type]
+        idx = int(payload)
         r_cov = 0.34 if atoms.symbols[idx] in ("H", "O", "C", "N") else 0.44
         primitives.draw_atom_sphere(
             ax,
@@ -299,7 +302,7 @@ def _paint_slab_item(
             zorder=z_ord,
         )
     elif kind == "bond":
-        p0, p1, c0, c1, order = payload  # type: ignore[misc]
+        p0, p1, c0, c1, order = payload
         primitives.draw_two_tone_bond(
             ax,
             p0,
@@ -311,7 +314,7 @@ def _paint_slab_item(
             zorder=z_ord,
         )
     else:
-        p0, p1, col, order = payload  # type: ignore[misc]
+        p0, p1, col, order = payload
         primitives.draw_half_bond(
             ax, p0, p1, color=col, width=bond_w, order=order, zorder=z_ord
         )
@@ -342,6 +345,7 @@ def _draw_slab_atoms_and_bonds(
         items = [it for it in items if it[1] == "atom"]
     widths = _estimate_slab_widths(ax, period_y, height_c)
     before = len(ax.patches)
+    before_lines = len(ax.lines)
     for rank, (_, kind, payload) in enumerate(items):
         _paint_slab_item(
             ax,
@@ -355,7 +359,7 @@ def _draw_slab_atoms_and_bonds(
         )
     for patch in ax.patches[before:]:
         patch.set_clip_path(clip_rect)
-    for line in ax.lines:
+    for line in ax.lines[before_lines:]:
         line.set_clip_path(clip_rect)
     return len(items)
 
@@ -443,6 +447,11 @@ def plot_molecule(
     title: str | None = None,
     *,
     show_bonds: bool | None = None,
+    vectors: (
+        np.ndarray | Sequence[Sequence[float]] | Sequence[float] | str | None
+    ) = None,
+    vector_scale: float = 1.0,
+    vector_color: str = "#D55E00",
 ) -> maxes.Axes:
     """Plots a molecule in xkcd-style 3D depth-sorted or 2D skeletal view.
 
@@ -460,6 +469,10 @@ def plot_molecule(
       preset: Visual theme preset name or custom ``ThemePreset``.
       title: Optional title shown above the panel.
       show_bonds: Optional override to hide bonds (``False``) in 3D view.
+      vectors: Optional per-atom 3D vector overlay (``"forces"``,
+        ``"velocities"``, ``"magmom"``, or an ``(N, 3)`` / ``(N,)`` array).
+      vector_scale: Multiplier for vector arrow length in Angstrom.
+      vector_color: Arrow hex color or ``"spin"`` for red/blue z-spins.
 
     Returns:
       Matplotlib ``Axes`` containing the rendered molecule.
@@ -482,6 +495,9 @@ def plot_molecule(
                 show_cell=False,
                 show_labels=show_labels,
                 show_bonds=show_bonds,
+                vectors=vectors,
+                vector_scale=vector_scale,
+                vector_color=vector_color,
             )
             if show_legend:
                 _pad_structure_view(ax, bottom_frac=0.14, top_frac=0.04)
@@ -515,6 +531,23 @@ def _prepare_crystal_display(
     return completed
 
 
+def _map_crystal_vectors(
+    vectors: (
+        np.ndarray | Sequence[Sequence[float]] | Sequence[float] | str | None
+    ),
+    atoms: structure.AtomsData,
+    display_atoms: structure.AtomsData,
+) -> np.ndarray | str | None:
+    """Maps explicit per-atom vectors onto boundary-completed display atoms."""
+    if vectors is None or isinstance(vectors, str):
+        return vectors
+    vec_arr = np.asarray(vectors, dtype=np.float64)
+    src_idxs = display_atoms.metadata.get("source_indices")
+    if src_idxs is not None and len(vec_arr) == len(atoms):
+        return vec_arr[np.asarray(src_idxs, dtype=np.int64)]
+    return vec_arr
+
+
 def plot_crystal(
     source: structure.AtomsData | str | pathlib.Path,
     ax: maxes.Axes | None = None,
@@ -533,6 +566,11 @@ def plot_crystal(
     crystal_axes: bool | str | None = None,
     show_bonds: bool | None = None,
     boundary_atoms: bool = True,
+    vectors: (
+        np.ndarray | Sequence[Sequence[float]] | Sequence[float] | str | None
+    ) = None,
+    vector_scale: float = 1.0,
+    vector_color: str = "#D55E00",
 ) -> maxes.Axes:
     """Plots a periodic crystal or supercell with unit cell, axes & bonds.
 
@@ -549,6 +587,7 @@ def plot_crystal(
     display_atoms = _prepare_crystal_display(
         atoms, style, show_bonds, boundary_atoms
     )
+    mapped_vectors = _map_crystal_vectors(vectors, atoms, display_atoms)
     cam: geometry.Camera | str | None = camera
     if cam is None and miller_planes:
         cam = geometry.Camera(azimuth=32.0, elevation=22.0)
@@ -568,6 +607,9 @@ def plot_crystal(
             show_labels=show_labels,
             show_bonds=show_bonds,
             miller_planes=miller_planes,
+            vectors=mapped_vectors,
+            vector_scale=vector_scale,
+            vector_color=vector_color,
         )
         if show_legend:
             _pad_structure_view(ax, bottom_frac=0.17, top_frac=0.04)

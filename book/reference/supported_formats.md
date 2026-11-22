@@ -2,27 +2,30 @@
 
 A pretty figure built from silently misread coordinates is worse than a loud error. Whenever a file uses syntax outside a built-in parser's supported subset, `xkcd-matchem` raises a descriptive `ParseError` or `StructureError` and suggests using an optional adapter (**ASE**, **pymatgen**, or **cclib**) instead of guessing.
 
-All **26 native formats** below require only **NumPy, SciPy, and Matplotlib**.
+All **29 native formats** below require only **NumPy, SciPy, and Matplotlib**.
 
 ## Molecules & Biomolecules
 
 | Format Key | Extensions / Filenames | Parsed Type | Supported Scope & Validation |
 | --- | --- | --- | --- |
 | `xyz` | `.xyz`, `.extxyz` | `AtomsData` / `Trajectory` | Reads extended comment metadata (`Lattice="..."`, `pbc="..."`, `energy=`) |
-| `pdb` | `.pdb`, `.ent` | `AtomsData` / `Trajectory` | Multi-`MODEL` frames and explicit `CONECT` bond topology |
-| `sdf` | `.sdf`, `.mol` | `AtomsData` | V2000 atom and bond tables with formal bond orders |
+| `pdb` | `.pdb`, `.ent` | `AtomsData` / `Trajectory` | Multi-`MODEL` frames, disambiguated metal elements (`FE  ` vs ` CA `), and explicit `CONECT` bond topology |
+| `sdf` | `.sdf`, `.mol` | `AtomsData` | V2000 atom and bond tables with formal bond orders and stereobond flags (`wedge`/`dash`/`wavy`) |
 | `mol2` | `.mol2` | `AtomsData` | Tripos `ATOM` and `BOND` blocks |
 
 ## Crystals & Periodic DFT
 
 | Format Key | Extensions / Filenames | Parsed Type | Supported Scope & Validation |
 | --- | --- | --- | --- |
-| `vasp` | `.poscar`, `.contcar`, `.vasp`, `POSCAR`, `CONTCAR` | `AtomsData` | Applies scalar or negative-volume factors to both lattice vectors and Cartesian coordinates; validates VASP5 element headers and rejects singular cells |
+| `vasp` | `.poscar`, `.contcar`, `.vasp`, `POSCAR`, `CONTCAR` | `AtomsData` | Applies scalar, 3-component `sx sy sz`, or negative-volume factors to lattice vectors and coordinates; validates VASP5 element headers |
 | `xdatcar` | `.xdatcar`, `XDATCAR` | `Trajectory` | Multi-step direct/Cartesian trajectories |
-| `doscar` | `.doscar`, `DOSCAR` | `DensityOfStates` | Extracts Fermi level $E_F$ and spin-polarized or unpolarized DOS |
+| `doscar` | `.doscar`, `DOSCAR` | `DensityOfStates` | Extracts Fermi level $E_F$ and spin-polarized or unpolarized DOS (handles fixed-width touching floats) |
 | `eigenval` | `.eigenval`, `EIGENVAL` | `BandStructure` | Accepts optional `cell=` so reciprocal $k$-distances are weighted properly via $B = 2\pi(A^{-1})^\top$ |
+| `procar` | `.procar`, `PROCAR` | `BandStructure` | Parses projected band weights (`s`, `p`, `d`, `tot`) for fatband dispersion plots |
+| `lobster_cohp` | `.lobster`, `.cohp`, `.coop`, `COHPCAR.lobster`, `COOPCAR.lobster` | `CohpData` | Parses LOBSTER projected `-pCOHP`/`-pCOOP` and integrated `-ICOHP` curves (spin-unpolarized and spin-polarized) |
+| `phonopy_bands` | `band.yaml`, `phonopy_bands.yaml`, `.yaml` | `PhononBandStructure` | Zero-dependency Phonopy YAML reader extracting `distance` and phonon branch frequencies in THz |
 | `chgcar` | `.chgcar`, `.locpot`, `CHGCAR`, `LOCPOT` | `VolumetricGrid` | Applies VASP scaling in Cartesian atom mode and reconstructs the 3D FFT grid |
-| `cif` | `.cif` | `AtomsData` | Expands affine symmetry operations while preserving distinct elements on mixed-occupancy sites; records `_atom_site_occupancy` in `metadata["occupancies"]` |
+| `cif` | `.cif` | `AtomsData` | Multi-block (`read_cif(..., block=...)`, `read_cif_all`) and explicit/implicit 62-group ITA symmetry expansion with Origin Choice 1/2 handling and `_atom_site_occupancy` |
 | `qe_in` | `.pwi`, `.in` | `AtomsData` | Requires explicit `CELL_PARAMETERS` when `ibrav != 0`, and explicit `celldm(1)` or `A` when `alat` units are requested |
 | `qe_out` | `.pwo`, QE `.out` | `AtomsData` | Extracts final geometry, cell, total energy, and Fermi level |
 | `qe_bands` | `bands.dat` / `&plot` | `BandStructure` | Parses `bands.x` $k$-path coordinates and Kohn-Sham eigenvalues |

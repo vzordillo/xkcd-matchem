@@ -20,6 +20,7 @@ import math
 from typing import Any
 
 import numpy as np
+from scipy import special
 
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import structure
@@ -81,6 +82,8 @@ def broaden_peaks(
     x_grid: np.ndarray,
     fwhm: float = 10.0,
     profile: str = "lorentzian",
+    *,
+    normalize: str = "height",
 ) -> np.ndarray:
     """Broadens discrete spectral lines onto a continuous grid.
 
@@ -89,20 +92,28 @@ def broaden_peaks(
       intensities: Stick peak weights.
       x_grid: 1D evaluation grid.
       fwhm: Full width at half maximum in units of ``x_grid``.
-      profile: Lineshape (``"lorentzian"``, ``"gaussian"``, or
-        ``"pseudo_voigt"``).
+      profile: Lineshape (``"lorentzian"``, ``"gaussian"``, ``"pseudo_voigt"``,
+        or ``"voigt"``).
+      normalize: ``"height"`` (unit peak amplitude) or ``"area"`` (unit
+        integrated area per stick peak).
 
     Returns:
       Broadened 1D intensity array matching ``x_grid``.
 
     Raises:
-      StructureError: If ``profile`` is unknown or ``fwhm <= 0``.
+      StructureError: If ``profile``/``normalize`` is unknown or ``fwhm <= 0``.
     """
     pos = np.asarray(positions, dtype=np.float64)
     amp = np.asarray(intensities, dtype=np.float64)
     grid = np.asarray(x_grid, dtype=np.float64)
     if fwhm <= 0.0:
         raise exceptions.StructureError("FWHM must be strictly positive.")
+    norm_mode = normalize.strip().lower()
+    if norm_mode not in ("height", "area"):
+        raise exceptions.StructureError(
+            f"Unknown normalization mode {normalize!r}; expected 'height' "
+            "or 'area'."
+        )
     y_out = np.zeros_like(grid, dtype=np.float64)
     if pos.size == 0:
         return y_out
@@ -111,13 +122,29 @@ def broaden_peaks(
     sigma = fwhm / (2.0 * math.sqrt(2.0 * math.log(2.0)))
     kind = profile.lower()
     if kind == "lorentzian":
-        shape = (gamma * gamma) / (dx * dx + gamma * gamma)
+        if norm_mode == "area":
+            shape = (gamma / math.pi) / (dx * dx + gamma * gamma)
+        else:
+            shape = (gamma * gamma) / (dx * dx + gamma * gamma)
     elif kind == "gaussian":
         shape = np.exp(-0.5 * (dx / sigma) ** 2)
-    elif kind in ("pseudo_voigt", "voigt"):
-        lor = (gamma * gamma) / (dx * dx + gamma * gamma)
-        gau = np.exp(-0.5 * (dx / sigma) ** 2)
+        if norm_mode == "area":
+            shape = shape / (sigma * math.sqrt(2.0 * math.pi))
+    elif kind == "pseudo_voigt":
+        if norm_mode == "area":
+            lor = (gamma / math.pi) / (dx * dx + gamma * gamma)
+            gau = np.exp(-0.5 * (dx / sigma) ** 2) / (
+                sigma * math.sqrt(2.0 * math.pi)
+            )
+        else:
+            lor = (gamma * gamma) / (dx * dx + gamma * gamma)
+            gau = np.exp(-0.5 * (dx / sigma) ** 2)
         shape = 0.5 * lor + 0.5 * gau
+    elif kind == "voigt":
+        shape = special.voigt_profile(dx, sigma, gamma)
+        if norm_mode == "height":
+            peak0 = max(float(special.voigt_profile(0.0, sigma, gamma)), 1e-12)
+            shape = shape / peak0
     else:
         raise exceptions.StructureError(
             f"Unknown lineshape profile {profile!r}."
@@ -160,6 +187,8 @@ def _xrd_reflections(
         for sym in sorted(set(atoms.symbols))
     }
     f_mat = np.column_stack([form_map[sym] for sym in atoms.symbols])
+    if atoms.occupancies is not None:
+        f_mat = f_mat * atoms.occupancies[None, :]
     if debye_waller_b > 0.0:
         f_mat = f_mat * np.exp(-debye_waller_b * np.square(s_v))[:, None]
     f_hkl = np.sum(f_mat * (np.cos(phases) + 1j * np.sin(phases)), axis=1)

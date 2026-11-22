@@ -21,6 +21,7 @@ import dataclasses
 import numpy as np
 from scipy import spatial
 
+from xkcd_matchem.core import neighbors
 from xkcd_matchem.core import structure
 from xkcd_matchem.data import elements
 
@@ -77,21 +78,6 @@ class CoordinationPolyhedron:
     ligand_indices: tuple[int, ...]
     vertices_3d: np.ndarray
     faces: tuple[tuple[int, int, int], ...]
-
-
-def _periodic_shifts(
-    pbc: tuple[bool, bool, bool],
-) -> list[tuple[int, int, int]]:
-    """Generates integer image offsets along enabled periodic axes."""
-    rx = (-1, 0, 1) if pbc[0] else (0,)
-    ry = (-1, 0, 1) if pbc[1] else (0,)
-    rz = (-1, 0, 1) if pbc[2] else (0,)
-    shifts: list[tuple[int, int, int]] = []
-    for sx in rx:
-        for sy in ry:
-            for sz in rz:
-                shifts.append((sx, sy, sz))
-    return shifts
 
 
 def _pair_key(s_a: str, s_b: str) -> tuple[str, str]:
@@ -223,55 +209,11 @@ def infer_bond_orders(
     _match_deficit_double_bonds(interior_doubles, deficits, orders)
 
     return [
-        structure.Bond(i=b.i, j=b.j, order=orders[idx], shift=b.shift)
+        structure.Bond(
+            i=b.i, j=b.j, order=orders[idx], shift=b.shift, stereo=b.stereo
+        )
         for idx, b in enumerate(bonds)
     ]
-
-
-def _collect_pair_bonds(
-    atoms: structure.AtomsData,
-    tree_base: spatial.cKDTree,
-    radii: np.ndarray,
-    shift_tuple: tuple[int, int, int],
-    bounds: tuple[float, float, float],
-    seen: set[tuple[int, int, tuple[int, int, int]]],
-    bonds: list[structure.Bond],
-) -> None:
-    """Populates unique periodic bonds for a single lattice image offset."""
-    scale, min_dist, max_dist = bounds
-    sx, sy, sz = shift_tuple
-    if shift_tuple == (0, 0, 0):
-        shifted_pos = atoms.positions
-    elif atoms.cell is not None:
-        offset = sx * atoms.cell[0] + sy * atoms.cell[1] + sz * atoms.cell[2]
-        shifted_pos = atoms.positions + offset
-    else:
-        return
-    tree_shifted = spatial.cKDTree(shifted_pos)
-    for i, nbrs in enumerate(
-        tree_base.query_ball_tree(tree_shifted, r=max_dist)
-    ):
-        for j in nbrs:
-            if shift_tuple == (0, 0, 0) and i >= j:
-                continue
-            dist = float(np.linalg.norm(shifted_pos[j] - atoms.positions[i]))
-            cutoff = min(max_dist, (radii[i] + radii[j]) * scale)
-            if not min_dist <= dist <= cutoff:
-                continue
-            key, bond = (
-                (
-                    (i, j, shift_tuple),
-                    structure.Bond(i=i, j=j, shift=shift_tuple),
-                )
-                if i <= j
-                else (
-                    (j, i, (-sx, -sy, -sz)),
-                    structure.Bond(i=j, j=i, shift=(-sx, -sy, -sz)),
-                )
-            )
-            if key not in seen:
-                seen.add(key)
-                bonds.append(bond)
 
 
 def infer_bonds(
@@ -282,7 +224,7 @@ def infer_bonds(
     use_pbc: bool = True,
     infer_orders: bool = True,
 ) -> list[structure.Bond]:
-    """Infers chemical bonds using covalent-radius cutoffs and ``cKDTree``.
+    """Infers chemical bonds using covalent-radius cutoffs and LLL PBC search.
 
     Args:
       atoms: Input atomic or crystal structure.
@@ -302,62 +244,24 @@ def infer_bonds(
         [elements.get_covalent_radius(sym) for sym in atoms.symbols],
         dtype=np.float64,
     )
-    shifts = _periodic_shifts(
-        atoms.pbc
-        if (use_pbc and atoms.cell is not None)
-        else (False, False, False)
+    hits = neighbors.find_periodic_neighbors(
+        atoms,
+        max_cutoff=max_dist,
+        min_cutoff=min_dist,
+        use_pbc=use_pbc,
+        symmetric=False,
     )
-    tree_base = spatial.cKDTree(atoms.positions)
-    seen: set[tuple[int, int, tuple[int, int, int]]] = set()
     bonds: list[structure.Bond] = []
-    for shift_tuple in shifts:
-        _collect_pair_bonds(
-            atoms,
-            tree_base,
-            radii,
-            shift_tuple,
-            (scale, min_dist, max_dist),
-            seen,
-            bonds,
-        )
+    for hit in hits:
+        cutoff = min(max_dist, (radii[hit.i] + radii[hit.j]) * scale)
+        if hit.distance <= cutoff:
+            bonds.append(
+                structure.Bond(i=hit.i, j=hit.j, shift=hit.shift)
+            )
     bonds.sort(key=lambda b: (b.i, b.j, b.shift))
     if infer_orders:
         bonds = infer_bond_orders(atoms, bonds)
     return bonds
-
-
-def _collect_ligand_vertices(
-    atoms: structure.AtomsData,
-    center_idx: int,
-    lig_canon: str | None,
-    shifts: list[tuple[int, int, int]],
-    r_center: float,
-    r_all: np.ndarray,
-    cutoff: float | None,
-    scale: float,
-) -> tuple[list[np.ndarray], list[int]]:
-    """Collects unwrapped periodic ligand positions around one center site."""
-    origin = atoms.positions[center_idx]
-    vert_coords: list[np.ndarray] = []
-    vert_indices: list[int] = []
-    for sx, sy, sz in shifts:
-        shift_vec = np.zeros(3, dtype=np.float64)
-        if atoms.cell is not None:
-            shift_vec = (
-                sx * atoms.cell[0] + sy * atoms.cell[1] + sz * atoms.cell[2]
-            )
-        for j, lsym in enumerate(atoms.symbols):
-            if j == center_idx and (sx, sy, sz) == (0, 0, 0):
-                continue
-            if lig_canon is not None and lsym != lig_canon:
-                continue
-            lim = (r_center + r_all[j]) * scale if cutoff is None else cutoff
-            pos_j = atoms.positions[j] + shift_vec
-            dist = float(np.linalg.norm(pos_j - origin))
-            if 0.4 <= dist <= lim:
-                vert_coords.append(pos_j)
-                vert_indices.append(j)
-    return vert_coords, vert_indices
 
 
 def find_coordination_polyhedra(
@@ -383,31 +287,51 @@ def find_coordination_polyhedra(
       List of ``CoordinationPolyhedron`` objects with unwrapped ligand vertices
       and convex hull triangular faces.
     """
+    if len(atoms) < 4:
+        return []
     center_canon = elements.get_element(center_symbol).symbol
     lig_canon = (
         None
         if ligand_symbol is None
         else elements.get_element(ligand_symbol).symbol
     )
-    shifts = _periodic_shifts(
-        atoms.pbc if atoms.cell is not None else (False, False, False)
-    )
     r_center = elements.get_covalent_radius(center_canon)
     r_all = np.array(
         [elements.get_covalent_radius(s) for s in atoms.symbols],
         dtype=np.float64,
     )
-    polyhedra: list[CoordinationPolyhedron] = []
+    max_search = (
+        float(cutoff)
+        if cutoff is not None
+        else float((r_center + np.max(r_all)) * scale)
+    )
+    hits = neighbors.find_periodic_neighbors(
+        atoms,
+        max_cutoff=max_search,
+        min_cutoff=0.4,
+        use_pbc=atoms.cell is not None,
+        symmetric=True,
+    )
+    by_center: dict[int, list[neighbors.NeighborHit]] = {}
+    for hit in hits:
+        if atoms.symbols[hit.i] != center_canon:
+            continue
+        if lig_canon is not None and atoms.symbols[hit.j] != lig_canon:
+            continue
+        lim = (r_center + r_all[hit.j]) * scale if cutoff is None else cutoff
+        if hit.distance <= lim:
+            by_center.setdefault(hit.i, []).append(hit)
 
+    polyhedra: list[CoordinationPolyhedron] = []
     for idx, sym in enumerate(atoms.symbols):
         if sym != center_canon:
             continue
-        vert_coords, vert_indices = _collect_ligand_vertices(
-            atoms, idx, lig_canon, shifts, r_center, r_all, cutoff, scale
-        )
-        if len(vert_coords) < max(min_coordination, 4):
+        c_hits = by_center.get(idx, [])
+        if len(c_hits) < max(min_coordination, 4):
             continue
-        verts = np.vstack(vert_coords)
+        origin = atoms.positions[idx]
+        verts = np.vstack([origin + h.vector for h in c_hits])
+        vert_indices = tuple(h.j for h in c_hits)
         try:
             hull = spatial.ConvexHull(verts)
         except spatial.QhullError:
@@ -419,7 +343,7 @@ def find_coordination_polyhedra(
             CoordinationPolyhedron(
                 center_index=idx,
                 center_symbol=center_canon,
-                ligand_indices=tuple(vert_indices),
+                ligand_indices=vert_indices,
                 vertices_3d=verts,
                 faces=faces,
             )

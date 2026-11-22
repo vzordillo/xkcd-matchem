@@ -15,26 +15,21 @@
 
 from __future__ import annotations
 
-
-class MatchemError(Exception):
-    """Base exception for all xkcd-matchem errors."""
+from xkcd_matchem import _exceptions
 
 
-class ParseError(MatchemError):
-    """Raised when reading or parsing an input file fails."""
+__all__ = [
+    "MatchemError",
+    "OptionalDependencyError",
+    "ParseError",
+    "StructureError",
+    "StyleError",
+    "UnsupportedFormatError",
+]
 
-
-class UnsupportedFormatError(MatchemError):
-    """Raised when a file format cannot be identified or is unsupported."""
-
-
-class StructureError(MatchemError):
-    """Raised when atomic coordinates, cells, or topology are invalid."""
-
-
-class OptionalDependencyError(MatchemError):
-    """Raised when an optional third-party integration package is missing."""
-
-
-class StyleError(MatchemError):
-    """Raised when an invalid theme preset, palette, or font is requested."""
+MatchemError = _exceptions.MatchemError
+OptionalDependencyError = _exceptions.OptionalDependencyError
+ParseError = _exceptions.ParseError
+StructureError = _exceptions.StructureError
+StyleError = _exceptions.StyleError
+UnsupportedFormatError = _exceptions.UnsupportedFormatError

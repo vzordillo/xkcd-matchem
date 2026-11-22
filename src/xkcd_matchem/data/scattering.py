@@ -757,8 +757,6 @@ CROMER_MANN_TABLE: dict[str, ScatteringCoeffs] = {
     ),
 }
 
-_H_PREFACTOR = (2.0 * math.pi * elements.CODATA2022.bohr_to_angstrom) ** 2
-
 
 def atomic_form_factor(
     symbol: str,
@@ -783,7 +781,10 @@ def atomic_form_factor(
     s_arr = np.asarray(s_inv_angstrom, dtype=np.float64)
     s2 = np.square(s_arr)
     if rec.atomic_number == 1:
-        return 1.0 / np.square(1.0 + _H_PREFACTOR * s2)
+        h_prefactor = (
+            2.0 * math.pi * elements.CODATA2022.bohr_to_angstrom
+        ) ** 2
+        return 1.0 / np.square(1.0 + h_prefactor * s2)
     coeffs = CROMER_MANN_TABLE.get(rec.symbol)
     scale = 1.0
     if coeffs is None:

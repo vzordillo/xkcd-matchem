@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 
 from xkcd_matchem.core import exceptions
+from xkcd_matchem.core import geometry
 from xkcd_matchem.core import structure
 from xkcd_matchem.core import trajectory
 
@@ -72,7 +73,11 @@ def from_mdanalysis(
         pos = np.array(universe.atoms.positions, dtype=np.float64)
         dims = getattr(ts, "dimensions", None)
         cell = None
-        if dims is not None and len(dims) >= 3 and dims[0] > 0.0:
+        if dims is not None and len(dims) >= 6 and dims[0] > 0.0:
+            cell = geometry.cell_vectors_from_parameters(
+                *[float(x) for x in dims[:6]]
+            )
+        elif dims is not None and len(dims) >= 3 and dims[0] > 0.0:
             cell = np.diag(dims[:3]).astype(np.float64)
         frames.append(
             structure.AtomsData(

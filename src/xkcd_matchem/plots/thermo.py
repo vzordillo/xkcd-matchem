@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from collections.abc import Sequence
 
 from matplotlib import axes as maxes
@@ -23,6 +24,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 from scipy import optimize
 
+from xkcd_matchem.core import exceptions
 from xkcd_matchem.data import elements
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import patterns
@@ -385,6 +387,389 @@ def plot_pourbaix(
         ax.set_ylim(potential_range[0], y_hi)
         ax.set_xlabel("pH")
         ax.set_ylabel("Potential vs SHE (V)")
+        theme.apply_xkcd_spines(ax, preset=preset)
+        if title:
+            ax.set_title(title)
+    return ax
+
+
+def _resolve_volcano_legs(
+    xs: np.ndarray,
+    ys: np.ndarray,
+    left_leg: tuple[float, float] | None,
+    right_leg: tuple[float, float] | None,
+    fit_legs: bool,
+    invert_y: bool,
+) -> tuple[tuple[float, float] | None, tuple[float, float] | None, float]:
+    """Computes left/right linear scaling legs and volcano apex coordinate."""
+    opt_idx = int(np.argmin(ys) if invert_y else np.argmax(ys))
+    x_opt = float(xs[opt_idx])
+    l_leg = left_leg
+    r_leg = right_leg
+    if fit_legs and l_leg is None:
+        l_mask = xs <= x_opt + 1e-12
+        if int(np.sum(l_mask)) >= 2 and float(np.ptp(xs[l_mask])) > 1e-9:
+            c_l = np.polyfit(xs[l_mask], ys[l_mask], 1)
+            l_leg = (float(c_l[0]), float(c_l[1]))
+    if fit_legs and r_leg is None:
+        r_mask = xs >= x_opt - 1e-12
+        if int(np.sum(r_mask)) >= 2 and float(np.ptp(xs[r_mask])) > 1e-9:
+            c_r = np.polyfit(xs[r_mask], ys[r_mask], 1)
+            r_leg = (float(c_r[0]), float(c_r[1]))
+
+    x_apex = x_opt
+    if l_leg is not None and r_leg is not None:
+        denom = l_leg[0] - r_leg[0]
+        if abs(denom) > 1e-9:
+            cand = (r_leg[1] - l_leg[1]) / denom
+            span = max(float(np.ptp(xs)), 0.5)
+            lo_bound = float(np.min(xs)) - 0.35 * span
+            hi_bound = float(np.max(xs)) + 0.35 * span
+            if lo_bound <= cand <= hi_bound:
+                x_apex = cand
+    return l_leg, r_leg, x_apex
+
+
+def _annotate_volcano_labels(
+    ax: maxes.Axes,
+    xs: np.ndarray,
+    ys: np.ndarray,
+    labels: Sequence[str] | None,
+    ink_col: str,
+) -> None:
+    """Places staggered catalyst labels above/below volcano scatter markers."""
+    if labels is None:
+        return
+    y_span = max(float(np.ptp(ys)), 0.2)
+    for idx, lbl in enumerate(labels):
+        dy = (0.06 if idx % 2 == 0 else -0.09) * y_span
+        ax.text(
+            float(xs[idx]),
+            float(ys[idx]) + dy,
+            lbl,
+            ha="center",
+            va="center",
+            fontsize=9.0,
+            color=ink_col,
+            zorder=6.0,
+        )
+
+
+def plot_volcano(
+    descriptors: Sequence[float] | np.ndarray,
+    activities: Sequence[float] | np.ndarray,
+    *,
+    labels: Sequence[str] | None = None,
+    left_leg: tuple[float, float] | None = None,
+    right_leg: tuple[float, float] | None = None,
+    fit_legs: bool = True,
+    peak_shade: bool = True,
+    xlabel: str = "Descriptor dG_ads (eV)",
+    ylabel: str = "Activity / Limiting Potential (V)",
+    invert_y: bool = False,
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
+    ax: maxes.Axes | None = None,
+    title: str | None = None,
+) -> maxes.Axes:
+    """Plots a Sabatier catalysis volcano relation in xkcd style.
+
+    Args:
+      descriptors: Catalytic descriptor values (e.g. adsorption free energy).
+      activities: Corresponding activity or limiting-potential metrics.
+      labels: Optional point labels (e.g. catalyst metal symbols).
+      left_leg: Optional explicit ``(slope, intercept)`` strong-binding leg.
+      right_leg: Optional explicit ``(slope, intercept)`` weak-binding leg.
+      fit_legs: Automatically fit linear scaling legs around the optimum.
+      peak_shade: Highlight the Sabatier optimum region with a soft band.
+      xlabel: Horizontal axis label.
+      ylabel: Vertical axis label.
+      invert_y: Invert vertical axis (e.g. for overpotential plots).
+      palette: Series palette name or hex sequence.
+      preset: Visual theme preset name or ``ThemePreset``.
+      ax: Optional target Matplotlib ``Axes``.
+      title: Optional heading.
+
+    Returns:
+      Matplotlib ``Axes`` containing the Sabatier volcano plot.
+
+    Raises:
+      StructureError: If input arrays mismatch or have fewer than 2 points.
+    """
+    xs = np.asarray(descriptors, dtype=np.float64)
+    ys = np.asarray(activities, dtype=np.float64)
+    if xs.ndim != 1 or ys.ndim != 1 or xs.shape != ys.shape or xs.size < 2:
+        raise exceptions.StructureError(
+            "Volcano plot requires matching 1D arrays with at least 2 points."
+        )
+    if labels is not None and len(labels) != xs.size:
+        raise exceptions.StructureError(
+            "Volcano labels length must match descriptors."
+        )
+
+    l_leg, r_leg, x_apex = _resolve_volcano_legs(
+        xs, ys, left_leg, right_leg, fit_legs, invert_y
+    )
+    series = palettes.get_palette(palette)
+    ink_col = theme.get_preset(preset).ink_color
+    x_span = max(float(np.ptp(xs)), 0.4)
+    x_lo = float(np.min(xs)) - 0.10 * x_span
+    x_hi = float(np.max(xs)) + 0.10 * x_span
+
+    with theme.xkcd_style(preset=preset):
+        if ax is None:
+            _, ax = plt.subplots(figsize=(6.4, 4.4))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
+        if peak_shade:
+            ax.axvspan(
+                x_apex - 0.08 * x_span,
+                x_apex + 0.08 * x_span,
+                color=series[2 % len(series)],
+                alpha=0.14,
+                zorder=1.0,
+            )
+        if l_leg is not None and x_lo < x_apex:
+            x_l = np.linspace(x_lo, x_apex, 40)
+            ax.plot(
+                x_l,
+                l_leg[0] * x_l + l_leg[1],
+                color=series[5 % len(series)],
+                lw=2.2,
+                label="Strong-binding leg",
+            )
+        if r_leg is not None and x_apex < x_hi:
+            x_r = np.linspace(x_apex, x_hi, 40)
+            ax.plot(
+                x_r,
+                r_leg[0] * x_r + r_leg[1],
+                color=series[6 % len(series)],
+                lw=2.2,
+                label="Weak-binding leg",
+            )
+        ax.scatter(
+            xs,
+            ys,
+            s=72.0,
+            facecolor=series[1 % len(series)],
+            edgecolor=ink_col,
+            linewidth=1.5,
+            zorder=5.0,
+        )
+        _annotate_volcano_labels(ax, xs, ys, labels, ink_col)
+        if invert_y:
+            ax.invert_yaxis()
+        ax.set_xlim(x_lo, x_hi)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        if l_leg is not None or r_leg is not None:
+            ax.legend(loc="best", frameon=True, fontsize=8.5)
+        theme.apply_xkcd_spines(ax, preset=preset)
+        if title:
+            ax.set_title(title)
+    return ax
+
+
+def _fmt_charge(q: int) -> str:
+    """Formats an integer defect charge state concisely."""
+    return "0" if q == 0 else f"{q:+d}"
+
+
+def _defect_breakpoints(
+    cand: Sequence[tuple[int, float]],
+    e_lo: float,
+    e_hi: float,
+) -> list[float]:
+    """Collects sorted unique pairwise transition points inside [e_lo, e_hi]."""
+    bps: list[float] = [e_lo, e_hi]
+    for i_idx, (q_a, e_a) in enumerate(cand):
+        for q_b, e_b in cand[i_idx + 1 :]:
+            if q_a != q_b:
+                x_int = -(e_a - e_b) / float(q_a - q_b)
+                if e_lo < x_int < e_hi:
+                    bps.append(x_int)
+    bps.sort()
+    unique_bps: list[float] = []
+    for bp in bps:
+        if not unique_bps or bp - unique_bps[-1] > 1e-8:
+            unique_bps.append(bp)
+    return unique_bps
+
+
+def _lowest_charge_state(
+    cand: Sequence[tuple[int, float]],
+    e_fermi: float,
+) -> tuple[int, float]:
+    """Returns the lowest-energy ``(q, E0)`` charge state at ``e_fermi``."""
+    best_key = (float("inf"), 0)
+    win_q, win_e = cand[0]
+    for q_c, e_c in cand:
+        score = (e_c + q_c * e_fermi, -q_c)
+        if score < best_key:
+            best_key = score
+            win_q, win_e = q_c, e_c
+    return win_q, win_e
+
+
+def _lower_defect_envelope(
+    states: Sequence[tuple[int, float]],
+    e_lo: float,
+    e_hi: float,
+) -> tuple[list[tuple[float, float]], list[tuple[float, float, int, int]]]:
+    """Computes exact piecewise-linear E^f(E_F) and transitions."""
+    if not states:
+        raise exceptions.StructureError(
+            "Each defect must have at least one (charge, E_f) state."
+        )
+    cand = [(int(q), float(e0)) for q, e0 in states]
+    unique_bps = _defect_breakpoints(cand, e_lo, e_hi)
+
+    segs: list[tuple[float, float, int, float]] = []
+    for k in range(len(unique_bps) - 1):
+        x0, x1 = unique_bps[k], unique_bps[k + 1]
+        win_q, win_e = _lowest_charge_state(cand, 0.5 * (x0 + x1))
+        if segs and segs[-1][2] == win_q and abs(segs[-1][3] - win_e) < 1e-8:
+            segs[-1] = (segs[-1][0], x1, win_q, win_e)
+        else:
+            segs.append((x0, x1, win_q, win_e))
+
+    curve: list[tuple[float, float]] = [
+        (segs[0][0], segs[0][3] + segs[0][2] * segs[0][0])
+    ]
+    transitions: list[tuple[float, float, int, int]] = []
+    for k, seg in enumerate(segs):
+        x_end, q_val, e0_val = seg[1], seg[2], seg[3]
+        y_end = e0_val + q_val * x_end
+        curve.append((x_end, y_end))
+        if k + 1 < len(segs):
+            transitions.append((x_end, y_end, q_val, segs[k + 1][2]))
+    return curve, transitions
+
+
+def _plot_single_defect(
+    ax: maxes.Axes,
+    d_name: str,
+    states: Sequence[tuple[int, float]],
+    col: str,
+    ink_col: str,
+    bounds: tuple[float, float],
+    show_transitions: bool,
+) -> None:
+    """Plots one defect envelope curve and labels its transition levels."""
+    curve, trans = _lower_defect_envelope(states, bounds[0], bounds[1])
+    ax.plot(
+        [pt[0] for pt in curve],
+        [pt[1] for pt in curve],
+        color=col,
+        lw=2.2,
+        label=d_name,
+        zorder=4.0,
+    )
+    if show_transitions and trans:
+        ax.scatter(
+            [t[0] for t in trans],
+            [t[1] for t in trans],
+            s=54.0,
+            facecolor=col,
+            edgecolor=ink_col,
+            linewidth=1.3,
+            zorder=6.0,
+        )
+        for xf, yf, q1, q2 in trans:
+            lbl = f"({_fmt_charge(q1)}/{_fmt_charge(q2)})"
+            ax.annotate(
+                lbl,
+                xy=(xf, yf),
+                xytext=(4.0, 5.0),
+                textcoords="offset points",
+                fontsize=8.2,
+                color=col,
+            )
+
+
+def plot_defect_formation(
+    defects: Mapping[str, Sequence[tuple[int, float]]],
+    *,
+    band_gap: float = 1.12,
+    fermi_range: tuple[float, float] | None = None,
+    show_transitions: bool = True,
+    xlabel: str = "Fermi Level E_F - E_VBM (eV)",
+    ylabel: str = "Formation Energy E^f (eV)",
+    palette: str | Sequence[str] = "okabe_ito",
+    preset: str | theme.ThemePreset = "classic",
+    ax: maxes.Axes | None = None,
+    title: str | None = None,
+) -> maxes.Axes:
+    """Plots defect formation energies vs. Fermi level in xkcd style.
+
+    Evaluates the exact lower convex envelope ``min(E0 + q * E_F)`` across all
+    charge states ``(q, E0)`` supplied per defect and labels thermodynamic
+    charge-transition kinks ``(q1/q2)``.
+
+    Args:
+      defects: Mapping ``{defect_name: [(charge, Ef_at_VBM), ...]}``.
+      band_gap: Host semiconductor band gap in eV.
+      fermi_range: Optional ``(min_EF, max_EF)`` display window in eV.
+      show_transitions: Mark and label active charge-transition levels.
+      xlabel: Horizontal axis label.
+      ylabel: Vertical axis label.
+      palette: Series palette name or hex color list.
+      preset: Visual theme preset name or ``ThemePreset``.
+      ax: Optional target Matplotlib ``Axes``.
+      title: Optional heading.
+
+    Returns:
+      Matplotlib ``Axes`` containing the defect formation energy diagram.
+
+    Raises:
+      StructureError: If ``defects`` is empty or ``band_gap <= 0``.
+    """
+    if not defects:
+        raise exceptions.StructureError(
+            "plot_defect_formation requires at least one defect entry."
+        )
+    gap = float(band_gap)
+    if gap <= 0.0:
+        raise exceptions.StructureError("band_gap must be strictly positive.")
+    e_lo, e_hi = (
+        (0.0, gap)
+        if fermi_range is None
+        else (float(fermi_range[0]), float(fermi_range[1]))
+    )
+    if e_hi <= e_lo:
+        raise exceptions.StructureError("fermi_range must satisfy max > min.")
+
+    series = palettes.get_palette(palette)
+    ink_col = theme.get_preset(preset).ink_color
+    with theme.xkcd_style(preset=preset):
+        if ax is None:
+            _, ax = plt.subplots(figsize=(6.4, 4.5))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
+        if e_lo < 0.0:
+            ax.axvspan(
+                e_lo, 0.0, color=palettes.MUTED_GRAY, alpha=0.16, zorder=1.0
+            )
+        if e_hi > gap:
+            ax.axvspan(
+                gap, e_hi, color=palettes.MUTED_GRAY, alpha=0.16, zorder=1.0
+            )
+        for idx, (d_name, states) in enumerate(defects.items()):
+            _plot_single_defect(
+                ax,
+                d_name,
+                states,
+                series[(idx + 1) % len(series)],
+                ink_col,
+                (e_lo, e_hi),
+                show_transitions,
+            )
+        ax.axvline(0.0, color=ink_col, linestyle=":", lw=1.1, alpha=0.5)
+        ax.axvline(gap, color=ink_col, linestyle=":", lw=1.1, alpha=0.5)
+        ax.set_xlim(e_lo, e_hi)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.legend(loc="best", frameon=True, fontsize=8.8)
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)

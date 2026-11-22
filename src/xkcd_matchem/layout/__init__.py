@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 from xkcd_matchem.layout import canvas
+from xkcd_matchem.layout import comic
 from xkcd_matchem.layout import export
 from xkcd_matchem.layout import scroll
 
@@ -24,9 +25,14 @@ __all__ = [
     "Badge",
     "Board",
     "Card",
+    "ComicPanel",
+    "ComicStrip",
     "Container",
     "ScrollCard",
+    "draw_speech_bubble",
+    "draw_stick_scientist",
     "mm_to_inches",
+    "plot_comic_strip",
     "plot_scroll_card",
     "render_scroll_list",
     "save_figure",
@@ -35,9 +41,14 @@ __all__ = [
 Badge = canvas.Badge
 Board = canvas.Board
 Card = canvas.Card
+ComicPanel = comic.ComicPanel
+ComicStrip = comic.ComicStrip
 Container = canvas.Container
 ScrollCard = scroll.ScrollCard
+draw_speech_bubble = comic.draw_speech_bubble
+draw_stick_scientist = comic.draw_stick_scientist
 mm_to_inches = canvas.mm_to_inches
+plot_comic_strip = comic.plot_comic_strip
 plot_scroll_card = scroll.plot_scroll_card
 render_scroll_list = scroll.render_scroll_list
 save_figure = export.save_figure

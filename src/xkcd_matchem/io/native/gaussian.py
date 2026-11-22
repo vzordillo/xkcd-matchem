@@ -82,6 +82,7 @@ def read_gaussian_log_full(path: str | pathlib.Path) -> dict[str, object]:
     scf_energies: list[float] = []
     occ_ev: list[float] = []
     virt_ev: list[float] = []
+    prev_was_virt = False
     freqs: list[float] = []
     ir_ints: list[float] = []
     ha_to_ev = elements.CODATA2022.hartree_to_ev
@@ -113,13 +114,21 @@ def read_gaussian_log_full(path: str | pathlib.Path) -> dict[str, object]:
             if match:
                 scf_energies.append(float(match.group(1)) * ha_to_ev)
         elif "Alpha  occ. eigenvalues --" in line:
+            if prev_was_virt:
+                occ_ev.clear()
+                virt_ev.clear()
+                prev_was_virt = False
             occ_ev.extend(
                 float(x) * ha_to_ev for x in line.split("--", 1)[1].split()
             )
         elif "Alpha virt. eigenvalues --" in line:
+            prev_was_virt = True
             virt_ev.extend(
                 float(x) * ha_to_ev for x in line.split("--", 1)[1].split()
             )
+        elif "Harmonic frequencies" in line:
+            freqs.clear()
+            ir_ints.clear()
         elif line.strip().startswith("Frequencies --"):
             freqs.extend(float(x) for x in line.split("--", 1)[1].split())
         elif line.strip().startswith("IR Inten    --"):

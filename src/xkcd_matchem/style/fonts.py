@@ -15,8 +15,10 @@
 
 from __future__ import annotations
 
+import os
 import pathlib
 import urllib.request
+import warnings
 
 from matplotlib import font_manager
 
@@ -144,8 +146,16 @@ def register_font(font_path: str | pathlib.Path) -> str:
 
 
 def get_default_font() -> str | None:
-    """Returns the active session-wide font override, or ``None`` if unset."""
-    return _DEFAULT_FONT_STATE[0]
+    """Returns active session font override or ``XM_COMMERCIAL_SAFE`` font."""
+    if _DEFAULT_FONT_STATE[0] is not None:
+        return _DEFAULT_FONT_STATE[0]
+    if os.environ.get("XM_COMMERCIAL_SAFE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return "Patrick Hand"
+    return None
 
 
 def set_default_font(font: str | pathlib.Path | None) -> str:
@@ -228,7 +238,7 @@ def fetch_xkcd_script(
     family = register_font(target_file)
     if activate:
         _DEFAULT_FONT_STATE[0] = family
-    print(_XKCD_SCRIPT_NOTICE % target_file)
+    warnings.warn(_XKCD_SCRIPT_NOTICE % target_file, UserWarning, stacklevel=2)
     return target_file
 
 

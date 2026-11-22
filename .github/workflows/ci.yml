@@ -29,13 +29,16 @@ jobs:
           python -m pip install ".[dev,animation]"
 
       - name: Run Ruff lint check
-        run: ruff check src tests scripts
+        run: ruff check .
 
       - name: Run Pylint on source package
         run: pylint src/xkcd_matchem
 
+      - name: Run Mypy type check
+        run: mypy src/xkcd_matchem
+
       - name: Run test suite
-        run: pytest -v tests/
+        run: pytest -v --cov=xkcd_matchem --cov-fail-under=90 tests/
 
       - name: Build sdist and wheel
         if: matrix.python-version == '3.12'

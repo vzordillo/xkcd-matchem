@@ -54,6 +54,7 @@ def read_sdf(path: str | pathlib.Path) -> structure.AtomsData:
         symbols.append(elements.get_element(parts[3]).symbol)
 
     order_map = {1: 1.0, 2: 2.0, 3: 3.0, 4: 1.5}
+    stereo_map = {1: "wedge", 4: "wavy", 6: "dash"}
     bonds: list[structure.Bond] = []
     for k in range(n_bonds):
         line = lines[4 + n_atoms + k]
@@ -61,16 +62,23 @@ def read_sdf(path: str | pathlib.Path) -> structure.AtomsData:
             i_idx = int(line[0:3]) - 1
             j_idx = int(line[3:6]) - 1
             raw_ord = int(line[6:9])
+            raw_stereo = (
+                int(line[9:12])
+                if len(line) >= 12 and line[9:12].strip()
+                else 0
+            )
         except ValueError:
             parts = line.split()
             i_idx = int(parts[0]) - 1
             j_idx = int(parts[1]) - 1
             raw_ord = int(parts[2])
+            raw_stereo = int(parts[3]) if len(parts) >= 4 else 0
         bonds.append(
             structure.Bond(
                 i=i_idx,
                 j=j_idx,
                 order=order_map.get(raw_ord, float(raw_ord)),
+                stereo=stereo_map.get(raw_stereo, "none"),
             )
         )
     return structure.AtomsData(

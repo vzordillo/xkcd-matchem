@@ -72,7 +72,11 @@ def _parse_single_frame(
     if "pbc" in meta:
         flags = meta["pbc"].replace(",", " ").split()
         if len(flags) == 3:
-            pbc = tuple(f.upper() in ("T", "TRUE", "1") for f in flags)
+            pbc = (
+                flags[0].upper() in ("T", "TRUE", "1"),
+                flags[1].upper() in ("T", "TRUE", "1"),
+                flags[2].upper() in ("T", "TRUE", "1"),
+            )
 
     symbols: list[str] = []
     coords = np.zeros((n_atoms, 3), dtype=np.float64)
@@ -136,11 +140,17 @@ def read_xyz_trajectory(path: str | pathlib.Path) -> trajectory.Trajectory:
 
 
 def read_xyz(path: str | pathlib.Path) -> structure.AtomsData:
-    """Reads the first (or final) structure frame from an XYZ/extXYZ file."""
-    traj = read_xyz_trajectory(path)
-    if len(traj) == 1:
-        return traj[0]
-    return traj[0]
+    """Reads only the first structure frame from an XYZ/extXYZ file."""
+    p = pathlib.Path(path)
+    lines = p.read_text(encoding="utf-8").splitlines()
+    cursor = 0
+    while cursor < len(lines) and not lines[cursor].strip():
+        cursor += 1
+    if cursor >= len(lines):
+        raise exceptions.ParseError(f"No XYZ frames found in {p}.")
+    frame, _ = _parse_single_frame(lines, cursor)
+    frame.metadata.setdefault("source", str(p))
+    return frame
 
 
 def write_xyz(atoms: structure.AtomsData, path: str | pathlib.Path) -> None:

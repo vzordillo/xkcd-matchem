@@ -112,3 +112,17 @@ Need pure atomic lattice sites inside a unit cell without any bond network? Pass
 See [Tutorial 11: Periodic Table, Scrolls, Grids, Icons & Graphs](tutorials/11_periodic_table_scrolls_and_informatics.ipynb).
 
 ![Bond-free crystals and planar 2D GNN graphs](_static/gallery/crystal_graphs_2d.png)
+
+## 3D Isosurfaces, Phonons, Wulff Shapes & Reaction Schemes
+
+Render zero-dependency 3D orbital/density isosurfaces (`plot_isosurface()`), Phonopy phonon dispersions with imaginary-mode highlights (`plot_phonon_bands()`), equilibrium 3D Wulff crystal polyhedra (`plot_wulff_shape()`), 2D skeletal stereobond reaction schemes (`plot_reaction_scheme()`), and narrative `ComicStrip` figures.
+See [Tutorial 12: 3D Isosurfaces, Phonons, Wulff Shapes & Comic Strips](tutorials/12_isosurfaces_phonons_wulff_and_comics.ipynb).
+
+![Isosurfaces, phonons, Wulff shapes, and reaction schemes](_static/gallery/flagship_features.png)
+
+## First Brillouin Zones, Volcano Catalysis, Defects & LOBSTER COHP
+
+Render zero-dependency Wigner–Seitz 3D first Brillouin zones with high-symmetry k-paths (`plot_brillouin_zone()`), Sabatier heterogeneous catalysis volcano curves (`plot_volcano()`), semiconductor defect formation energy diagrams (`plot_defect_formation()`), and LOBSTER `-pCOHP` / `-ICOHP` bonding analyses (`plot_cohp()`).
+See [Tutorial 13: Brillouin Zones, Catalysis Volcanos, Defects & LOBSTER COHP](tutorials/13_brillouin_volcano_defects_and_cohp.ipynb).
+
+![Brillouin zones, COHP bonding, Sabatier volcanos, and defect formation](_static/gallery/brillouin_cohp_volcano.png)

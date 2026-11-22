@@ -18,15 +18,26 @@ from __future__ import annotations
 from collections.abc import Mapping
 from collections.abc import Sequence
 import math
+import pathlib
+from typing import Any
+from typing import cast
 
 from matplotlib import axes as maxes
+from matplotlib import collections
+from matplotlib import colors as mcolors
 from matplotlib import patches
 from matplotlib import pyplot as plt
 import numpy as np
 from scipy import spatial
 from scipy import stats
 
+from xkcd_matchem.core import brillouin
 from xkcd_matchem.core import exceptions
+from xkcd_matchem.core import geometry
+from xkcd_matchem.core import structure
+from xkcd_matchem.core import wulff
+from xkcd_matchem.io import loader
+from xkcd_matchem.render import primitives
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import patterns
 from xkcd_matchem.style import theme
@@ -171,6 +182,7 @@ def _draw_ternary_frame(
     ink_col: str,
     show_grid: bool,
     shade: str | None,
+    bg_color: str = palettes.PAPER,
 ) -> None:
     """Draws the Gibbs triangle border, barycentric grid, and corner labels."""
     tri = np.array([[0.0, 0.0], [1.0, 0.0], [0.5, _SQRT3_HALF]])
@@ -178,7 +190,7 @@ def _draw_ternary_frame(
     bg_poly = patches.Polygon(
         tri,
         closed=True,
-        facecolor="#F8FAFC" if hatch else "none",
+        facecolor=primitives.muted_surface_color(bg_color) if hatch else "none",
         edgecolor=ink_col,
         linewidth=2.0,
         hatch=hatch,
@@ -304,7 +316,14 @@ def plot_ternary_phase_diagram(
             _, ax = plt.subplots(figsize=(6.2, 5.6))
         else:
             theme.style_existing_axes(ax, preset=preset)
-        _draw_ternary_frame(ax, corners, ink_col, show_grid, shade)
+        _draw_ternary_frame(
+            ax,
+            corners,
+            ink_col,
+            show_grid,
+            shade,
+            preset_obj.axes_facecolor,
+        )
 
         for u, v in sorted(tie_edges):
             ax.plot(
@@ -399,6 +418,7 @@ def _draw_sunburst_rings(
     series: Sequence[str],
     ink_col: str,
     shade: str | Sequence[str | None] | None,
+    bg_color: str = palettes.PAPER,
 ) -> None:
     """Draws inner crystal-system ring and outer space-group ring wedges."""
     total = float(sum(sys_totals.values()))
@@ -442,9 +462,9 @@ def _draw_sunburst_rings(
                 color=ink_col,
                 bbox={
                     "boxstyle": "round,pad=0.14",
-                    "facecolor": "#FFFFFF",
+                    "facecolor": bg_color,
                     "edgecolor": "none",
-                    "alpha": 0.82,
+                    "alpha": 0.85,
                 },
                 zorder=5.0,
             )
@@ -530,7 +550,8 @@ def plot_spacegroup_distribution(
         )
     sys_totals, sys_members = _aggregate_spacegroups(spacegroups)
     series = palettes.get_palette(palette)
-    ink_col = theme.get_preset(preset).ink_color
+    preset_obj = theme.get_preset(preset)
+    ink_col = preset_obj.ink_color
 
     with theme.xkcd_style(preset=preset):
         if ax is None:
@@ -541,7 +562,13 @@ def plot_spacegroup_distribution(
 
         if view_mode == "sunburst":
             _draw_sunburst_rings(
-                ax, sys_totals, sys_members, series, ink_col, shade
+                ax,
+                sys_totals,
+                sys_members,
+                series,
+                ink_col,
+                shade,
+                preset_obj.axes_facecolor,
             )
             ax.set_xlim(-1.12, 1.12)
             ax.set_ylim(-1.12, 1.12)
@@ -604,9 +631,10 @@ def _draw_hist_series(
     clean = vals[np.isfinite(vals)]
     if clean.size == 0:
         return
+    bins_arg: Any = bins.tolist() if isinstance(bins, np.ndarray) else bins
     _, edges, bar_patches = ax.hist(
         clean,
-        bins=bins,
+        bins=bins_arg,
         color=col,
         edgecolor=ink_col,
         linewidth=1.3,
@@ -616,7 +644,7 @@ def _draw_hist_series(
         zorder=3.0,
     )
     if hatch:
-        for patch in bar_patches:
+        for patch in cast(Any, bar_patches):
             patch.set_sketch_params(0.0, 0.0, 0.0)
     if show_kde and clean.size >= 4 and float(np.std(clean)) > 1e-9:
         kde = stats.gaussian_kde(clean)
@@ -736,6 +764,452 @@ def plot_histogram(
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         theme.apply_xkcd_spines(ax, preset=preset)
+        if title:
+            ax.set_title(title, color=ink_col)
+    return ax
+
+
+def _coerce_wulff_cell(
+    source: (
+        structure.AtomsData
+        | np.ndarray
+        | Sequence[Sequence[float]]
+        | str
+        | pathlib.Path
+    ),
+) -> np.ndarray:
+    """Resolves a ``(3, 3)`` unit-cell matrix for Wulff construction."""
+    if isinstance(source, (str, pathlib.Path)):
+        loaded = loader.load(source)
+        if not isinstance(loaded, structure.AtomsData) or loaded.cell is None:
+            raise exceptions.StructureError(
+                f"Structure {source!r} has no periodic unit cell."
+            )
+        return np.asarray(loaded.cell, dtype=np.float64)
+    if isinstance(source, structure.AtomsData):
+        if source.cell is None:
+            raise exceptions.StructureError(
+                "AtomsData has no periodic unit cell for Wulff construction."
+            )
+        return np.asarray(source.cell, dtype=np.float64)
+    return np.asarray(source, dtype=np.float64)
+
+
+def _format_hkl_label(hkl: tuple[int, int, int]) -> str:
+    """Formats crystallographic Miller indices cleanly onto facets."""
+    parts = [str(int(v)) for v in hkl]
+    if all(len(p) == 1 for p in parts):
+        return f"({''.join(parts)})"
+    return f"({','.join(parts)})"
+
+
+def _lambert_shade_rgb(
+    hex_col: str,
+    dot_light: float,
+) -> tuple[float, float, float]:
+    """Computes clamped RGB color modulated by directional Lambert shading."""
+    r, g, b = mcolors.to_rgb(hex_col)
+    factor = 0.62 + 0.38 * max(float(dot_light), 0.0)
+    return (
+        float(np.clip(r * factor, 0.0, 1.0)),
+        float(np.clip(g * factor, 0.0, 1.0)),
+        float(np.clip(b * factor, 0.0, 1.0)),
+    )
+
+
+def _project_wulff_facets(
+    shape: wulff.WulffShape,
+    cam: geometry.Camera,
+    series: Sequence[str],
+    show_labels: bool,
+) -> tuple[
+    list[np.ndarray],
+    list[tuple[float, float, float]],
+    list[tuple[np.ndarray, str, str]],
+    tuple[float, float, float, float],
+]:
+    """Projects, depth-sorts, and shades Wulff facets back-to-front."""
+    basis = geometry.rotation_matrix(cam.azimuth, cam.elevation, cam.roll)
+    light_dir = np.array([-0.45, 0.55, 0.70], dtype=np.float64)
+    light_dir /= float(np.linalg.norm(light_dir))
+    span = geometry.scene_projection_span(
+        shape.vertices, cam, center=np.zeros(3, dtype=np.float64)
+    )
+
+    family_colors: dict[tuple[int, int, int], str] = {}
+    records: list[tuple[float, wulff.WulffFacet, np.ndarray, np.ndarray]] = []
+    for facet in shape.facets:
+        s_vals = sorted(abs(x) for x in facet.hkl)
+        fam_key = (s_vals[0], s_vals[1], s_vals[2])
+        if fam_key not in family_colors:
+            family_colors[fam_key] = series[
+                (len(family_colors) + 1) % len(series)
+            ]
+        xy_f, dep_f = geometry.project_points(
+            facet.vertices, cam, center=np.zeros(3), span=span
+        )
+        records.append(
+            (float(np.mean(dep_f)), facet, xy_f, facet.normal @ basis.T)
+        )
+    records.sort(key=lambda item: item[0])
+
+    polys: list[np.ndarray] = []
+    face_cols: list[tuple[float, float, float]] = []
+    labels_meta: list[tuple[np.ndarray, str, str]] = []
+    for _, facet, xy_f, n_rot in records:
+        s_vals = sorted(abs(x) for x in facet.hkl)
+        fam_key = (s_vals[0], s_vals[1], s_vals[2])
+        base_hex = family_colors[fam_key]
+        shaded = _lambert_shade_rgb(base_hex, float(np.dot(n_rot, light_dir)))
+        polys.append(xy_f)
+        face_cols.append(shaded)
+        if show_labels and float(n_rot[2]) > 0.15:
+            labels_meta.append(
+                (
+                    np.mean(xy_f, axis=0),
+                    _format_hkl_label(facet.hkl),
+                    primitives.contrast_text_color(mcolors.to_hex(shaded)),
+                )
+            )
+
+    all_xy, _ = geometry.project_points(
+        shape.vertices, cam, center=np.zeros(3), span=span
+    )
+    x_min, y_min = np.min(all_xy, axis=0)
+    x_max, y_max = np.max(all_xy, axis=0)
+    pad = 0.22 * max(float(x_max - x_min), float(y_max - y_min), 1e-3)
+    bounds = (
+        float(x_min - pad),
+        float(x_max + pad),
+        float(y_min - pad),
+        float(y_max + pad),
+    )
+    return polys, face_cols, labels_meta, bounds
+
+
+def plot_wulff_shape(
+    source: (
+        structure.AtomsData
+        | np.ndarray
+        | Sequence[Sequence[float]]
+        | str
+        | pathlib.Path
+    ),
+    surface_energies: Mapping[tuple[int, int, int], float],
+    *,
+    symops: (
+        Sequence[tuple[np.ndarray, np.ndarray]] | str | int | None
+    ) = "cubic",
+    camera: geometry.Camera | str | None = "isometric",
+    ax: maxes.Axes | None = None,
+    palette: str | Sequence[str] = "okabe_ito",
+    show_labels: bool = True,
+    alpha: float = 0.84,
+    preset: str | theme.ThemePreset = "classic",
+    title: str | None = None,
+) -> maxes.Axes:
+    """Renders an xkcd-style 3D shaded equilibrium Wulff crystal shape.
+
+    Args:
+      source: ``AtomsData``, ``(3, 3)`` cell matrix, file path, or sample.
+      surface_energies: Mapping ``{(h, k, l): gamma}`` with ``gamma > 0``.
+      symops: Crystal symmetry expansion mode passed to ``compute_wulff_shape``.
+      camera: ``Camera`` object or preset string.
+      ax: Optional target Matplotlib ``Axes``.
+      palette: Series palette name or hex color list for Miller families.
+      show_labels: Whether to label front-facing ``(hkl)`` facets.
+      alpha: Facet polygon fill opacity.
+      preset: Visual theme preset name or ``ThemePreset``.
+      title: Optional heading above the Wulff crystal.
+
+    Returns:
+      Matplotlib ``Axes`` containing the projected Wulff polyhedron.
+    """
+    cell = _coerce_wulff_cell(source)
+    shape = wulff.compute_wulff_shape(cell, surface_energies, symops=symops)
+    cam = geometry.resolve_camera(camera, cell=cell)
+    series = palettes.get_palette(palette)
+    ink_col = theme.get_preset(preset).ink_color
+    polys, face_cols, labels_meta, bounds = _project_wulff_facets(
+        shape, cam, series, show_labels
+    )
+
+    with theme.xkcd_style(preset=preset):
+        if ax is None:
+            _, ax = plt.subplots(figsize=(5.6, 5.2))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
+        poly_coll = collections.PolyCollection(
+            polys,
+            facecolors=face_cols,
+            edgecolors=ink_col,
+            linewidths=1.7,
+            alpha=alpha,
+            joinstyle="round",
+            zorder=3.0,
+        )
+        ax.add_collection(poly_coll)
+        for centroid, txt_lbl, txt_col in labels_meta:
+            ax.text(
+                float(centroid[0]),
+                float(centroid[1]),
+                txt_lbl,
+                ha="center",
+                va="center",
+                fontsize=8.2,
+                color=txt_col,
+                zorder=5.0,
+            )
+        ax.set_xlim(bounds[0], bounds[1])
+        ax.set_ylim(bounds[2], bounds[3])
+        ax.set_aspect("equal")
+        ax.set_axis_off()
+        if title:
+            ax.set_title(title, color=ink_col)
+    return ax
+
+
+def _draw_bz_kpath_and_axes(
+    ax: maxes.Axes,
+    bz: brillouin.BrillouinZone,
+    cam: geometry.Camera,
+    span: float,
+    ink_col: str,
+    path_color: str,
+    *,
+    kpath: Sequence[str] | None,
+    show_kpoints: bool,
+    show_axes: bool,
+) -> None:
+    """Draws reciprocal basis vectors and high-symmetry k-path inside a BZ."""
+    origin = np.zeros(3, dtype=np.float64)
+    if show_axes:
+        ax_cols = ("#D55E00", "#009E73", "#0072B2")
+        for idx, b_vec in enumerate(bz.reciprocal_cell):
+            tip = b_vec * (0.42 / max(float(np.linalg.norm(b_vec)), 1e-9))
+            pts = np.vstack([origin, tip])
+            xy, _ = geometry.project_points(pts, cam, center=origin, span=span)
+            ax.annotate(
+                "",
+                xy=(float(xy[1, 0]), float(xy[1, 1])),
+                xytext=(float(xy[0, 0]), float(xy[0, 1])),
+                arrowprops={
+                    "arrowstyle": "->,head_width=0.22,head_length=0.28",
+                    "color": ax_cols[idx],
+                    "lw": 1.6,
+                },
+                zorder=5.5,
+            )
+            ax.text(
+                float(xy[1, 0]) * 1.12,
+                float(xy[1, 1]) * 1.12,
+                f"b{idx + 1}",
+                fontsize=8.5,
+                color=ax_cols[idx],
+                ha="center",
+                va="center",
+                zorder=6.0,
+            )
+
+    tour = list(bz.default_path if kpath is None else kpath)
+    valid = [name for name in tour if name in bz.high_symmetry_points]
+    if not show_kpoints or not valid:
+        return
+    q_arr = np.vstack([bz.high_symmetry_points[name] for name in valid])
+    q_xy, _ = geometry.project_points(q_arr, cam, center=origin, span=span)
+    if len(q_xy) >= 2:
+        ax.plot(
+            q_xy[:, 0],
+            q_xy[:, 1],
+            color=path_color,
+            linewidth=2.3,
+            zorder=7.0,
+        )
+    ax.scatter(
+        q_xy[:, 0],
+        q_xy[:, 1],
+        s=42.0,
+        facecolor=path_color,
+        edgecolor=ink_col,
+        linewidth=1.1,
+        zorder=8.0,
+    )
+    seen_pts: set[str] = set()
+    for idx, name in enumerate(valid):
+        if name in seen_pts:
+            continue
+        seen_pts.add(name)
+        disp_lbl = "Γ" if name == "G" else name
+        ax.text(
+            float(q_xy[idx, 0]),
+            float(q_xy[idx, 1]) + 0.045 * span,
+            disp_lbl,
+            fontsize=9.5,
+            fontweight="bold",
+            color=ink_col,
+            ha="center",
+            va="bottom",
+            zorder=9.0,
+        )
+
+
+def _project_bz_facets(
+    bz: brillouin.BrillouinZone,
+    cam: geometry.Camera,
+    color: str,
+) -> tuple[
+    list[np.ndarray],
+    list[tuple[float, float, float]],
+    list[np.ndarray],
+    tuple[float, float, float, float],
+    float,
+]:
+    """Projects, splits front/back, and Lambert-shades Brillouin zone faces."""
+    basis = geometry.rotation_matrix(cam.azimuth, cam.elevation, cam.roll)
+    light_dir = np.array([-0.45, 0.55, 0.70], dtype=np.float64)
+    light_dir /= float(np.linalg.norm(light_dir))
+    origin = np.zeros(3, dtype=np.float64)
+    span = geometry.scene_projection_span(bz.vertices, cam, center=origin)
+
+    records: list[
+        tuple[float, np.ndarray, tuple[float, float, float], float]
+    ] = []
+    for facet in bz.facets:
+        xy_f, dep_f = geometry.project_points(
+            facet.vertices, cam, center=origin, span=span
+        )
+        n_rot = facet.normal @ basis.T
+        shaded = _lambert_shade_rgb(color, float(np.dot(n_rot, light_dir)))
+        records.append((float(np.mean(dep_f)), xy_f, shaded, float(n_rot[2])))
+    records.sort(key=lambda item: item[0])
+
+    front_polys = [it[1] for it in records if it[3] >= -1e-3]
+    front_cols = [it[2] for it in records if it[3] >= -1e-3]
+    back_polys = [it[1] for it in records if it[3] < -1e-3]
+
+    all_xy, _ = geometry.project_points(
+        bz.vertices, cam, center=origin, span=span
+    )
+    x_min, y_min = np.min(all_xy, axis=0)
+    x_max, y_max = np.max(all_xy, axis=0)
+    pad = 0.24 * max(float(x_max - x_min), float(y_max - y_min), 1e-3)
+    bounds = (
+        float(x_min - pad),
+        float(x_max + pad),
+        float(y_min - pad),
+        float(y_max + pad),
+    )
+    return front_polys, front_cols, back_polys, bounds, span
+
+
+def plot_brillouin_zone(
+    source: (
+        brillouin.BrillouinZone
+        | structure.AtomsData
+        | np.ndarray
+        | Sequence[Sequence[float]]
+        | str
+        | pathlib.Path
+    ),
+    *,
+    use_primitive: bool = True,
+    kpath: Sequence[str] | None = None,
+    show_kpoints: bool = True,
+    show_axes: bool = True,
+    camera: geometry.Camera | str | None = "isometric",
+    ax: maxes.Axes | None = None,
+    color: str = "#56B4E9",
+    path_color: str = "#D55E00",
+    alpha: float = 0.36,
+    preset: str | theme.ThemePreset = "classic",
+    title: str | None = None,
+) -> maxes.Axes:
+    """Plots 3D first Brillouin zone with high-symmetry k-path in xkcd style.
+
+    Args:
+      source: ``BrillouinZone``, ``AtomsData``, ``(3, 3)`` lattice matrix,
+        file path, or bundled sample filename.
+      use_primitive: Reduce centered F/I/C conventional cells to primitive form.
+      kpath: Optional ordered sequence of high-symmetry point names to trace.
+      show_kpoints: Whether to plot the high-symmetry k-path and markers.
+      show_axes: Whether to draw reciprocal basis vectors ``b1, b2, b3``.
+      camera: ``Camera`` object or preset string.
+      ax: Optional target Matplotlib ``Axes``.
+      color: Facet fill hex color string.
+      path_color: High-symmetry k-path and marker accent hex color.
+      alpha: Translucent polyhedron facet opacity.
+      preset: Visual theme preset name or ``ThemePreset``.
+      title: Optional plot heading.
+
+    Returns:
+      Matplotlib ``Axes`` containing the projected first Brillouin zone.
+    """
+    if isinstance(source, brillouin.BrillouinZone):
+        bz = source
+    elif isinstance(source, (str, pathlib.Path)):
+        loaded = loader.load(source)
+        if not isinstance(loaded, structure.AtomsData):
+            raise exceptions.StructureError(
+                f"Expected AtomsData from {source!r}."
+            )
+        bz = brillouin.compute_brillouin_zone(
+            loaded, use_primitive=use_primitive
+        )
+    else:
+        bz = brillouin.compute_brillouin_zone(
+            source, use_primitive=use_primitive
+        )
+
+    cam = geometry.resolve_camera(camera)
+    ink_col = theme.get_preset(preset).ink_color
+    front_polys, front_cols, back_polys, bounds, span = _project_bz_facets(
+        bz, cam, color
+    )
+
+    with theme.xkcd_style(preset=preset):
+        if ax is None:
+            _, ax = plt.subplots(figsize=(5.8, 5.2))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
+        if back_polys:
+            back_coll = collections.PolyCollection(
+                cast(Any, back_polys),
+                facecolors=[
+                    _lambert_shade_rgb(color, 0.15) for _ in back_polys
+                ],
+                edgecolors=palettes.MUTED_GRAY,
+                linewidths=1.0,
+                linestyles="--",
+                alpha=alpha * 0.45,
+                zorder=1.5,
+            )
+            ax.add_collection(back_coll)
+        if front_polys:
+            front_coll = collections.PolyCollection(
+                cast(Any, front_polys),
+                facecolors=front_cols,
+                edgecolors=ink_col,
+                linewidths=1.7,
+                alpha=alpha,
+                joinstyle="round",
+                zorder=3.0,
+            )
+            ax.add_collection(front_coll)
+        _draw_bz_kpath_and_axes(
+            ax,
+            bz,
+            cam,
+            span,
+            ink_col,
+            path_color,
+            kpath=kpath,
+            show_kpoints=show_kpoints,
+            show_axes=show_axes,
+        )
+        ax.set_xlim(bounds[0], bounds[1])
+        ax.set_ylim(bounds[2], bounds[3])
+        ax.set_aspect("equal")
+        ax.set_axis_off()
         if title:
             ax.set_title(title, color=ink_col)
     return ax

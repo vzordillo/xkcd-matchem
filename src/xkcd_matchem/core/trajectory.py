@@ -24,6 +24,7 @@ import numpy as np
 
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import geometry
+from xkcd_matchem.core import neighbors
 from xkcd_matchem.core import structure
 from xkcd_matchem.data import elements
 
@@ -161,36 +162,16 @@ class Trajectory:
             vals -= vals[0]
         u_key = unit.lower()
         if u_key == "ev":
-            return vals
+            return np.asarray(vals, dtype=np.float64)
         if u_key == "kj/mol":
-            return vals * elements.CODATA2022.ev_to_kj_mol
-        if u_key == "kcal/mol":
-            return vals * elements.CODATA2022.ev_to_kcal_mol
-        raise exceptions.StructureError(f"Unsupported energy unit {unit!r}.")
-
-    def _periodic_shift_vectors(
-        self,
-        cell: np.ndarray,
-        r_max: float,
-    ) -> np.ndarray:
-        """Enumerates Cartesian lattice shifts enclosing a sphere ``r_max``."""
-        gram = cell @ cell.T
-        g_inv = np.linalg.inv(gram)
-        cell_diag = float(np.linalg.norm(cell[0] + cell[1] + cell[2]))
-        diag_g = np.maximum(np.diag(g_inv), 0.0)
-        bounds = [
-            min(
-                6,
-                int(
-                    math.ceil((r_max + cell_diag) * math.sqrt(float(dg)) + 1.0)
-                ),
+            return np.asarray(
+                vals * elements.CODATA2022.ev_to_kj_mol, dtype=np.float64
             )
-            for dg in diag_g
-        ]
-        ranges = [np.arange(-b, b + 1, dtype=np.int64) for b in bounds]
-        grids = np.meshgrid(*ranges, indexing="ij")
-        shifts = np.column_stack([g.ravel() for g in grids]).astype(np.float64)
-        return shifts @ cell
+        if u_key == "kcal/mol":
+            return np.asarray(
+                vals * elements.CODATA2022.ev_to_kcal_mol, dtype=np.float64
+            )
+        raise exceptions.StructureError(f"Unsupported energy unit {unit!r}.")
 
     def _frame_pair_distances(
         self,
@@ -199,34 +180,29 @@ class Trajectory:
         sym_b: str,
         r_max: float,
     ) -> tuple[list[float], int, float]:
-        """Collects periodic pair distances up to ``r_max`` across shells."""
-        idx_a = [i for i, s in enumerate(frame.symbols) if s == sym_a]
-        idx_b = [i for i, s in enumerate(frame.symbols) if s == sym_b]
-        if not idx_a or not idx_b:
+        """Collects periodic pair distances up to ``r_max`` using cKDTree."""
+        n_a = sum(1 for s in frame.symbols if s == sym_a)
+        n_b = sum(1 for s in frame.symbols if s == sym_b)
+        if n_a == 0 or n_b == 0:
             return [], 0, 0.0
-        n_a = len(idx_a)
-        n_b = len(idx_b)
         pair_count = float(n_a * (n_b - 1 if sym_a == sym_b else n_b))
         if pair_count <= 0.0:
             pair_count = float(n_a)
 
-        pos_a = frame.positions[idx_a]
-        pos_b = frame.positions[idx_b]
-        if frame.cell is None:
-            raise exceptions.StructureError("RDF frame requires a unit cell.")
-        shift_vecs = self._periodic_shift_vectors(frame.cell, r_max)
-
-        dists: list[float] = []
-        same = sym_a == sym_b
-        for i_loc, ia in enumerate(idx_a):
-            for j_loc, ib in enumerate(idx_b):
-                cands = (pos_b[j_loc] - pos_a[i_loc])[None, :] + shift_vecs
-                d_vals = np.linalg.norm(cands, axis=1)
-                mask = d_vals < r_max
-                if same and ia == ib:
-                    mask &= d_vals > 1e-6
-                if np.any(mask):
-                    dists.extend(d_vals[mask].tolist())
+        hits = neighbors.find_periodic_neighbors(
+            frame,
+            max_cutoff=r_max,
+            min_cutoff=1e-6,
+            use_pbc=True,
+            symmetric=True,
+        )
+        dists = [
+            hit.distance
+            for hit in hits
+            if hit.distance < r_max
+            and frame.symbols[hit.i] == sym_a
+            and frame.symbols[hit.j] == sym_b
+        ]
         return dists, n_a, pair_count
 
     def compute_rdf(

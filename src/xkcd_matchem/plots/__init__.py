@@ -32,12 +32,16 @@ __all__ = [
     "plot_bands",
     "plot_bands_dos",
     "plot_bar_comparison",
+    "plot_brillouin_zone",
+    "plot_cohp",
     "plot_coordination",
     "plot_crystal",
+    "plot_defect_formation",
     "plot_dos",
     "plot_eos",
     "plot_graph_network",
     "plot_histogram",
+    "plot_isosurface",
     "plot_md_timeseries",
     "plot_mo_diagram",
     "plot_molecule",
@@ -45,17 +49,21 @@ __all__ = [
     "plot_parity",
     "plot_periodic_table",
     "plot_phase_diagram_2d",
+    "plot_phonon_bands",
     "plot_pipeline_diagram",
     "plot_pourbaix",
     "plot_rdf",
     "plot_reaction_profile",
+    "plot_reaction_scheme",
     "plot_rmsd",
     "plot_slab",
     "plot_spacegroup_distribution",
     "plot_spectrum",
     "plot_structure_graph",
     "plot_ternary_phase_diagram",
+    "plot_volcano",
     "plot_volumetric_slice",
+    "plot_wulff_shape",
     "plot_xrd",
     "spacegroup_to_crystal_system",
 ]
@@ -64,12 +72,16 @@ animate_trajectory = trajectory.animate_trajectory
 plot_bands = electronic.plot_bands
 plot_bands_dos = electronic.plot_bands_dos
 plot_bar_comparison = charts.plot_bar_comparison
+plot_brillouin_zone = materials.plot_brillouin_zone
+plot_cohp = electronic.plot_cohp
 plot_coordination = structure.plot_coordination
 plot_crystal = structure.plot_crystal
+plot_defect_formation = thermo.plot_defect_formation
 plot_dos = electronic.plot_dos
 plot_eos = thermo.plot_eos
 plot_graph_network = graphs.plot_graph_network
 plot_histogram = materials.plot_histogram
+plot_isosurface = electronic.plot_isosurface
 plot_md_timeseries = trajectory.plot_md_timeseries
 plot_mo_diagram = electronic.plot_mo_diagram
 plot_molecule = structure.plot_molecule
@@ -77,16 +89,20 @@ plot_neb = reactions.plot_neb
 plot_parity = charts.plot_parity
 plot_periodic_table = ptable.plot_periodic_table
 plot_phase_diagram_2d = thermo.plot_phase_diagram_2d
+plot_phonon_bands = electronic.plot_phonon_bands
 plot_pipeline_diagram = charts.plot_pipeline_diagram
 plot_pourbaix = thermo.plot_pourbaix
 plot_rdf = trajectory.plot_rdf
 plot_reaction_profile = reactions.plot_reaction_profile
+plot_reaction_scheme = reactions.plot_reaction_scheme
 plot_rmsd = trajectory.plot_rmsd
 plot_slab = structure.plot_slab
 plot_spacegroup_distribution = materials.plot_spacegroup_distribution
 plot_spectrum = spectroscopy.plot_spectrum
 plot_structure_graph = graphs.plot_structure_graph
 plot_ternary_phase_diagram = materials.plot_ternary_phase_diagram
+plot_volcano = thermo.plot_volcano
 plot_volumetric_slice = electronic.plot_volumetric_slice
+plot_wulff_shape = materials.plot_wulff_shape
 plot_xrd = spectroscopy.plot_xrd
 spacegroup_to_crystal_system = materials.spacegroup_to_crystal_system

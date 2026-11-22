@@ -35,7 +35,7 @@ jobs:
         run: python scripts/generate_gallery.py
 
       - name: Build Jupyter Book
-        run: jupyter-book build book/
+        run: jupyter-book build book/ -W
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3

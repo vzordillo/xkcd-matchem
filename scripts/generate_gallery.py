@@ -947,6 +947,87 @@ def _make_crystal_graphs_2d_gallery(out_dir: pathlib.Path) -> None:
         plt.close(fig)
 
 
+def _make_flagship_features_gallery(out_dir: pathlib.Path) -> None:
+    """Generates flagship 3D isosurface, phonon, Wulff & scheme showcase."""
+    with xm.xkcd_style("classic"):
+        fig, axes = plt.subplots(2, 2, figsize=(12.2, 9.4), dpi=165)
+        fig.patch.set_facecolor(xm.style.PAPER)
+        xm.plot_isosurface(
+            "water_homo.cube",
+            ax=axes[0, 0],
+            title="Water HOMO 3D Isosurface",
+        )
+        xm.plot_phonon_bands(
+            "si_phonon_bands.yaml",
+            ax=axes[0, 1],
+            title="Silicon Phonon Dispersion (THz)",
+        )
+        xm.plot_wulff_shape(
+            "si_diamond.cif",
+            {(1, 0, 0): 1.25, (1, 1, 0): 1.15, (1, 1, 1): 0.88},
+            ax=axes[1, 0],
+            title="Equilibrium Si Wulff Shape",
+        )
+        xm.plot_reaction_scheme(
+            ["benzene.sdf"],
+            ["aspirin.xyz"],
+            conditions_above="Carboxylation",
+            conditions_below="cat. AlCl3, 85 C",
+            ax=axes[1, 1],
+            title="2D Skeletal Reaction Scheme",
+        )
+        fig.suptitle(
+            "3D Isosurfaces, Phonons, Wulff Shapes & Reaction Schemes",
+            fontsize=15,
+            y=0.98,
+        )
+        fig.tight_layout(rect=(0.0, 0.02, 1.0, 0.93), w_pad=1.8, h_pad=2.0)
+        xm.save_figure(fig, out_dir / "flagship_features.png", dpi=165)
+        plt.close(fig)
+
+
+def _make_brillouin_cohp_volcano_gallery(out_dir: pathlib.Path) -> None:
+    """Generates Brillouin zone, LOBSTER COHP, volcano, and defect gallery."""
+    with xm.xkcd_style("classic"):
+        fig, axes = plt.subplots(2, 2, figsize=(12.4, 9.6), dpi=165)
+        fig.patch.set_facecolor(xm.style.PAPER)
+        xm.plot_brillouin_zone(
+            "si_diamond.cif",
+            ax=axes[0, 0],
+            title="Silicon FCC First Brillouin Zone",
+        )
+        xm.plot_cohp(
+            "si_cohp.lobster",
+            ax=axes[0, 1],
+            title="Si-Si Bonding (-pCOHP, LOBSTER)",
+        )
+        xm.plot_volcano(
+            [-0.75, -0.35, -0.05, 0.25, 0.65],
+            [-2.9, -1.35, -0.35, -1.25, -3.1],
+            labels=["Ru", "Rh", "Pt", "Pd", "Au"],
+            ax=axes[1, 0],
+            title="Sabatier Catalysis Volcano",
+        )
+        xm.plot_defect_formation(
+            {
+                "V_Si": [(2, 2.0), (1, 2.35), (0, 3.05)],
+                "Si_i": [(1, 2.5), (0, 2.95), (-1, 3.85)],
+                "O_i": [(0, 2.4), (-1, 2.95), (-2, 3.85)],
+            },
+            band_gap=1.12,
+            ax=axes[1, 1],
+            title="Si Defect Formation Energies",
+        )
+        fig.suptitle(
+            "Brillouin Zones, LOBSTER -pCOHP, Volcanos & Defect Levels",
+            fontsize=15,
+            y=0.98,
+        )
+        fig.tight_layout(rect=(0.0, 0.02, 1.0, 0.93), w_pad=2.0, h_pad=2.2)
+        xm.save_figure(fig, out_dir / "brillouin_cohp_volcano.png", dpi=165)
+        plt.close(fig)
+
+
 def main() -> None:
     """Generates all gallery PNGs, GIFs, and static interactive assets."""
     matplotlib.use("Agg")
@@ -963,6 +1044,8 @@ def main() -> None:
     _make_scrolls_and_grids_gallery(_OUT_DIR)
     _make_icons_and_graphs_gallery(_OUT_DIR)
     _make_crystal_graphs_2d_gallery(_OUT_DIR)
+    _make_flagship_features_gallery(_OUT_DIR)
+    _make_brillouin_cohp_volcano_gallery(_OUT_DIR)
     _make_readme_gifs(_OUT_DIR)
     _export_docs_assets()
     print(f"Generated gallery images, GIFs, and studio in {_BOOK_STATIC}")

@@ -21,8 +21,10 @@ from xkcd_matchem.io.native import cube
 from xkcd_matchem.io.native import gaussian
 from xkcd_matchem.io.native import gromacs
 from xkcd_matchem.io.native import lammps
+from xkcd_matchem.io.native import lobster
 from xkcd_matchem.io.native import orca
 from xkcd_matchem.io.native import pdb
+from xkcd_matchem.io.native import phonopy
 from xkcd_matchem.io.native import qe
 from xkcd_matchem.io.native import sdf
 from xkcd_matchem.io.native import vasp
@@ -36,8 +38,10 @@ __all__ = [
     "gaussian",
     "gromacs",
     "lammps",
+    "lobster",
     "orca",
     "pdb",
+    "phonopy",
     "qe",
     "sdf",
     "vasp",

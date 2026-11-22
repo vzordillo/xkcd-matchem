@@ -32,6 +32,7 @@ __all__ = [
     "draw_callout",
     "draw_crystal_axes",
     "draw_curved_arrow",
+    "draw_defect_site",
     "draw_element_badge",
     "draw_element_legend",
     "draw_icon",
@@ -39,11 +40,16 @@ __all__ = [
     "draw_polyhedron_faces",
     "draw_two_tone_bond",
     "draw_unit_cell_box",
+    "draw_vector_arrow_2d",
+    "ensure_readable_text_color",
     "export_interactive_html",
+    "is_dark_color",
     "list_icons",
+    "muted_surface_color",
     "plot_icon_sheet",
     "render_structure_2d",
     "render_structure_3d",
+    "resolve_ink",
     "serialize_structure",
     "view_structure",
 ]
@@ -56,6 +62,7 @@ draw_atom_sphere = primitives.draw_atom_sphere
 draw_callout = callouts.draw_callout
 draw_crystal_axes = primitives.draw_crystal_axes
 draw_curved_arrow = callouts.draw_curved_arrow
+draw_defect_site = callouts.draw_defect_site
 draw_element_badge = icons.draw_element_badge
 draw_element_legend = callouts.draw_element_legend
 draw_icon = icons.draw_icon
@@ -63,10 +70,15 @@ draw_miller_plane = primitives.draw_miller_plane
 draw_polyhedron_faces = primitives.draw_polyhedron_faces
 draw_two_tone_bond = primitives.draw_two_tone_bond
 draw_unit_cell_box = primitives.draw_unit_cell_box
+draw_vector_arrow_2d = primitives.draw_vector_arrow_2d
+ensure_readable_text_color = primitives.ensure_readable_text_color
 export_interactive_html = interactive.export_interactive_html
+is_dark_color = primitives.is_dark_color
 list_icons = icons.list_icons
+muted_surface_color = primitives.muted_surface_color
 plot_icon_sheet = icons.plot_icon_sheet
 render_structure_2d = structure2d.render_structure_2d
 render_structure_3d = structure3d.render_structure_3d
+resolve_ink = primitives.resolve_ink
 serialize_structure = interactive.serialize_structure
 view_structure = interactive.view_structure

@@ -35,6 +35,10 @@ class BandStructure:
       fermi_energy: Reference Fermi/valence-band-maximum energy in eV.
       k_labels: High-symmetry point labels at ``k_ticks``.
       k_ticks: Cumulative path coordinates corresponding to ``k_labels``.
+      occupations: Optional band occupations matching ``eigenvalues`` shape.
+      projections: Optional orbital/atom projection weights keyed by channel
+        (e.g. ``"s"``, ``"p"``, ``"d"``, ``"tot"``) with shape
+        ``(n_spin, n_k, n_bands)`` or ``(n_k, n_bands)``.
       metadata: Free-form source metadata.
     """
 
@@ -44,10 +48,11 @@ class BandStructure:
     k_labels: list[str] = dataclasses.field(default_factory=list)
     k_ticks: list[float] = dataclasses.field(default_factory=list)
     occupations: np.ndarray | None = None
+    projections: dict[str, np.ndarray] = dataclasses.field(default_factory=dict)
     metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Normalizes eigenvalues and optional occupations to 3D float64."""
+        """Normalizes eigenvalues, occupations, and projections to 3D."""
         self.k_distances = np.asarray(self.k_distances, dtype=np.float64)
         eig = np.asarray(self.eigenvalues, dtype=np.float64)
         if eig.ndim == 2:
@@ -70,11 +75,23 @@ class BandStructure:
                     "occupations shape must match eigenvalues shape."
                 )
             self.occupations = occ
+        norm_proj: dict[str, np.ndarray] = {}
+        for key, raw_w in self.projections.items():
+            w_arr = np.asarray(raw_w, dtype=np.float64)
+            if w_arr.ndim == 2:
+                w_arr = w_arr[None, :, :]
+            if w_arr.shape != eig.shape:
+                raise exceptions.StructureError(
+                    f"Projection {key!r} shape {w_arr.shape} must match "
+                    f"eigenvalues shape {eig.shape}."
+                )
+            norm_proj[str(key)] = w_arr
+        self.projections = norm_proj
 
     @property
     def spin_polarized(self) -> bool:
         """Returns True when two spin channels are stored."""
-        return self.eigenvalues.shape[0] == 2
+        return bool(self.eigenvalues.shape[0] == 2)
 
     def shifted_eigenvalues(self) -> np.ndarray:
         """Returns eigenvalues shifted so ``fermi_energy`` lies at zero eV."""
@@ -319,3 +336,111 @@ class VolumetricGrid:
         vv = pts @ e_v
         plane = np.take(self.data, sl_idx, axis=ax_idx)
         return uu, vv, plane, basis
+
+
+_PHONON_UNIT_FACTORS: dict[str, float] = {
+    "thz": 1.0,
+    "cm-1": 33.3564095198152,
+    "cm^-1": 33.3564095198152,
+    "mev": 4.135667696,
+}
+
+
+@dataclasses.dataclass
+class PhononBandStructure:
+    """Phonon dispersion branches along a reciprocal-space q-point path.
+
+    Attributes:
+      q_distances: 1D cumulative path coordinate of shape ``(n_q,)``.
+      frequencies: Phonon frequencies in THz of shape ``(n_q, n_modes)``.
+      q_labels: High-symmetry q-point labels at ``q_ticks``.
+      q_ticks: Cumulative path coordinates corresponding to ``q_labels``.
+      metadata: Free-form source metadata.
+    """
+
+    q_distances: np.ndarray
+    frequencies: np.ndarray
+    q_labels: list[str] = dataclasses.field(default_factory=list)
+    q_ticks: list[float] = dataclasses.field(default_factory=list)
+    metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Coerces q_distances and frequencies and validates shapes."""
+        self.q_distances = np.asarray(self.q_distances, dtype=np.float64)
+        freq = np.asarray(self.frequencies, dtype=np.float64)
+        if freq.ndim != 2 or freq.shape[0] != self.q_distances.shape[0]:
+            raise exceptions.StructureError(
+                "frequencies must be 2D (n_q, n_modes) matching q_distances."
+            )
+        self.frequencies = freq
+
+    @property
+    def has_imaginary_modes(self) -> bool:
+        """Returns True if any branch has imaginary modes (< -0.03 THz)."""
+        return bool(np.any(self.frequencies < -0.03))
+
+    def frequencies_in(self, unit: str = "THz") -> np.ndarray:
+        """Converts phonon frequencies from THz to THz, cm-1, or meV."""
+        key = unit.strip().lower()
+        if key not in _PHONON_UNIT_FACTORS:
+            raise exceptions.StructureError(
+                f"Unsupported phonon frequency unit {unit!r}. "
+                "Use 'THz', 'cm-1', or 'meV'."
+            )
+        return self.frequencies * _PHONON_UNIT_FACTORS[key]
+
+
+@dataclasses.dataclass
+class CohpData:
+    """Crystal Orbital Hamilton/Overlap Population (pCOHP / pCOOP) data.
+
+    Attributes:
+      energies: 1D energy grid in eV (relative to ``fermi_energy`` when zero).
+      cohp: Mapping from bond label (e.g. ``"No.1:Si1->Si2"``) to pCOHP.
+      icohp: Mapping from bond label to integrated ICOHP values in eV.
+      fermi_energy: Reference Fermi energy in eV (``0.0`` if already shifted).
+      spin_down_cohp: Optional spin-down pCOHP mapping by bond label.
+      spin_down_icohp: Optional spin-down ICOHP mapping by bond label.
+      is_coop: True when representing COOP (overlap) rather than COHP.
+      metadata: Free-form parser metadata.
+    """
+
+    energies: np.ndarray
+    cohp: dict[str, np.ndarray]
+    icohp: dict[str, np.ndarray] = dataclasses.field(default_factory=dict)
+    fermi_energy: float = 0.0
+    spin_down_cohp: dict[str, np.ndarray] = dataclasses.field(
+        default_factory=dict
+    )
+    spin_down_icohp: dict[str, np.ndarray] = dataclasses.field(
+        default_factory=dict
+    )
+    is_coop: bool = False
+    metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Coerces COHP arrays to float64 and validates grid lengths."""
+        self.energies = np.asarray(self.energies, dtype=np.float64)
+        if self.energies.ndim != 1 or self.energies.size == 0:
+            raise exceptions.StructureError(
+                "COHP energies must be a non-empty 1D array."
+            )
+        if not self.cohp:
+            raise exceptions.StructureError(
+                "CohpData requires at least one interaction entry."
+            )
+        n_pts = self.energies.shape[0]
+        for mapping in (
+            self.cohp,
+            self.icohp,
+            self.spin_down_cohp,
+            self.spin_down_icohp,
+        ):
+            for key, vals in list(mapping.items()):
+                arr = np.asarray(vals, dtype=np.float64)
+                if arr.shape != (n_pts,):
+                    raise exceptions.StructureError(
+                        f"COHP series {key!r} shape {arr.shape} must match "
+                        f"energies shape ({n_pts},)."
+                    )
+                mapping[key] = arr

@@ -16,35 +16,52 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from collections.abc import Sequence
+import pathlib
+from typing import cast
 
+from matplotlib import axes as maxes
+from matplotlib import figure as mfigure
 from matplotlib import pyplot as plt
 
 from xkcd_matchem import _version
+from xkcd_matchem.core import electronic
 from xkcd_matchem.core import geometry
 from xkcd_matchem.core import structure
+from xkcd_matchem.data import elements
 from xkcd_matchem.data import samples_registry
 from xkcd_matchem.io import loader
 from xkcd_matchem.io import registry
 from xkcd_matchem.layout import export
+from xkcd_matchem.plots import electronic as elec_plots
+from xkcd_matchem.plots import ptable as ptable_plots
+from xkcd_matchem.plots import reactions as rxn_plots
 from xkcd_matchem.plots import spectroscopy as spec_plots
 from xkcd_matchem.plots import structure as struct_plots
 from xkcd_matchem.render import interactive
+from xkcd_matchem.style import palettes
 
 
-def _parse_color_overrides(pairs: Sequence[str] | None) -> str | dict[str, str]:
-    """Parses repeated ``Element=Color`` CLI pairs into a palette dict."""
+def _parse_color_overrides(
+    pairs: Sequence[str] | None,
+    base_palette: str = "xkcd",
+) -> str | dict[str, str]:
+    """Merges repeated ``Element=Color`` CLI overrides atop ``base_palette``."""
     if not pairs:
-        return "xkcd"
-    overrides: dict[str, str] = {}
+        return base_palette
+    resolved: dict[str, str] = {
+        sym: palettes.get_element_color(sym, scheme=base_palette)
+        for sym in elements.ELEMENTS_BY_SYMBOL
+    }
     for item in pairs:
         sym, sep, col = item.partition("=")
         if not sep or not sym.strip() or not col.strip():
             raise ValueError(
                 f"Invalid --colors entry {item!r}; expected Element=#hex."
             )
-        overrides[sym.strip()] = col.strip()
-    return overrides
+        resolved[sym.strip()] = col.strip()
+    return resolved
 
 
 def _resolve_cli_camera(args: argparse.Namespace) -> geometry.Camera | str:
@@ -57,7 +74,18 @@ def _resolve_cli_camera(args: argparse.Namespace) -> geometry.Camera | str:
         )
     if args.perspective > 0.0 and args.view == "isometric":
         return geometry.Camera(perspective=args.perspective)
-    return args.view
+    return str(args.view)
+
+
+def _save_and_close(
+    ax: maxes.Axes, output: str | pathlib.Path
+) -> pathlib.Path:
+    """Saves an axes' parent figure and closes it cleanly."""
+    fig = cast(mfigure.Figure, ax.figure)
+    out_path = export.save_figure(fig, output)
+    plt.close(fig)
+    print(f"Saved {out_path}")
+    return out_path
 
 
 def _add_common_view_args(subparser: argparse.ArgumentParser) -> None:
@@ -111,6 +139,114 @@ def _add_common_view_args(subparser: argparse.ArgumentParser) -> None:
         default=[1, 1, 1],
         metavar=("NA", "NB", "NC"),
         help="Periodic supercell repetitions along a, b, c.",
+    )
+
+
+def _add_analysis_subparsers(
+    sub: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Attaches electronic, phonon, NEB, and periodic-table subcommands."""
+    bands_p = sub.add_parser(
+        "bands", help="Plot an electronic band structure (EIGENVAL, bands.dat)."
+    )
+    bands_p.add_argument("input", help="Band-structure file or sample name.")
+    bands_p.add_argument(
+        "-o", "--output", default="bands.png", help="Output image path."
+    )
+    bands_p.add_argument(
+        "--preset", default="classic", help="Visual theme preset name."
+    )
+    bands_p.add_argument(
+        "--ylim",
+        type=float,
+        nargs=2,
+        default=None,
+        metavar=("EMIN", "EMAX"),
+        help="Optional vertical energy range in eV.",
+    )
+
+    dos_p = sub.add_parser(
+        "dos", help="Plot electronic density of states (DOSCAR, dos.dat)."
+    )
+    dos_p.add_argument("input", help="DOS file or sample name.")
+    dos_p.add_argument(
+        "-o", "--output", default="dos.png", help="Output image path."
+    )
+    dos_p.add_argument(
+        "--preset", default="classic", help="Visual theme preset name."
+    )
+
+    neb_p = sub.add_parser(
+        "neb", help="Plot an interpolated NEB energy barrier curve."
+    )
+    neb_p.add_argument(
+        "input", help="Trajectory file (XDATCAR, XYZ, lammpstrj)."
+    )
+    neb_p.add_argument(
+        "-o", "--output", default="neb.png", help="Output image path."
+    )
+    neb_p.add_argument(
+        "--preset", default="classic", help="Visual theme preset name."
+    )
+    neb_p.add_argument(
+        "--unit", default="eV", help="Energy unit (eV, kcal/mol, kJ/mol)."
+    )
+
+    ptable_p = sub.add_parser(
+        "ptable", help="Render an xkcd Periodic Table of Elements."
+    )
+    ptable_p.add_argument(
+        "-o", "--output", default="ptable.png", help="Output image path."
+    )
+    ptable_p.add_argument(
+        "--preset", default="classic", help="Visual theme preset name."
+    )
+    ptable_p.add_argument(
+        "--property",
+        default=None,
+        help="Optional property heatmap (e.g. electronegativity, atomic_mass).",
+    )
+    ptable_p.add_argument(
+        "--highlight",
+        nargs="+",
+        default=None,
+        help="Optional element symbols or chemical formula to spotlight.",
+    )
+    ptable_p.add_argument("--title", default=None, help="Optional chart title.")
+
+    phonon_p = sub.add_parser(
+        "phonon", help="Plot phonon dispersion bands from Phonopy band.yaml."
+    )
+    phonon_p.add_argument(
+        "input", help="Phonopy band.yaml file or sample name."
+    )
+    phonon_p.add_argument(
+        "-o", "--output", default="phonon.png", help="Output image path."
+    )
+    phonon_p.add_argument(
+        "--preset", default="classic", help="Visual theme preset name."
+    )
+    phonon_p.add_argument(
+        "--unit", default="THz", help="Frequency unit (THz, cm-1, meV)."
+    )
+
+    cohp_p = sub.add_parser(
+        "cohp", help="Plot LOBSTER -pCOHP chemical bonding curves."
+    )
+    cohp_p.add_argument("input", help="COHPCAR.lobster file or sample name.")
+    cohp_p.add_argument(
+        "-o", "--output", default="cohp.png", help="Output image path."
+    )
+    cohp_p.add_argument(
+        "--preset", default="classic", help="Visual theme preset name."
+    )
+    cohp_p.add_argument(
+        "--ylim",
+        type=float,
+        nargs=2,
+        default=None,
+        metavar=("EMIN", "EMAX"),
+        help="Optional E - E_F window in eV.",
     )
 
 
@@ -190,6 +326,7 @@ def _build_parser() -> argparse.ArgumentParser:
     xrd_p.add_argument(
         "--preset", default="classic", help="Visual theme preset name."
     )
+    _add_analysis_subparsers(sub)
     return parser
 
 
@@ -198,9 +335,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
     atoms = loader.load(args.input)
     if not isinstance(atoms, structure.AtomsData):
         raise TypeError(f"Cannot render non-structure input {args.input!r}.")
-    palette: str | dict[str, str] = (
-        _parse_color_overrides(args.colors) if args.colors else args.palette
-    )
+    palette = _parse_color_overrides(args.colors, base_palette=args.palette)
     rep = tuple(int(v) for v in args.supercell)
     if atoms.is_periodic and rep != (1, 1, 1):
         atoms = atoms.repeat((rep[0], rep[1], rep[2]))
@@ -228,17 +363,13 @@ def _cmd_render(args: argparse.Namespace) -> int:
             title=atoms.formula(),
             show_bonds=show_bonds,
         )
-    out_path = export.save_figure(ax.figure, args.output)
-    plt.close(ax.figure)
-    print(f"Saved {out_path}")
+    _save_and_close(ax, args.output)
     return 0
 
 
 def _cmd_view(args: argparse.Namespace) -> int:
     """Executes the interactive ``view`` CLI subcommand."""
-    palette: str | dict[str, str] = (
-        _parse_color_overrides(args.colors) if args.colors else args.palette
-    )
+    palette = _parse_color_overrides(args.colors, base_palette=args.palette)
     rep = (
         int(args.supercell[0]),
         int(args.supercell[1]),
@@ -258,7 +389,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
         camera=cam,
         supercell=rep,
     )
-    if args.backend == "matplotlib" and isinstance(res, plt.Axes):
+    if args.backend == "matplotlib" and isinstance(res, maxes.Axes):
         plt.show()
     elif out_target is not None:
         print(f"Saved interactive viewer to {out_target}")
@@ -279,34 +410,115 @@ def _cmd_info(args: argparse.Namespace) -> int:
 def _cmd_xrd(args: argparse.Namespace) -> int:
     """Executes the ``xrd`` CLI subcommand."""
     ax = spec_plots.plot_xrd(args.input, preset=args.preset)
-    out_path = export.save_figure(ax.figure, args.output)
-    plt.close(ax.figure)
-    print(f"Saved {out_path}")
+    _save_and_close(ax, args.output)
     return 0
+
+
+def _cmd_bands(args: argparse.Namespace) -> int:
+    """Executes the ``bands`` CLI subcommand."""
+    obj = loader.load(args.input)
+    if not isinstance(obj, electronic.BandStructure):
+        raise TypeError(f"Expected BandStructure from {args.input!r}.")
+    ylim = (
+        (float(args.ylim[0]), float(args.ylim[1]))
+        if args.ylim is not None
+        else (-6.0, 6.0)
+    )
+    ax = elec_plots.plot_bands(obj, ylim=ylim, preset=args.preset)
+    _save_and_close(ax, args.output)
+    return 0
+
+
+def _cmd_dos(args: argparse.Namespace) -> int:
+    """Executes the ``dos`` CLI subcommand."""
+    obj = loader.load(args.input)
+    if not isinstance(obj, electronic.DensityOfStates):
+        raise TypeError(f"Expected DensityOfStates from {args.input!r}.")
+    ax = elec_plots.plot_dos(obj, preset=args.preset)
+    _save_and_close(ax, args.output)
+    return 0
+
+
+def _cmd_neb(args: argparse.Namespace) -> int:
+    """Executes the ``neb`` CLI subcommand."""
+    traj = loader.load_trajectory(args.input)
+    ax = rxn_plots.plot_neb(traj, unit=args.unit, preset=args.preset)
+    _save_and_close(ax, args.output)
+    return 0
+
+
+def _cmd_ptable(args: argparse.Namespace) -> int:
+    """Executes the ``ptable`` CLI subcommand."""
+    hl = (
+        args.highlight[0]
+        if args.highlight is not None and len(args.highlight) == 1
+        else args.highlight
+    )
+    ax = ptable_plots.plot_periodic_table(
+        element_property=args.property,
+        highlight=hl,
+        preset=args.preset,
+        title=args.title,
+    )
+    _save_and_close(ax, args.output)
+    return 0
+
+
+def _cmd_phonon(args: argparse.Namespace) -> int:
+    """Executes the ``phonon`` CLI subcommand."""
+    ax = elec_plots.plot_phonon_bands(
+        args.input, unit=args.unit, preset=args.preset
+    )
+    _save_and_close(ax, args.output)
+    return 0
+
+
+def _cmd_cohp(args: argparse.Namespace) -> int:
+    """Executes the ``cohp`` CLI subcommand."""
+    ylim = (
+        (float(args.ylim[0]), float(args.ylim[1]))
+        if args.ylim is not None
+        else (-8.0, 6.0)
+    )
+    ax = elec_plots.plot_cohp(args.input, ylim=ylim, preset=args.preset)
+    _save_and_close(ax, args.output)
+    return 0
+
+
+def _cmd_samples(_: argparse.Namespace) -> int:
+    """Lists bundled chemistry/materials sample datasets."""
+    for name in samples_registry.list_samples():
+        print(f"{name:24s}  {samples_registry.describe_sample(name)}")
+    return 0
+
+
+def _cmd_formats(_: argparse.Namespace) -> int:
+    """Lists zero-dependency native file formats."""
+    for spec in registry.list_formats():
+        exts = ", ".join(spec.extensions + spec.filenames)
+        print(f"{spec.name:14s}  [{exts:28s}]  {spec.description}")
+    return 0
+
+
+_DISPATCH: dict[str, Callable[[argparse.Namespace], int]] = {
+    "samples": _cmd_samples,
+    "formats": _cmd_formats,
+    "info": _cmd_info,
+    "render": _cmd_render,
+    "view": _cmd_view,
+    "xrd": _cmd_xrd,
+    "bands": _cmd_bands,
+    "dos": _cmd_dos,
+    "neb": _cmd_neb,
+    "ptable": _cmd_ptable,
+    "phonon": _cmd_phonon,
+    "cohp": _cmd_cohp,
+}
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Runs the ``xkcd-matchem`` CLI entrypoint."""
     parser = _build_parser()
     args = parser.parse_args(argv)
-    exit_code = 1
-
-    if args.command == "samples":
-        for name in samples_registry.list_samples():
-            print(f"{name:24s}  {samples_registry.describe_sample(name)}")
-        exit_code = 0
-    elif args.command == "formats":
-        for spec in registry.list_formats():
-            exts = ", ".join(spec.extensions + spec.filenames)
-            print(f"{spec.name:14s}  [{exts:28s}]  {spec.description}")
-        exit_code = 0
-    elif args.command == "info":
-        exit_code = _cmd_info(args)
-    elif args.command == "render":
-        exit_code = _cmd_render(args)
-    elif args.command == "view":
-        exit_code = _cmd_view(args)
-    elif args.command == "xrd":
-        exit_code = _cmd_xrd(args)
-
-    return exit_code
+    handler = _DISPATCH.get(args.command)
+    return handler(args) if handler is not None else 1

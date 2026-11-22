@@ -63,6 +63,13 @@ def plot_md_timeseries(
             )
         ys = traj.temperatures
         y_label = "Temperature (K)"
+    elif q_key == "pressure":
+        if traj.pressures is None:
+            raise exceptions.StructureError(
+                "Trajectory has no stored pressures."
+            )
+        ys = traj.pressures
+        y_label = "Pressure"
     else:
         raise exceptions.StructureError(
             f"Unsupported MD quantity {quantity!r}."

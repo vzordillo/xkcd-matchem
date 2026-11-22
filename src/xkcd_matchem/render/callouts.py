@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import math
+from typing import Any
+from typing import cast
 
 from matplotlib import axes as maxes
 from matplotlib import patches
@@ -263,7 +265,7 @@ def draw_element_legend(
         ]
         ax.legend(
             handles=handles,
-            loc=loc,
+            loc=cast(Any, loc),
             frameon=True,
             ncol=min(len(handles), 4),
             fontsize=9.0,
@@ -278,14 +280,14 @@ def draw_element_legend(
     x0 = 0.5 - 0.5 * (n_el - 1) * step
     hi_trans = matplotlib.transforms.offset_copy(
         ax.transAxes,
-        fig=ax.figure,
+        fig=cast(Any, ax.figure),
         x=-1.6,
         y=1.6,
         units="points",
     )
     txt_trans = matplotlib.transforms.offset_copy(
         ax.transAxes,
-        fig=ax.figure,
+        fig=cast(Any, ax.figure),
         x=8.5,
         y=-0.3,
         units="points",
@@ -326,4 +328,108 @@ def draw_element_legend(
             transform=txt_trans,
             clip_on=False,
             zorder=901.0,
+        )
+
+
+def draw_defect_site(
+    ax: maxes.Axes,
+    atoms: structure.AtomsData,
+    site: tuple[float, float, float] | np.ndarray,
+    label: str = "V_O",
+    *,
+    fractional: bool = False,
+    kind: str = "vacancy",
+    camera: geometry.Camera | str | None = None,
+    color: str = "#D55E00",
+    label_offset: tuple[float, float] = (1.1, 1.1),
+) -> None:
+    """Marks a 3D vacancy, interstitial, or dopant site on a structure plot.
+
+    Args:
+      ax: Target Matplotlib ``Axes`` displaying ``atoms``.
+      atoms: Reference ``AtomsData`` used to align the 3D camera projection.
+      site: Cartesian (or fractional if ``fractional=True``) 3D coordinate.
+      label: Callout label such as ``"V_O"`` or ``"Li_i"``.
+      fractional: Treat ``site`` as fractional cell coordinates when True.
+      kind: Visual marker style: ``"vacancy"`` (dashed square cage),
+        ``"interstitial"`` (starred circle), or ``"dopant"`` (double ring).
+      camera: Camera matching the underlying structure render.
+      color: Accent color for the defect marker and callout badge.
+      label_offset: 2D offset ``(dx, dy)`` in projected coordinates for label.
+    """
+    site_arr = np.asarray(site, dtype=np.float64).reshape(1, 3)
+    if fractional:
+        if atoms.cell is None:
+            raise ValueError("fractional=True requires atoms.cell.")
+        site_arr = site_arr @ atoms.cell
+    cam = geometry.resolve_camera(camera, cell=atoms.cell)
+    pivot = (
+        0.5 * (atoms.cell[0] + atoms.cell[1] + atoms.cell[2])
+        if atoms.cell is not None
+        else np.mean(atoms.positions, axis=0)
+    )
+    proj_span = geometry.scene_projection_span(
+        atoms.positions, cam, center=pivot, cell=atoms.cell
+    )
+    pts_2d, _ = geometry.project_points(
+        site_arr, cam, center=pivot, span=proj_span
+    )
+    cx, cy = float(pts_2d[0, 0]), float(pts_2d[0, 1])
+    mode = kind.strip().lower()
+    if mode == "interstitial":
+        ax.scatter(
+            [cx],
+            [cy],
+            s=190.0,
+            marker="*",
+            facecolor=color,
+            edgecolor=palettes.INK,
+            linewidth=1.1,
+            zorder=22.0,
+        )
+    elif mode == "dopant":
+        ax.add_patch(
+            patches.Circle(
+                (cx, cy),
+                radius=0.42,
+                facecolor="none",
+                edgecolor=color,
+                linewidth=2.0,
+                linestyle="-",
+                zorder=22.0,
+            )
+        )
+        ax.add_patch(
+            patches.Circle(
+                (cx, cy),
+                radius=0.54,
+                facecolor="none",
+                edgecolor=color,
+                linewidth=1.3,
+                linestyle="--",
+                zorder=22.0,
+            )
+        )
+    else:
+        ax.add_patch(
+            patches.FancyBboxPatch(
+                (cx - 0.34, cy - 0.34),
+                0.68,
+                0.68,
+                boxstyle="round,pad=0.06,rounding_size=0.14",
+                facecolor="none",
+                edgecolor=color,
+                linewidth=1.9,
+                linestyle="--",
+                zorder=22.0,
+            )
+        )
+    if label:
+        draw_callout(
+            ax,
+            label,
+            xy=(cx, cy),
+            xytext=(cx + label_offset[0], cy + label_offset[1]),
+            color=color,
+            fontsize=9.5,
         )

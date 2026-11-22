@@ -370,8 +370,16 @@ def read_lammpstrj_first(
     path: str | pathlib.Path,
     type_map: dict[int, str] | None = None,
 ) -> structure.AtomsData:
-    """Reads the first snapshot from a ``.lammpstrj`` dump file."""
-    return read_lammpstrj(path, type_map=type_map)[0]
+    """Reads only the first snapshot from a ``.lammpstrj`` dump file."""
+    p = pathlib.Path(path)
+    lines = p.read_text(encoding="utf-8").splitlines()
+    idx = 0
+    while idx < len(lines) and not lines[idx].startswith("ITEM: TIMESTEP"):
+        idx += 1
+    if idx >= len(lines):
+        raise exceptions.ParseError(f"No LAMMPS dump frames found in {p}.")
+    frame, _, _ = _parse_lammpstrj_frame(lines, idx, str(p), type_map=type_map)
+    return frame
 
 
 registry.register_format(

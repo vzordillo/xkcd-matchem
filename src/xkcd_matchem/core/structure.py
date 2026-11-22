@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import collections
+import copy
 import dataclasses
 import itertools
 import math
@@ -38,12 +39,15 @@ class Bond:
       order: Bond order (``1.0`` single, ``1.5`` aromatic, ``2.0`` double,
         ``3.0`` triple).
       shift: Lattice translation ``(sa, sb, sc)`` added to atom ``j``.
+      stereo: 2D stereochemistry hint (``"none"``, ``"wedge"``, ``"dash"``,
+        or ``"wavy"``).
     """
 
     i: int
     j: int
     order: float = 1.0
     shift: tuple[int, int, int] = (0, 0, 0)
+    stereo: str = "none"
 
 
 @dataclasses.dataclass
@@ -62,6 +66,8 @@ class AtomsData:
       energies: Mapping of named scalar energies (typically in eV).
       atom_labels: Optional per-atom site or residue labels.
       metadata: Free-form parser or provenance dictionary.
+      occupancies: Optional per-site partial occupancies of shape ``(N,)``.
+      magnetic_moments: Optional scalar ``(N,)`` or vector ``(N, 3)`` moments.
     """
 
     symbols: list[str]
@@ -75,6 +81,62 @@ class AtomsData:
     energies: dict[str, float] = dataclasses.field(default_factory=dict)
     atom_labels: list[str] | None = None
     metadata: dict[str, Any] = dataclasses.field(default_factory=dict)
+    occupancies: np.ndarray | None = None
+    magnetic_moments: np.ndarray | None = None
+
+    def _validate_optional_arrays(self, n_atoms: int) -> None:
+        """Validates charges, velocities, forces, occupancies, and magmoms."""
+        for arr_name in ("velocities", "forces"):
+            val = getattr(self, arr_name)
+            if val is not None:
+                arr_3d = np.asarray(val, dtype=np.float64)
+                if arr_3d.shape != (n_atoms, 3) or not np.all(
+                    np.isfinite(arr_3d)
+                ):
+                    raise exceptions.StructureError(
+                        f"{arr_name} must be finite with shape ({n_atoms}, 3)."
+                    )
+                setattr(self, arr_name, arr_3d)
+        if self.charges is not None:
+            chg = np.asarray(self.charges, dtype=np.float64)
+            if chg.shape != (n_atoms,) or not np.all(np.isfinite(chg)):
+                raise exceptions.StructureError(
+                    f"Expected finite charges ({n_atoms},), got {chg.shape}."
+                )
+            self.charges = chg
+        if self.occupancies is None and "occupancies" in self.metadata:
+            raw_occ = self.metadata["occupancies"]
+            if len(raw_occ) == n_atoms:
+                self.occupancies = np.asarray(raw_occ, dtype=np.float64)
+        if self.occupancies is not None:
+            occ = np.asarray(self.occupancies, dtype=np.float64)
+            if occ.shape != (n_atoms,) or not np.all(np.isfinite(occ)):
+                raise exceptions.StructureError(
+                    f"Expected finite occupancies ({n_atoms},), got "
+                    f"{occ.shape}."
+                )
+            if occ.size and (
+                float(np.min(occ)) < -1e-6 or float(np.max(occ)) > 1.0 + 1e-6
+            ):
+                raise exceptions.StructureError(
+                    "Site occupancies must lie within [0.0, 1.0]."
+                )
+            self.occupancies = occ
+            self.metadata["occupancies"] = occ.tolist()
+        if self.magnetic_moments is not None:
+            mag = np.asarray(self.magnetic_moments, dtype=np.float64)
+            if mag.shape not in ((n_atoms,), (n_atoms, 3)) or not np.all(
+                np.isfinite(mag)
+            ):
+                raise exceptions.StructureError(
+                    "magnetic_moments must be finite with shape "
+                    f"({n_atoms},) or ({n_atoms}, 3)."
+                )
+            self.magnetic_moments = mag
+        if self.atom_labels is not None and len(self.atom_labels) != n_atoms:
+            raise exceptions.StructureError(
+                "atom_labels length does not match number of atoms."
+            )
 
     def __post_init__(self) -> None:
         """Normalizes coordinate arrays and validates dimensions."""
@@ -114,28 +176,7 @@ class AtomsData:
                     "Periodic unit cell matrix is singular (zero volume)."
                 )
             self.cell = cell_arr
-        for arr_name in ("velocities", "forces"):
-            val = getattr(self, arr_name)
-            if val is not None:
-                arr_3d = np.asarray(val, dtype=np.float64)
-                if arr_3d.shape != (n_atoms, 3) or not np.all(
-                    np.isfinite(arr_3d)
-                ):
-                    raise exceptions.StructureError(
-                        f"{arr_name} must be finite with shape ({n_atoms}, 3)."
-                    )
-                setattr(self, arr_name, arr_3d)
-        if self.charges is not None:
-            chg = np.asarray(self.charges, dtype=np.float64)
-            if chg.shape != (n_atoms,) or not np.all(np.isfinite(chg)):
-                raise exceptions.StructureError(
-                    f"Expected finite charges ({n_atoms},), got {chg.shape}."
-                )
-            self.charges = chg
-        if self.atom_labels is not None and len(self.atom_labels) != n_atoms:
-            raise exceptions.StructureError(
-                "atom_labels length does not match number of atoms."
-            )
+        self._validate_optional_arrays(n_atoms)
 
     def __len__(self) -> int:
         """Returns the number of atoms."""
@@ -146,18 +187,48 @@ class AtomsData:
         """Returns True when a cell is present with any periodic axis."""
         return self.cell is not None and any(self.pbc)
 
-    def formula(self, reduce_formula: bool = False) -> str:
+    def formula(
+        self,
+        reduce_formula: bool = False,
+        *,
+        use_occupancies: bool = False,
+    ) -> str:
         """Formats the chemical formula in Hill system order.
 
         Args:
-          reduce_formula: Divides counts by their GCD when True.
+          reduce_formula: Divides integer counts by their GCD when True.
+          use_occupancies: Weights element counts by partial ``occupancies``
+            when True.
 
         Returns:
           Chemical formula string, e.g. ``"C9H8O4"`` or ``"MoS2"``.
         """
-        counts = collections.Counter(self.symbols)
-        if not counts:
+        if not self.symbols:
             return ""
+        if use_occupancies and self.occupancies is not None:
+            f_counts: dict[str, float] = {}
+            for sym, occ in zip(self.symbols, self.occupancies, strict=True):
+                f_counts[sym] = f_counts.get(sym, 0.0) + float(occ)
+            if "C" in f_counts:
+                ordered = ["C"]
+                if "H" in f_counts:
+                    ordered.append("H")
+                ordered.extend(
+                    sorted(k for k in f_counts if k not in ("C", "H"))
+                )
+            else:
+                ordered = sorted(f_counts)
+            parts: list[str] = []
+            for sym in ordered:
+                val = f_counts[sym]
+                if abs(val - round(val)) < 1e-2:
+                    ival = round(val)
+                    parts.append(f"{sym}{ival}" if ival > 1 else sym)
+                else:
+                    parts.append(f"{sym}{val:.3g}")
+            return "".join(parts)
+
+        counts = collections.Counter(self.symbols)
         if reduce_formula:
             divisor = math.gcd(*counts.values())
             counts = collections.Counter(
@@ -190,7 +261,10 @@ class AtomsData:
         total_mass = float(np.sum(masses))
         if total_mass <= 0.0:
             return np.mean(self.positions, axis=0)
-        return (masses[:, None] * self.positions).sum(axis=0) / total_mass
+        return np.asarray(
+            (masses[:, None] * self.positions).sum(axis=0) / total_mass,
+            dtype=np.float64,
+        )
 
     def volume(self) -> float:
         """Returns cell volume in cubic Angstrom, or ``0.0`` if aperiodic."""
@@ -303,15 +377,37 @@ class AtomsData:
                 src_indices.append(idx)
                 is_image.append(any(c >= 1.0 - tol for c in combo))
         pos = np.asarray(frac_out, dtype=np.float64) @ self.cell
-        meta = dict(self.metadata)
+        meta = copy.deepcopy(self.metadata)
         meta["source_indices"] = src_indices
         meta["is_boundary_image"] = is_image
+        occ_out = (
+            self.occupancies[src_indices]
+            if self.occupancies is not None
+            else None
+        )
+        mag_out = (
+            self.magnetic_moments[src_indices]
+            if self.magnetic_moments is not None
+            else None
+        )
+        forces_out = (
+            self.forces[src_indices] if self.forces is not None else None
+        )
+        vel_out = (
+            self.velocities[src_indices]
+            if self.velocities is not None
+            else None
+        )
         return AtomsData(
             symbols=syms,
             positions=pos,
             cell=self.cell.copy(),
             pbc=self.pbc,
+            velocities=vel_out,
+            forces=forces_out,
             metadata=meta,
+            occupancies=occ_out,
+            magnetic_moments=mag_out,
         )
 
     def repeat(self, rep: tuple[int, int, int] = (1, 1, 1)) -> AtomsData:
@@ -361,6 +457,7 @@ class AtomsData:
                                 j=dst_base + b.j,
                                 order=b.order,
                                 shift=(int(sa), int(sb), int(sc)),
+                                stereo=b.stereo,
                             )
                         )
 
@@ -372,8 +469,22 @@ class AtomsData:
         new_cell = np.vstack(
             [self.cell[0] * na, self.cell[1] * nb, self.cell[2] * nc]
         )
-        new_meta = dict(self.metadata)
+        new_meta = copy.deepcopy(self.metadata)
         new_meta["supercell_repeat"] = (na, nb, nc)
+        new_occ = (
+            np.tile(self.occupancies, n_cells)
+            if self.occupancies is not None
+            else None
+        )
+        if new_occ is not None:
+            new_meta["occupancies"] = new_occ.tolist()
+        new_mag = None
+        if self.magnetic_moments is not None:
+            new_mag = (
+                np.tile(self.magnetic_moments, n_cells)
+                if self.magnetic_moments.ndim == 1
+                else np.tile(self.magnetic_moments, (n_cells, 1))
+            )
         return AtomsData(
             symbols=self.symbols * n_cells,
             positions=new_pos,
@@ -402,6 +513,8 @@ class AtomsData:
                 else None
             ),
             metadata=new_meta,
+            occupancies=new_occ,
+            magnetic_moments=new_mag,
         )
 
     def copy(self) -> AtomsData:
@@ -421,7 +534,15 @@ class AtomsData:
             atom_labels=(
                 None if self.atom_labels is None else list(self.atom_labels)
             ),
-            metadata=dict(self.metadata),
+            metadata=copy.deepcopy(self.metadata),
+            occupancies=(
+                None if self.occupancies is None else self.occupancies.copy()
+            ),
+            magnetic_moments=(
+                None
+                if self.magnetic_moments is None
+                else self.magnetic_moments.copy()
+            ),
         )
 
     @classmethod

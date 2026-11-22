@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 from matplotlib import axes as maxes
 from matplotlib import lines as mlines
@@ -399,7 +400,7 @@ def apply_background_grid(
 def shade_between(
     ax: maxes.Axes,
     x: Sequence[float] | np.ndarray,
-    y1: Sequence[float] | np.ndarray,
+    y1: float | Sequence[float] | np.ndarray,
     y2: float | Sequence[float] | np.ndarray = 0.0,
     *,
     color: str = "#56B4E9",
@@ -412,7 +413,7 @@ def shade_between(
     """Draws a solid or hatched/stippled shaded region between two curves."""
     hatch = resolve_hatch(shade)
     edge = color if edgecolor is None else edgecolor
-    fill_fn = ax.fill_betweenx if vertical else ax.fill_between
+    fill_fn: Any = ax.fill_betweenx if vertical else ax.fill_between
     if hatch:
         poly = fill_fn(
             x,

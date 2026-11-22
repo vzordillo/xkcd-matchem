@@ -66,11 +66,83 @@ def contrast_text_color(bg_color: str) -> str:
     return palettes.INK if lum > 0.45 else "#FFFFFF"
 
 
-def _resolve_ink(color: str | None = None) -> str:
+def is_dark_color(color: str) -> bool:
+    """Returns True when a color has dark perceptual luminance (< 0.35)."""
+    r, g, b = mcolors.to_rgb(color)
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 0.35
+
+
+def muted_surface_color(bg_color: str) -> str:
+    """Returns a neutral tile/badge background adapted to ``bg_color``."""
+    return "#252C3A" if is_dark_color(bg_color) else "#EAECEF"
+
+
+def ensure_readable_text_color(fg_color: str, bg_color: str) -> str:
+    """Adjusts ``fg_color`` to maintain high contrast against ``bg_color``."""
+    rf, gf, bf = mcolors.to_rgb(fg_color)
+    lum_fg = 0.2126 * rf + 0.7152 * gf + 0.0722 * bf
+    if is_dark_color(bg_color):
+        if lum_fg < 0.32:
+            return lighten_hex(fg_color, 0.58)
+        return fg_color
+    if lum_fg > 0.70:
+        return darken_hex(fg_color, 0.48)
+    return fg_color
+
+
+def resolve_ink(color: str | None = None) -> str:
     """Resolves explicit ink color or active theme ``axes.edgecolor``."""
     if color is not None:
         return color
     return str(matplotlib.rcParams.get("axes.edgecolor", palettes.INK))
+
+
+def _resolve_ink(color: str | None = None) -> str:
+    """Internal alias for ``resolve_ink``."""
+    return resolve_ink(color)
+
+
+def draw_vector_arrow_2d(
+    ax: maxes.Axes,
+    tail_2d: np.ndarray,
+    tip_2d: np.ndarray,
+    color: str = "#D55E00",
+    edgecolor: str | None = None,
+    linewidth: float = 2.0,
+    zorder: float = 4.0,
+) -> None:
+    """Draws an xkcd ink-outlined 2D-projected vector arrow (spins/forces)."""
+    dx = float(tip_2d[0] - tail_2d[0])
+    dy = float(tip_2d[1] - tail_2d[1])
+    if math.hypot(dx, dy) < 1e-4:
+        return
+    stroke = resolve_ink(edgecolor)
+    ax.annotate(
+        "",
+        xy=(float(tip_2d[0]), float(tip_2d[1])),
+        xytext=(float(tail_2d[0]), float(tail_2d[1])),
+        arrowprops={
+            "arrowstyle": "-|>,head_length=0.45,head_width=0.28",
+            "color": stroke,
+            "lw": linewidth + 1.4,
+            "shrinkA": 0.0,
+            "shrinkB": 0.0,
+        },
+        zorder=zorder,
+    )
+    ax.annotate(
+        "",
+        xy=(float(tip_2d[0]), float(tip_2d[1])),
+        xytext=(float(tail_2d[0]), float(tail_2d[1])),
+        arrowprops={
+            "arrowstyle": "-|>,head_length=0.40,head_width=0.24",
+            "color": color,
+            "lw": linewidth,
+            "shrinkA": 0.0,
+            "shrinkB": 0.0,
+        },
+        zorder=zorder + 0.004,
+    )
 
 
 def draw_atom_sphere(

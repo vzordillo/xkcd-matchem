@@ -109,7 +109,7 @@ class Board:
             )
             self.figure.patch.set_sketch_params(0.0, 0.0, 0.0)
             self.overlay: maxes.Axes = self.figure.add_axes(
-                [0.0, 0.0, 1.0, 1.0]
+                (0.0, 0.0, 1.0, 1.0)
             )
             self.overlay.set_xlim(0.0, self.width_mm)
             self.overlay.set_ylim(self.height_mm, 0.0)
@@ -333,7 +333,7 @@ class Board:
                 self.height_mm - (y_mm + h_mm - pad_b)
             ) / self.height_mm
             ax_h = max(0.05, (h_mm - pad_t - pad_b) / self.height_mm)
-            child_ax = self.figure.add_axes([ax_left, ax_bottom, ax_w, ax_h])
+            child_ax = self.figure.add_axes((ax_left, ax_bottom, ax_w, ax_h))
         card = Card(
             axes=child_ax,
             x_mm=x_mm,
@@ -432,8 +432,13 @@ class Board:
         self,
         path: str | pathlib.Path,
         dpi: int | None = None,
+        *,
+        exact_mm: bool = True,
     ) -> pathlib.Path:
-        """Exports the completed board to PNG, SVG, or PDF."""
+        """Exports the completed board with exact millimeter dimensions."""
         return export.save_figure(
-            self.figure, path, dpi=self.dpi if dpi is None else dpi
+            self.figure,
+            path,
+            dpi=self.dpi if dpi is None else dpi,
+            tight=not exact_mm,
         )

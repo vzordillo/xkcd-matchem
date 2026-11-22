@@ -48,11 +48,17 @@ def from_rdkit(mol: Any, conf_id: int = -1) -> structure.AtomsData:
     conf = working.GetConformer(conf_id)
     symbols = [atom.GetSymbol() for atom in working.GetAtoms()]
     positions = np.array(conf.GetPositions(), dtype=np.float64)
+    dir_map = {
+        "BEGINWEDGE": "wedge",
+        "BEGINDASH": "dash",
+        "UNKNOWN": "wavy",
+    }
     bonds = [
         structure.Bond(
             i=bond.GetBeginAtomIdx(),
             j=bond.GetEndAtomIdx(),
             order=float(bond.GetBondTypeAsDouble()),
+            stereo=dir_map.get(str(bond.GetBondDir()), "none"),
         )
         for bond in working.GetBonds()
     ]

@@ -25,6 +25,8 @@ def save_figure(
     path: str | pathlib.Path,
     dpi: int = 200,
     transparent: bool = False,
+    *,
+    tight: bool = True,
 ) -> pathlib.Path:
     """Saves a Matplotlib ``Figure`` creating missing parent directories.
 
@@ -34,6 +36,8 @@ def save_figure(
         ``.pdf``).
       dpi: Rasterization resolution for bitmap outputs.
       transparent: Whether to save with transparent canvas background.
+      tight: Use ``bbox_inches="tight"`` cropping when ``True``, or preserve
+        exact figure canvas dimensions when ``False``.
 
     Returns:
       Resolved output ``pathlib.Path``.
@@ -47,7 +51,7 @@ def save_figure(
         transparent=transparent,
         facecolor=fig.get_facecolor(),
         edgecolor=fig.get_facecolor(),
-        bbox_inches="tight",
-        pad_inches=0.08,
+        bbox_inches="tight" if tight else None,
+        pad_inches=0.08 if tight else 0.0,
     )
     return out

@@ -16,14 +16,19 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+import pathlib
 
 from matplotlib import axes as maxes
 from matplotlib import pyplot as plt
 import numpy as np
 from scipy import interpolate
 
+from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import geometry
+from xkcd_matchem.core import structure
 from xkcd_matchem.core import trajectory
+from xkcd_matchem.io import loader
+from xkcd_matchem.render import structure2d
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import theme
 
@@ -41,19 +46,17 @@ def _is_local_peak(y_vals: np.ndarray, idx: int) -> bool:
     )
 
 
-def _annotate_reaction_barrier(
+def _draw_barrier_span(
     ax: maxes.Axes,
     xs: np.ndarray,
     y_vals: np.ndarray,
+    ref_idx: int,
+    peak_idx: int,
     unit: str,
     barrier_col: str,
     bg_color: str,
 ) -> None:
-    """Draws activation-energy arrow relative to lowest preceding minimum."""
-    peak_idx = int(np.argmax(y_vals))
-    if not 0 < peak_idx < len(y_vals) - 1:
-        return
-    ref_idx = int(np.argmin(y_vals[:peak_idx]))
+    """Draws one activation-energy arrow and badge between minimum and peak."""
     e_ref = float(y_vals[ref_idx])
     e_act = float(y_vals[peak_idx] - e_ref)
     ax.annotate(
@@ -87,6 +90,44 @@ def _annotate_reaction_barrier(
     )
 
 
+def _annotate_reaction_barrier(
+    ax: maxes.Axes,
+    xs: np.ndarray,
+    y_vals: np.ndarray,
+    unit: str,
+    barrier_col: str,
+    bg_color: str,
+) -> None:
+    """Draws global activation-energy arrow from preceding minimum to max."""
+    peak_idx = int(np.argmax(y_vals))
+    if not 0 < peak_idx < len(y_vals) - 1:
+        return
+    ref_idx = int(np.argmin(y_vals[:peak_idx]))
+    _draw_barrier_span(
+        ax, xs, y_vals, ref_idx, peak_idx, unit, barrier_col, bg_color
+    )
+
+
+def _annotate_elementary_barriers(
+    ax: maxes.Axes,
+    xs: np.ndarray,
+    y_vals: np.ndarray,
+    unit: str,
+    barrier_col: str,
+    bg_color: str,
+) -> None:
+    """Draws an Ea arrow for each interior barrier relative to prior min."""
+    last_min = 0
+    for k in range(1, len(y_vals) - 1):
+        if y_vals[k] <= y_vals[k - 1] and y_vals[k] <= y_vals[k + 1]:
+            last_min = k
+        elif y_vals[k] > y_vals[k - 1] and y_vals[k] >= y_vals[k + 1]:
+            _draw_barrier_span(
+                ax, xs, y_vals, last_min, k, unit, barrier_col, bg_color
+            )
+            last_min = k
+
+
 def plot_reaction_profile(
     energies: Sequence[float] | np.ndarray,
     labels: Sequence[str] | None = None,
@@ -98,8 +139,16 @@ def plot_reaction_profile(
     palette: str | Sequence[str] = "okabe_ito",
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
+    *,
+    barrier_mode: str = "global",
 ) -> maxes.Axes:
     """Plots a stationary-state reaction energy diagram with barriers."""
+    mode_key = "none" if not barriers else barrier_mode.strip().lower()
+    if mode_key not in ("global", "elementary", "none"):
+        raise exceptions.StructureError(
+            f"Unsupported barrier_mode {barrier_mode!r}. "
+            "Use 'global', 'elementary', or 'none'."
+        )
     y_vals = np.asarray(energies, dtype=np.float64)
     n_pts = len(y_vals)
     span = max(float(np.ptp(y_vals)), 0.5)
@@ -147,8 +196,12 @@ def plot_reaction_profile(
                 color=preset_obj.ink_color,
             )
 
-        if barriers and n_pts >= 3:
+        if n_pts >= 3 and mode_key == "global":
             _annotate_reaction_barrier(
+                ax, xs, y_vals, unit, barrier_col, preset_obj.axes_facecolor
+            )
+        elif n_pts >= 3 and mode_key == "elementary":
+            _annotate_elementary_barriers(
                 ax, xs, y_vals, unit, barrier_col, preset_obj.axes_facecolor
             )
 
@@ -188,7 +241,7 @@ def _neb_coordinates(
         cum[idx] = cum[idx - 1] + float(np.linalg.norm(disp))
     if cum[-1] <= 1e-12:
         return np.linspace(0.0, 1.0, n_img)
-    return cum / cum[-1]
+    return np.asarray(cum / cum[-1], dtype=np.float64)
 
 
 def plot_neb(
@@ -258,6 +311,176 @@ def plot_neb(
         ax.set_xlabel("Normalized Reaction Coordinate")
         ax.set_ylabel(f"Relative Energy ({unit})")
         theme.apply_xkcd_spines(ax, preset=preset)
+        if title:
+            ax.set_title(title)
+    return ax
+
+
+def _coerce_scheme_mols(
+    items: (
+        structure.AtomsData
+        | str
+        | pathlib.Path
+        | Sequence[structure.AtomsData | str | pathlib.Path]
+    ),
+) -> list[structure.AtomsData]:
+    """Coerces single or sequence reaction participants to ``AtomsData``."""
+    seq = (
+        [items]
+        if isinstance(items, (structure.AtomsData, str, pathlib.Path))
+        else list(items)
+    )
+    if not seq:
+        raise exceptions.StructureError(
+            "Reaction scheme requires at least one reactant and product."
+        )
+    out: list[structure.AtomsData] = []
+    for item in seq:
+        if isinstance(item, structure.AtomsData):
+            out.append(item)
+        else:
+            loaded = loader.load(item)
+            if not isinstance(loaded, structure.AtomsData):
+                raise exceptions.StructureError(
+                    f"Expected AtomsData, got {type(loaded).__name__}."
+                )
+            out.append(loaded)
+    return out
+
+
+def _draw_scheme_side(
+    ax: maxes.Axes,
+    mols: Sequence[structure.AtomsData],
+    x_start: float,
+    mol_w: float,
+    plus_w: float,
+    palette: str,
+    ink_col: str,
+) -> float:
+    """Renders reactants or products horizontally with ``+`` separators."""
+    x_cur = x_start
+    for idx, mol in enumerate(mols):
+        if idx > 0:
+            ax.text(
+                x_cur + 0.5 * plus_w,
+                0.50,
+                "+",
+                ha="center",
+                va="center",
+                fontsize=16.0,
+                color=ink_col,
+            )
+            x_cur += plus_w
+        sub_ax = ax.inset_axes((x_cur, 0.12, mol_w, 0.76))
+        structure2d.render_structure_2d(mol, ax=sub_ax, palette=palette)
+        sub_ax.set_facecolor("none")
+        sub_ax.set_axis_off()
+        x_cur += mol_w
+    return x_cur
+
+
+def plot_reaction_scheme(
+    reactants: (
+        structure.AtomsData
+        | str
+        | pathlib.Path
+        | Sequence[structure.AtomsData | str | pathlib.Path]
+    ),
+    products: (
+        structure.AtomsData
+        | str
+        | pathlib.Path
+        | Sequence[structure.AtomsData | str | pathlib.Path]
+    ),
+    *,
+    conditions_above: str | None = None,
+    conditions_below: str | None = None,
+    arrow: str = "->",
+    ax: maxes.Axes | None = None,
+    palette: str = "xkcd",
+    preset: str | theme.ThemePreset = "classic",
+    title: str | None = None,
+) -> maxes.Axes:
+    """Draws an xkcd-style 2D skeletal chemical reaction equation scheme.
+
+    Args:
+      reactants: Reactant molecule or sequence of reactant structures/paths.
+      products: Product molecule or sequence of product structures/paths.
+      conditions_above: Optional reagents/catalyst text above reaction arrow.
+      conditions_below: Optional temperature/solvent text below arrow.
+      arrow: ``"->"`` for forward or ``"<=>"`` for equilibrium double arrow.
+      ax: Optional host Matplotlib ``Axes``.
+      palette: Element coloring scheme for 2D heteroatom labels.
+      preset: Visual theme preset name or ``ThemePreset``.
+      title: Optional scheme heading.
+
+    Returns:
+      Matplotlib ``Axes`` containing the horizontal reaction equation.
+    """
+    r_mols = _coerce_scheme_mols(reactants)
+    p_mols = _coerce_scheme_mols(products)
+    arrow_key = arrow.strip()
+    if arrow_key not in ("->", "<=>"):
+        raise exceptions.StructureError(
+            f"Unsupported reaction arrow {arrow!r}. Use '->' or '<=>'."
+        )
+    ink_col = theme.get_preset(preset).ink_color
+    n_mols = len(r_mols) + len(p_mols)
+    n_plus = max(len(r_mols) - 1, 0) + max(len(p_mols) - 1, 0)
+    plus_w = 0.055
+    arrow_w = 0.16
+    mol_w = (0.94 - n_plus * plus_w - arrow_w) / float(n_mols)
+
+    with theme.xkcd_style(preset=preset):
+        if ax is None:
+            fig_w = max(7.2, 2.2 * (n_mols + 1))
+            _, ax = plt.subplots(figsize=(fig_w, 3.6))
+        else:
+            theme.style_existing_axes(ax, preset=preset)
+        ax.set_xlim(0.0, 1.0)
+        ax.set_ylim(0.0, 1.0)
+        ax.set_axis_off()
+
+        x_cur = _draw_scheme_side(
+            ax, r_mols, 0.03, mol_w, plus_w, palette, ink_col
+        )
+        a_x0 = x_cur + 0.02
+        a_x1 = x_cur + arrow_w - 0.02
+        arrow_style = "<->" if arrow_key == "<=>" else "->"
+        ax.annotate(
+            "",
+            xy=(a_x1, 0.50),
+            xytext=(a_x0, 0.50),
+            arrowprops={
+                "arrowstyle": arrow_style,
+                "color": ink_col,
+                "lw": 2.2,
+            },
+        )
+        mid_a = 0.5 * (a_x0 + a_x1)
+        if conditions_above:
+            ax.text(
+                mid_a,
+                0.56,
+                conditions_above,
+                ha="center",
+                va="bottom",
+                fontsize=9.5,
+                color=ink_col,
+            )
+        if conditions_below:
+            ax.text(
+                mid_a,
+                0.44,
+                conditions_below,
+                ha="center",
+                va="top",
+                fontsize=9.5,
+                color=ink_col,
+            )
+        _draw_scheme_side(
+            ax, p_mols, x_cur + arrow_w, mol_w, plus_w, palette, ink_col
+        )
         if title:
             ax.set_title(title)
     return ax

@@ -263,7 +263,7 @@ def _draw_single_tile(
             )
         )
     txt_col = (
-        ink_col
+        primitives.ensure_readable_text_color(ink_col, fill_color)
         if hatch
         else primitives.contrast_text_color(mcolors.to_hex(fill_color))
     )
@@ -503,7 +503,9 @@ def plot_periodic_table(
     if family_colors:
         fam_palette.update({str(k): str(v) for k, v in family_colors.items()})
 
-    ink_col = theme.get_preset(preset).ink_color
+    preset_obj = theme.get_preset(preset)
+    ink_col = preset_obj.ink_color
+    muted_bg = primitives.muted_surface_color(preset_obj.axes_facecolor)
     missing_hatch = patterns.resolve_hatch(missing_shade)
 
     with theme.xkcd_style(preset=preset):
@@ -521,7 +523,7 @@ def plot_periodic_table(
                 highlight_map,
                 fam_palette,
                 cmap_and_norm,
-                ("#EAECEF", missing_hatch),
+                (muted_bg, missing_hatch),
                 (".2g", True),
             )
             _draw_single_tile(

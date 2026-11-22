@@ -361,7 +361,7 @@ def minimum_image_vector(
     arr = np.asarray(vec, dtype=np.float64)
     active = [ax for ax, flag in enumerate(pbc) if flag]
     if not active or arr.size == 0:
-        return arr.copy()
+        return np.asarray(arr.copy(), dtype=np.float64)
 
     basis_p = _reduce_lattice_basis(np.asarray(cell, dtype=np.float64)[active])
     gram = basis_p @ basis_p.T
@@ -387,7 +387,9 @@ def minimum_image_vector(
         cands = w0[row_idx : row_idx + 1] + shift_cart
         dists_sq = np.einsum("ij,ij->i", cands, cands)
         best_in_plane[row_idx] = cands[int(np.argmin(dists_sq))]
-    return (v_perp + best_in_plane).reshape(orig_shape)
+    return np.asarray(
+        (v_perp + best_in_plane).reshape(orig_shape), dtype=np.float64
+    )
 
 
 def max_min_image_radius(
@@ -604,4 +606,4 @@ def miller_plane_polygon(
         for pt in arr_frac
     ]
     order = np.argsort(angles)
-    return arr_frac[order] @ cell
+    return np.asarray(arr_frac[order] @ cell, dtype=np.float64)
