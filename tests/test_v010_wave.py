@@ -30,7 +30,9 @@ from xkcd_matchem.core import electronic
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import structure
 from xkcd_matchem.io.native import lobster
+from xkcd_matchem.render import artistic3d
 from xkcd_matchem.render import interactive
+from xkcd_matchem.style import patterns
 
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -309,6 +311,45 @@ def test_isosurface_clarity_and_mathtext_subscripts() -> None:
     assert "$\\mathrm{V}_{\\mathrm{Si}}$" in [
         t.get_text() for t in leg.get_texts()
     ]
+    plt.close("all")
+
+
+def test_artistic_3d_isosurface_shading_modes(tmp_path: pathlib.Path) -> None:
+    """Verifies pen-and-ink 3D shading modes, aliases, and Studio iso_shade."""
+    for mode in artistic3d.VALID_ISO_SHADES:
+        ax_m = xm.plot_isosurface("water_homo.cube", shade=mode)
+        assert ax_m is not None
+
+    for alias, canonical in (
+        ("hatching", "hatch"),
+        ("cross_hatching", "crosshatch"),
+        ("stippling", "stipple"),
+        ("scribble", "scumble"),
+        ("circulism", "scumble"),
+        ("blending", "solid"),
+    ):
+        assert artistic3d.normalize_iso_shade(alias) == canonical
+        assert patterns.resolve_hatch(alias) is not None or canonical == "solid"
+
+    with pytest.raises(exceptions.StyleError):
+        xm.plot_isosurface("water_homo.cube", shade="watercolor_unknown")
+
+    payload = interactive.serialize_structure(
+        "water_homo.cube", iso_shade="crosshatch"
+    )
+    assert payload["iso_shade"] == "crosshatch"
+
+    ax_st = xm.view_structure(
+        "water_homo.cube", backend="matplotlib", iso_shade="contour"
+    )
+    assert ax_st is not None
+
+    out_html = tmp_path / "studio_shade.html"
+    interactive.export_interactive_html(
+        "tio2_slab.poscar", out_html, include_bundled_samples=True
+    )
+    html_text = out_html.read_text(encoding="utf-8")
+    assert "xm-iso-shade" in html_text
     plt.close("all")
 
 

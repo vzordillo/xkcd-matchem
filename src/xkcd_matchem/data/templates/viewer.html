@@ -349,6 +349,18 @@ canvas#xm-canvas:active { cursor: grabbing; }
         <label><input type="checkbox" id="xm-show-vectors" checked /> Vectors</label>
         <label><input type="checkbox" id="xm-show-iso" checked /> Isosurface</label>
       </div>
+      <div class="xm-row">
+        <label for="xm-iso-shade">Iso Shading</label>
+        <select id="xm-iso-shade">
+          <option value="crosshatch">Cross-Hatching</option>
+          <option value="hatch">Hatching</option>
+          <option value="contour">Contour Shading</option>
+          <option value="stipple">Stippling</option>
+          <option value="scumble">Scumbling / Scribble</option>
+          <option value="solid">Smooth Blending</option>
+          <option value="outline">Outline Only</option>
+        </select>
+      </div>
     </div>
 
     <div class="xm-group">
@@ -426,6 +438,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     showLegend: true,
     showVectors: true,
     showIso: true,
+    isoShade: currentSample.iso_shade || "solid",
     frameIdx: 0,
     playing: false,
     fps: 8,
@@ -972,26 +985,180 @@ canvas#xm-canvas:active { cursor: grabbing; }
       }
     }
 
+  function collectIsoLobeArt(iso, pivot, basis, sceneSpan, toScreen) {
+    const lDir = [-0.45, 0.55, 0.70];
+    const lNorm = Math.hypot(...lDir) || 1;
+    const vProj = projectList(iso.vertices, pivot, basis, sceneSpan);
+    const frontFlags = new Array(iso.faces.length).fill(false);
+    const triItems = [];
+    const frontPolys = [], shadowPolys = [], corePolys = [];
+    let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+    let dSum = 0, dCnt = 0;
+
+    for (let fIdx = 0; fIdx < iso.faces.length; fIdx++) {
+      const [f0, f1, f2] = iso.faces[fIdx];
+      const pA = vProj[f0], pB = vProj[f1], pC = vProj[f2];
+      if (!pA || !pB || !pC) continue;
+      let wn = iso.normals && iso.normals[fIdx];
+      if (!wn) {
+        const va = iso.vertices[f0], vb = iso.vertices[f1], vc = iso.vertices[f2];
+        wn = cross3([vb[0] - va[0], vb[1] - va[1], vb[2] - va[2]], [vc[0] - va[0], vc[1] - va[1], vc[2] - va[2]]);
+      }
+      const wnn = norm3(wn) || 1;
+      const nRot = [dot3(wn, basis[0]) / wnn, dot3(wn, basis[1]) / wnn, dot3(wn, basis[2]) / wnn];
+      if (nRot[2] < -0.02) continue;
+      frontFlags[fIdx] = true;
+      const nd = Math.max(0, dot3(nRot, [lDir[0] / lNorm, lDir[1] / lNorm, lDir[2] / lNorm]));
+      const tone = 0.68 * nd + 0.32 * Math.max(0, nRot[2]);
+      const md = (pA[2] + pB[2] + pC[2]) / 3 - 0.12;
+      triItems.push({ depth: md, kind: "iso_tri", pts: [pA, pB, pC], col: iso.color, shade: 0.68 + 0.32 * nd, nz: nRot[2] });
+
+      const sp = [toScreen(pA), toScreen(pB), toScreen(pC)];
+      for (const pt of sp) {
+        if (pt[0] < minX) minX = pt[0];
+        if (pt[1] < minY) minY = pt[1];
+        if (pt[0] > maxX) maxX = pt[0];
+        if (pt[1] > maxY) maxY = pt[1];
+      }
+      frontPolys.push(sp);
+      if (tone < 0.58) shadowPolys.push(sp);
+      if (tone < 0.38) corePolys.push(sp);
+      dSum += md; dCnt += 1;
+    }
+
+    const edgeMap = new Map();
+    for (let fIdx = 0; fIdx < iso.faces.length; fIdx++) {
+      const [f0, f1, f2] = iso.faces[fIdx];
+      const isF = frontFlags[fIdx];
+      for (const [u, v] of [[f0, f1], [f1, f2], [f2, f0]]) {
+        const a = Math.min(u, v), b = Math.max(u, v);
+        const key = `${a},${b}`;
+        if (!edgeMap.has(key)) edgeMap.set(key, { u: a, v: b, flags: [] });
+        edgeMap.get(key).flags.push(isF);
+      }
+    }
+    const rimSegs = [];
+    for (const rec of edgeMap.values()) {
+      const fl = rec.flags;
+      if ((fl.length === 2 && fl[0] !== fl[1]) || (fl.length === 1 && fl[0])) {
+        if (vProj[rec.u] && vProj[rec.v]) {
+          rimSegs.push([toScreen(vProj[rec.u]), toScreen(vProj[rec.v])]);
+        }
+      }
+    }
+    return {
+      triItems,
+      artItem: dCnt ? {
+        depth: dSum / dCnt,
+        kind: "iso_art",
+        col: iso.color,
+        frontPolys,
+        shadowPolys,
+        corePolys,
+        rimSegs,
+        bbox: [minX, minY, maxX, maxY],
+      } : null,
+    };
+  }
+
+  function tracePolyBatch(polys) {
+    ctx.beginPath();
+    for (const tri of polys) {
+      ctx.moveTo(tri[0][0], tri[0][1]);
+      ctx.lineTo(tri[1][0], tri[1][1]);
+      ctx.lineTo(tri[2][0], tri[2][1]);
+      ctx.closePath();
+    }
+  }
+
+  function drawClippedHatchCanvas(polys, bbox, angleDeg, spacing, offset, inkCol, lw, wAmp) {
+    if (!polys.length) return;
+    const [x0, y0, x1, y1] = bbox;
+    const rad = (angleDeg * Math.PI) / 180;
+    const eu = [Math.cos(rad), Math.sin(rad)];
+    const ev = [-Math.sin(rad), Math.cos(rad)];
+    const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+    const us = corners.map((c) => c[0] * eu[0] + c[1] * eu[1]);
+    const vs = corners.map((c) => c[0] * ev[0] + c[1] * ev[1]);
+    const uMin = Math.min(...us) - 4, uMax = Math.max(...us) + 4;
+    const vMin = Math.min(...vs) + offset, vMax = Math.max(...vs);
+
+    ctx.save();
+    tracePolyBatch(polys);
+    ctx.clip();
+    let seed = 17;
+    for (let vk = vMin; vk <= vMax; vk += spacing) {
+      const p0 = [uMin * eu[0] + vk * ev[0], uMin * eu[1] + vk * ev[1]];
+      const p1 = [uMax * eu[0] + vk * ev[0], uMax * eu[1] + vk * ev[1]];
+      drawStrokeWiggle(p0, p1, inkCol, lw, false, Math.max(wAmp * 0.75, 0.55), seed++);
+    }
+    ctx.restore();
+  }
+
+  function drawIsoArtCanvas(item) {
+    const shade = state.isoShade;
+    const ink = shadeHexRgba(item.col, 0.78, 0.68);
+    if (item.frontPolys.length) {
+      tracePolyBatch(item.frontPolys);
+      ctx.fillStyle = shadeHexRgba(item.col, shade === "outline" ? 0.04 : 0.11, 1.15);
+      ctx.fill();
+    }
+    if (shade === "hatch") {
+      drawClippedHatchCanvas(item.shadowPolys, item.bbox, 40, 8.5, 0, ink, 1.15, state.wiggle);
+      drawClippedHatchCanvas(item.corePolys, item.bbox, 40, 8.5, 4.25, ink, 1.0, state.wiggle);
+    } else if (shade === "crosshatch") {
+      drawClippedHatchCanvas(item.shadowPolys, item.bbox, 40, 9.0, 0, ink, 1.15, state.wiggle);
+      drawClippedHatchCanvas(item.corePolys, item.bbox, -48, 9.0, 0, ink, 1.1, state.wiggle);
+    } else if (shade === "contour") {
+      drawClippedHatchCanvas(item.shadowPolys, item.bbox, 66, 9.5, 0, ink, 1.15, Math.max(state.wiggle * 1.4, 1.2));
+    } else if (shade === "stipple" && item.shadowPolys.length) {
+      const [x0, y0, x1, y1] = item.bbox;
+      ctx.save();
+      tracePolyBatch(item.shadowPolys);
+      ctx.clip();
+      ctx.fillStyle = ink;
+      for (let x = x0 + 3, ix = 0; x <= x1; x += 6.0, ix++) {
+        for (let y = y0 + 3, iy = 0; y <= y1; y += 6.0, iy++) {
+          const jx = Math.sin(ix * 12.9 + iy * 78.2) * 1.8;
+          const jy = Math.cos(ix * 39.3 + iy * 19.7) * 1.8;
+          ctx.beginPath();
+          ctx.arc(x + jx, y + jy, 1.35, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    } else if (shade === "scumble" && item.shadowPolys.length) {
+      const [x0, y0, x1, y1] = item.bbox;
+      ctx.save();
+      tracePolyBatch(item.shadowPolys);
+      ctx.clip();
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 1.0;
+      for (let y = y0 + 5, row = 0; y <= y1; y += 10.0, row++) {
+        ctx.beginPath();
+        for (let x = x0; x <= x1; x += 3.5) {
+          const t = x * 0.35 + row * 1.3;
+          const px = x + 3.2 * Math.sin(t);
+          const py = y + 4.0 * Math.cos(t * 1.17);
+          if (x === x0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    item.rimSegs.forEach((seg, idx) => {
+      drawStrokeWiggle(seg[0], seg[1], item.col, 1.75, false, Math.max(state.wiggle * 0.65, 0.35), idx + 1);
+    });
+  }
+
     if (state.showIso && isosurfaces && isosurfaces.length) {
-      const lDir = [-0.45, 0.55, 0.70];
-      const lNorm = Math.hypot(...lDir) || 1;
       for (const iso of isosurfaces) {
-        const vProj = projectList(iso.vertices, pivot, basis, sceneSpan);
-        for (let fIdx = 0; fIdx < iso.faces.length; fIdx++) {
-          const [f0, f1, f2] = iso.faces[fIdx];
-          const pA = vProj[f0], pB = vProj[f1], pC = vProj[f2];
-          if (!pA || !pB || !pC) continue;
-          let wn = iso.normals && iso.normals[fIdx];
-          if (!wn) {
-            const va = iso.vertices[f0], vb = iso.vertices[f1], vc = iso.vertices[f2];
-            wn = cross3([vb[0] - va[0], vb[1] - va[1], vb[2] - va[2]], [vc[0] - va[0], vc[1] - va[1], vc[2] - va[2]]);
-          }
-          const wnn = norm3(wn) || 1;
-          const nRot = [dot3(wn, basis[0]) / wnn, dot3(wn, basis[1]) / wnn, dot3(wn, basis[2]) / wnn];
-          if (nRot[2] < -0.03) continue;
-          const nd = Math.max(0, dot3(nRot, [lDir[0] / lNorm, lDir[1] / lNorm, lDir[2] / lNorm]));
-          const md = (pA[2] + pB[2] + pC[2]) / 3 - 0.12;
-          items.push({ depth: md, kind: "iso_tri", pts: [pA, pB, pC], col: iso.color, shade: 0.68 + 0.32 * nd, nz: nRot[2] });
+        const res = collectIsoLobeArt(iso, pivot, basis, sceneSpan, toScreen);
+        if (state.isoShade === "solid") {
+          for (const it of res.triItems) items.push(it);
+        } else if (res.artItem) {
+          items.push(res.artItem);
         }
       }
     }
@@ -1023,7 +1190,9 @@ canvas#xm-canvas:active { cursor: grabbing; }
     const outlineW = Math.max(1.1, Math.min(2.4, 0.042 * pxPerA));
 
     for (const item of items) {
-      if (item.kind === "iso_tri") {
+      if (item.kind === "iso_art") {
+        drawIsoArtCanvas(item);
+      } else if (item.kind === "iso_tri") {
         const s = item.pts.map(toScreen);
         ctx.beginPath();
         ctx.moveTo(s[0][0], s[0][1]);
@@ -1559,19 +1728,13 @@ canvas#xm-canvas:active { cursor: grabbing; }
     }
     if (state.showIso && isosurfaces && isosurfaces.length) {
       for (const iso of isosurfaces) {
-        const vProj = projectList(iso.vertices, pivot, basis, sceneSpan);
-        for (let fIdx = 0; fIdx < iso.faces.length; fIdx++) {
-          const [f0, f1, f2] = iso.faces[fIdx];
-          let wn = iso.normals && iso.normals[fIdx];
-          if (!wn) {
-            const va = iso.vertices[f0], vb = iso.vertices[f1], vc = iso.vertices[f2];
-            wn = cross3([vb[0] - va[0], vb[1] - va[1], vb[2] - va[2]], [vc[0] - va[0], vc[1] - va[1], vc[2] - va[2]]);
+        const res = collectIsoLobeArt(iso, pivot, basis, sceneSpan, sc);
+        if (state.isoShade === "solid") {
+          for (const it of res.triItems) {
+            q.push({ d: it.depth, t: "iso_tri", pts: [sc(it.pts[0]), sc(it.pts[1]), sc(it.pts[2])], c: it.col, rim: it.nz < 0.26 });
           }
-          const wnn = norm3(wn) || 1;
-          const nz = dot3(wn, basis[2]) / wnn;
-          if (nz < -0.03) continue;
-          const md = (vProj[f0][2] + vProj[f1][2] + vProj[f2][2]) / 3 - 0.12;
-          q.push({ d: md, t: "iso_tri", pts: [sc(vProj[f0]), sc(vProj[f1]), sc(vProj[f2])], c: iso.color, rim: nz < 0.26 });
+        } else if (res.artItem) {
+          q.push({ d: res.artItem.depth, t: "iso_art", item: res.artItem });
         }
       }
     }
@@ -1591,8 +1754,33 @@ canvas#xm-canvas:active { cursor: grabbing; }
       }
     }
     q.sort((x, y) => x.d - y.d);
+    let isoClipCounter = 0;
     for (const it of q) {
-      if (it.t === "iso_tri") {
+      if (it.t === "iso_art") {
+        const art = it.item;
+        const cid = `xm-iso-clip-${++isoClipCounter}`;
+        if (art.frontPolys.length) {
+          const dPath = art.frontPolys.map((p) => `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}L${p[1][0].toFixed(1)},${p[1][1].toFixed(1)}L${p[2][0].toFixed(1)},${p[2][1].toFixed(1)}Z`).join("");
+          parts.push(`<path d="${dPath}" fill="${art.col}" fill-opacity="${state.isoShade === "outline" ? "0.04" : "0.11"}"/>`);
+        }
+        if (state.isoShade !== "outline" && art.shadowPolys.length) {
+          const sPath = art.shadowPolys.map((p) => `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}L${p[1][0].toFixed(1)},${p[1][1].toFixed(1)}L${p[2][0].toFixed(1)},${p[2][1].toFixed(1)}Z`).join("");
+          parts.push(`<defs><clipPath id="${cid}"><path d="${sPath}"/></clipPath></defs>`);
+          const [bx0, by0, bx1, by1] = art.bbox;
+          const diag = Math.hypot(bx1 - bx0, by1 - by0);
+          parts.push(`<g clip-path="url(#${cid})" stroke="${art.col}" stroke-opacity="0.72" stroke-width="1.05" stroke-linecap="round">`);
+          for (let d = -diag; d <= diag; d += 9.0) {
+            parts.push(`<line x1="${(bx0 + d).toFixed(1)}" y1="${by1.toFixed(1)}" x2="${(bx0 + d + diag * 0.84).toFixed(1)}" y2="${(by1 - diag).toFixed(1)}"/>`);
+            if (state.isoShade === "crosshatch") {
+              parts.push(`<line x1="${(bx0 + d).toFixed(1)}" y1="${by0.toFixed(1)}" x2="${(bx0 + d + diag * 0.90).toFixed(1)}" y2="${(by0 + diag).toFixed(1)}"/>`);
+            }
+          }
+          parts.push("</g>");
+        }
+        for (const seg of art.rimSegs) {
+          parts.push(`<line x1="${seg[0][0].toFixed(1)}" y1="${seg[0][1].toFixed(1)}" x2="${seg[1][0].toFixed(1)}" y2="${seg[1][1].toFixed(1)}" stroke="${art.col}" stroke-width="1.75" stroke-linecap="round"/>`);
+        }
+      } else if (it.t === "iso_tri") {
         const ptsStr = it.pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
         const sw = it.rim ? "0.8" : "0.2";
         const so = it.rim ? "0.45" : "0.14";
@@ -1879,6 +2067,10 @@ canvas#xm-canvas:active { cursor: grabbing; }
   document.getElementById("xm-show-iso").addEventListener("change", (e) => {
     state.showIso = e.target.checked; renderFrame();
   });
+  document.getElementById("xm-iso-shade").value = state.isoShade;
+  document.getElementById("xm-iso-shade").addEventListener("change", (e) => {
+    state.isoShade = e.target.value; renderFrame();
+  });
 
   function stopPlayback() {
     if (playTimer !== null) {
@@ -1990,6 +2182,8 @@ canvas#xm-canvas:active { cursor: grabbing; }
         state.style = currentSample.style;
         document.getElementById("xm-style").value = state.style;
       }
+      state.isoShade = currentSample.iso_shade || "solid";
+      document.getElementById("xm-iso-shade").value = state.isoShade;
       syncTrajectoryControls();
       renderFrame();
     });

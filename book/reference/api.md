@@ -165,6 +165,11 @@ Looking for the right function? Start here:
 ```
 
 ```{eval-rst}
+.. automodule:: xkcd_matchem.render.artistic3d
+   :members:
+```
+
+```{eval-rst}
 .. automodule:: xkcd_matchem.render.structure2d
    :members:
 ```

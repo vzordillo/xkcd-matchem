@@ -120,6 +120,13 @@ See [Tutorial 12: 3D Isosurfaces, Phonons, Wulff Shapes & Comic Strips](tutorial
 
 ![Isosurfaces, phonons, Wulff shapes, and reaction schemes](_static/gallery/flagship_features.png)
 
+## xkcd Pen-and-Ink 3D Isosurface Shading Techniques
+
+Switch seamlessly between smooth glass blending (`shade="solid"`) and classic hand-drawn comic shading techniques (`shade="hatch"`, `"crosshatch"`, `"contour"`, `"cross_contour"`, `"stipple"`, `"scumble"`, or `"outline"`) so molecular geometry stands out clearly inside orbital lobes.
+See [Tutorial 12: 3D Isosurfaces, Phonons, Wulff Shapes & Comic Strips](tutorials/12_isosurfaces_phonons_wulff_and_comics.ipynb).
+
+![xkcd pen-and-ink 3D isosurface shading techniques](_static/gallery/isosurface_shading_styles.png)
+
 ## First Brillouin Zones, Volcano Catalysis, Defects & LOBSTER COHP
 
 Render zero-dependency Wigner–Seitz 3D first Brillouin zones with high-symmetry k-paths (`plot_brillouin_zone()`), Sabatier heterogeneous catalysis volcano curves (`plot_volcano()`), semiconductor defect formation energy diagrams (`plot_defect_formation()`), and LOBSTER `-pCOHP` / `-ICOHP` bonding analyses (`plot_cohp()`).

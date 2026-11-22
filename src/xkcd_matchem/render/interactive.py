@@ -42,6 +42,7 @@ from xkcd_matchem.data import samples_registry
 from xkcd_matchem.io import loader
 from xkcd_matchem.plots import electronic as elec_plots
 from xkcd_matchem.plots import structure as struct_plots
+from xkcd_matchem.render import artistic3d
 from xkcd_matchem.style import fonts
 from xkcd_matchem.style import palettes
 
@@ -338,6 +339,40 @@ def _resolve_custom_palette(
     return (palette_name if palette_name in known else "xkcd"), custom_colors
 
 
+def _attach_studio_extras(
+    out: dict[str, Any],
+    atoms_obj: structure.AtomsData,
+    frames_list: list[structure.AtomsData] | None,
+    auto_iso: electronic.VolumetricGrid | None,
+    *,
+    vectors: str | np.ndarray | Sequence[Sequence[float]] | None,
+    vector_scale: float,
+    isosurface: (
+        electronic.VolumetricGrid
+        | isosurf_mod.IsosurfaceMesh
+        | str
+        | pathlib.Path
+        | None
+    ),
+    isolevel: float | None,
+    symmetric_iso: bool | None,
+) -> None:
+    """Attaches optional vector arrows, isosurfaces, and trajectory frames."""
+    vec_rows = _resolve_js_vectors(atoms_obj, vectors, vector_scale)
+    if vec_rows is not None:
+        out["vectors"] = vec_rows
+    iso_rows = _serialize_isosurface_meshes(
+        auto_iso if isosurface is None else isosurface, isolevel, symmetric_iso
+    )
+    if iso_rows:
+        out["isosurfaces"] = iso_rows
+    if frames_list is not None and len(frames_list) > 1:
+        vec_attr = vectors if isinstance(vectors, str) else None
+        out["frames"] = _serialize_trajectory_frames(
+            frames_list, vec_attr, vector_scale
+        )
+
+
 def serialize_structure(
     atoms: (
         structure.AtomsData
@@ -368,14 +403,13 @@ def serialize_structure(
     ) = None,
     isolevel: float | None = None,
     symmetric_iso: bool | None = None,
+    iso_shade: str = "solid",
 ) -> dict[str, Any]:
     """Serializes an ``AtomsData``, ``Trajectory``, or cube grid for Studio."""
     atoms_obj, frames_list, auto_iso, source_sample = _coerce_interactive_input(
         atoms
     )
     cam = geometry.resolve_camera(camera, cell=atoms_obj.cell)
-    bond_rows = _serialize_bond_rows(atoms_obj)
-    poly_rows = _serialize_polyhedra_rows(atoms_obj, polyhedra)
     palette_name, custom_colors = _resolve_custom_palette(atoms_obj, palette)
 
     out: dict[str, Any] = {
@@ -389,14 +423,15 @@ def serialize_structure(
             else None
         ),
         "pbc": [bool(flag) for flag in atoms_obj.pbc],
-        "bonds": bond_rows,
-        "polyhedra": poly_rows,
+        "bonds": _serialize_bond_rows(atoms_obj),
+        "polyhedra": _serialize_polyhedra_rows(atoms_obj, polyhedra),
         "style": style,
         "palette_name": palette_name,
         "custom_colors": custom_colors,
         "background": background,
         "scale": float(scale),
         "show_cell": show_cell,
+        "iso_shade": artistic3d.normalize_iso_shade(iso_shade),
         "camera": {
             "azimuth": float(cam.azimuth),
             "elevation": float(cam.elevation),
@@ -405,20 +440,17 @@ def serialize_structure(
             "zoom": float(cam.zoom),
         },
     }
-    vec_rows = _resolve_js_vectors(atoms_obj, vectors, vector_scale)
-    if vec_rows is not None:
-        out["vectors"] = vec_rows
-    iso_target = auto_iso if isosurface is None else isosurface
-    iso_rows = _serialize_isosurface_meshes(
-        iso_target, isolevel, symmetric_iso
+    _attach_studio_extras(
+        out,
+        atoms_obj,
+        frames_list,
+        auto_iso,
+        vectors=vectors,
+        vector_scale=vector_scale,
+        isosurface=isosurface,
+        isolevel=isolevel,
+        symmetric_iso=symmetric_iso,
     )
-    if iso_rows:
-        out["isosurfaces"] = iso_rows
-    if frames_list is not None and len(frames_list) > 1:
-        vec_attr = vectors if isinstance(vectors, str) else None
-        out["frames"] = _serialize_trajectory_frames(
-            frames_list, vec_attr, vector_scale
-        )
     return out
 
 
@@ -492,6 +524,7 @@ def build_interactive_html(
     ) = None,
     isolevel: float | None = None,
     symmetric_iso: bool | None = None,
+    iso_shade: str = "solid",
 ) -> str:
     """Builds a standalone offline HTML document for the 3D xkcd Studio."""
     active_payload = serialize_structure(
@@ -509,6 +542,7 @@ def build_interactive_html(
         isosurface=isosurface,
         isolevel=isolevel,
         symmetric_iso=symmetric_iso,
+        iso_shade=iso_shade,
     )
     elem_table, pal_tables = _build_viewer_tables()
     payload = {
@@ -580,6 +614,7 @@ def export_interactive_html(
     ) = None,
     isolevel: float | None = None,
     symmetric_iso: bool | None = None,
+    iso_shade: str = "solid",
 ) -> pathlib.Path:
     """Exports a standalone offline interactive 3D studio HTML file."""
     extra_samples: list[dict[str, Any]] | None = None
@@ -600,6 +635,7 @@ def export_interactive_html(
             isosurface=isosurface,
             isolevel=isolevel,
             symmetric_iso=symmetric_iso,
+            iso_shade=iso_shade,
         )
         extra_samples.append(first)
         active_fname = _active_sample_filename(atoms)
@@ -636,7 +672,8 @@ def export_interactive_html(
                 extra_samples.append(
                     serialize_structure(
                         loaded,
-                        name="Water HOMO 3D Isosurface (water_homo.cube)",
+                        name="Water HOMO (Cross-Hatch, water_homo.cube)",
+                        iso_shade="crosshatch",
                     )
                 )
         if active_fname != "sn2_neb.xyz":
@@ -663,6 +700,7 @@ def export_interactive_html(
         isosurface=isosurface,
         isolevel=isolevel,
         symmetric_iso=symmetric_iso,
+        iso_shade=iso_shade,
     )
     out = pathlib.Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -701,6 +739,7 @@ def view_structure(
     ) = None,
     isolevel: float | None = None,
     symmetric_iso: bool | None = None,
+    iso_shade: str = "solid",
 ) -> InteractiveView | maxes.Axes:
     """Opens a molecule, crystal, trajectory, or cube grid in 3D Studio.
 
@@ -727,6 +766,9 @@ def view_structure(
       isosurface: Optional ``VolumetricGrid``, ``IsosurfaceMesh``, or path.
       isolevel: Optional explicit isosurface threshold.
       symmetric_iso: Extract both ``+level`` and ``-level`` orbital lobes.
+      iso_shade: 3D isosurface shading mode (``"solid"``, ``"crosshatch"``,
+        ``"hatch"``, ``"contour"``, ``"cross_contour"``, ``"stipple"``,
+        ``"scumble"``, or ``"outline"``).
 
     Returns:
       ``InteractiveView`` for HTML/browser backends, or Matplotlib ``Axes`` for
@@ -761,6 +803,7 @@ def view_structure(
                 symmetric=symmetric_iso,
                 camera=camera,
                 palette=iso_pal,
+                shade=iso_shade,
                 preset=preset,
                 title=atoms_obj.formula(),
             )
@@ -820,6 +863,7 @@ def view_structure(
         isosurface=isosurface,
         isolevel=isolevel,
         symmetric_iso=symmetric_iso,
+        iso_shade=iso_shade,
     )
     view = InteractiveView(
         html_str=html_doc,

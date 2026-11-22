@@ -954,8 +954,9 @@ def _make_flagship_features_gallery(out_dir: pathlib.Path) -> None:
         fig.patch.set_facecolor(xm.style.PAPER)
         xm.plot_isosurface(
             "water_homo.cube",
+            shade="crosshatch",
             ax=axes[0, 0],
-            title="Water HOMO 3D Isosurface",
+            title="Water HOMO (xkcd Cross-Hatch)",
         )
         xm.plot_phonon_bands(
             "si_phonon_bands.yaml",
@@ -983,6 +984,38 @@ def _make_flagship_features_gallery(out_dir: pathlib.Path) -> None:
         )
         fig.tight_layout(rect=(0.0, 0.02, 1.0, 0.93), w_pad=1.8, h_pad=2.0)
         xm.save_figure(fig, out_dir / "flagship_features.png", dpi=165)
+        plt.close(fig)
+
+
+def _make_isosurface_shading_gallery(out_dir: pathlib.Path) -> None:
+    """Generates a 2x3 reference gallery of xkcd 3D shading techniques."""
+    modes = (
+        ("hatch", "1. Parallel Hatching (hatch)"),
+        ("crosshatch", "2. Comic Cross-Hatch (crosshatch)"),
+        ("contour", "3. 3D Contour Shading (contour)"),
+        ("cross_contour", "4. 3D Cross-Contour (cross_contour)"),
+        ("stipple", "5. Felt-Tip Stippling (stipple)"),
+        ("scumble", "6. xkcd Scumbling / Scribble"),
+    )
+    with xm.xkcd_style("classic"):
+        fig, axes = plt.subplots(2, 3, figsize=(14.4, 9.2), dpi=165)
+        fig.patch.set_facecolor(xm.style.PAPER)
+        for ax, (mode, heading) in zip(axes.ravel(), modes, strict=True):
+            xm.plot_isosurface(
+                "water_homo.cube",
+                shade=mode,
+                ax=ax,
+                title=heading,
+            )
+        fig.suptitle(
+            "xkcd Pen-and-Ink 3D Isosurface Shading Techniques",
+            fontsize=15,
+            y=0.98,
+        )
+        fig.tight_layout(rect=(0.0, 0.02, 1.0, 0.93), w_pad=1.6, h_pad=2.0)
+        xm.save_figure(
+            fig, out_dir / "isosurface_shading_styles.png", dpi=165
+        )
         plt.close(fig)
 
 
@@ -1045,6 +1078,7 @@ def main() -> None:
     _make_icons_and_graphs_gallery(_OUT_DIR)
     _make_crystal_graphs_2d_gallery(_OUT_DIR)
     _make_flagship_features_gallery(_OUT_DIR)
+    _make_isosurface_shading_gallery(_OUT_DIR)
     _make_brillouin_cohp_volcano_gallery(_OUT_DIR)
     _make_readme_gifs(_OUT_DIR)
     _export_docs_assets()

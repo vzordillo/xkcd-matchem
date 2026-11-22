@@ -17,12 +17,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 import pathlib
-from typing import Any
-from typing import cast
 
 from matplotlib import axes as maxes
-from matplotlib import collections
-from matplotlib import colors as mcolors
 from matplotlib import figure
 from matplotlib import pyplot as plt
 import numpy as np
@@ -32,6 +28,7 @@ from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import geometry
 from xkcd_matchem.core import isosurface
 from xkcd_matchem.io import loader
+from xkcd_matchem.render import artistic3d
 from xkcd_matchem.render import structure3d
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import patterns
@@ -665,256 +662,6 @@ def _coerce_volumetric_grid(
     return loaded
 
 
-def _chain_silhouette_edges(
-    edges: Sequence[tuple[int, int]],
-    xy_v: np.ndarray,
-) -> list[np.ndarray]:
-    """Chains unordered 2D silhouette edges into continuous stroke paths."""
-    if not edges:
-        return []
-    adj: dict[int, list[int]] = {}
-    for u, v in edges:
-        adj.setdefault(u, []).append(v)
-        adj.setdefault(v, []).append(u)
-    visited: set[tuple[int, int]] = set()
-    paths: list[np.ndarray] = []
-    for start, nbrs in adj.items():
-        for nxt in nbrs:
-            e_key = (start, nxt) if start < nxt else (nxt, start)
-            if e_key in visited:
-                continue
-            chain = [start]
-            cur = nxt
-            visited.add(e_key)
-            while True:
-                chain.append(cur)
-                if cur == start:
-                    break
-                moved = False
-                for cand in adj.get(cur, ()):
-                    c_key = (cur, cand) if cur < cand else (cand, cur)
-                    if c_key not in visited:
-                        visited.add(c_key)
-                        cur = cand
-                        moved = True
-                        break
-                if not moved:
-                    break
-            if len(chain) >= 3:
-                paths.append(xy_v[np.asarray(chain, dtype=np.int64)])
-    return paths
-
-
-def _extract_silhouette_polylines(
-    mesh: isosurface.IsosurfaceMesh,
-    xy_v: np.ndarray,
-    front_mask: np.ndarray,
-) -> list[np.ndarray]:
-    """Finds front/back horizon edges separating visible and hidden faces."""
-    edge_flags: dict[tuple[int, int], list[bool]] = {}
-    for t_idx, tri in enumerate(mesh.faces):
-        is_f = bool(front_mask[t_idx])
-        i0, i1, i2 = int(tri[0]), int(tri[1]), int(tri[2])
-        for u, v in ((i0, i1), (i1, i2), (i2, i0)):
-            key = (u, v) if u < v else (v, u)
-            edge_flags.setdefault(key, []).append(is_f)
-    sil_edges = [
-        key
-        for key, flags in edge_flags.items()
-        if (len(flags) == 2 and flags[0] != flags[1])
-        or (len(flags) == 1 and flags[0])
-    ]
-    return _chain_silhouette_edges(sil_edges, xy_v)
-
-
-def _collect_mesh_triangles(
-    mesh: isosurface.IsosurfaceMesh,
-    cam: geometry.Camera,
-    pivot: np.ndarray,
-    span: float,
-    base_hex: str,
-    basis: np.ndarray,
-    light_dir: np.ndarray,
-) -> tuple[
-    np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[np.ndarray]
-]:
-    """Projects front-facing ``IsosurfaceMesh`` triangles & rim paths."""
-    if len(mesh.faces) == 0:
-        return (
-            np.zeros((0, 3, 2), dtype=np.float64),
-            np.zeros((0,), dtype=np.float64),
-            np.zeros((0, 3), dtype=np.float64),
-            np.zeros((0, 2), dtype=np.float64),
-            [],
-        )
-    xy_v, depth_v = geometry.project_points(
-        mesh.vertices, cam, center=pivot, span=span
-    )
-    n_rot = mesh.normals @ basis.T
-    front_mask = n_rot[:, 2] >= -0.02
-    sils = _extract_silhouette_polylines(mesh, xy_v, front_mask)
-    if not np.any(front_mask):
-        return (
-            np.zeros((0, 3, 2), dtype=np.float64),
-            np.zeros((0,), dtype=np.float64),
-            np.zeros((0, 3), dtype=np.float64),
-            xy_v,
-            sils,
-        )
-    vis_faces = mesh.faces[front_mask]
-    tris = xy_v[vis_faces]
-    tri_depth = np.mean(depth_v[vis_faces], axis=1)
-    lambert = 0.68 + 0.32 * np.clip(n_rot[front_mask] @ light_dir, 0.0, 1.0)
-    rgb_base = np.asarray(mcolors.to_rgb(base_hex), dtype=np.float64)
-    face_rgb = np.clip(
-        0.26 + 0.74 * rgb_base[None, :] * lambert[:, None], 0.0, 1.0
-    )
-    return tris, tri_depth, face_rgb, xy_v, sils
-
-
-def _iso_scene_frame(
-    meshes: Sequence[tuple[isosurface.IsosurfaceMesh, str]],
-    grid: electronic.VolumetricGrid,
-    cam: geometry.Camera,
-) -> tuple[np.ndarray, float, np.ndarray | None, np.ndarray | None]:
-    """Resolves common pivot, projection span, and projected atom depths."""
-    if grid.atoms is not None and len(grid.atoms) > 0:
-        pivot = (
-            0.5 * (grid.atoms.cell[0] + grid.atoms.cell[1] + grid.atoms.cell[2])
-            if grid.atoms.cell is not None
-            else np.mean(grid.atoms.positions, axis=0)
-        )
-        span = geometry.scene_projection_span(
-            grid.atoms.positions, cam, center=pivot, cell=grid.atoms.cell
-        )
-        atom_xy, atom_depth = geometry.project_points(
-            grid.atoms.positions, cam, center=pivot, span=span
-        )
-        return pivot, span, atom_xy, atom_depth
-
-    ext = np.asarray(grid.data.shape, dtype=np.float64)[:, None]
-    pivot = grid.origin + 0.5 * np.sum(ext * grid.voxel_vectors, axis=0)
-    pts = [mesh.vertices for mesh, _ in meshes if len(mesh.vertices)]
-    box_pts = np.vstack(pts) if pts else np.zeros((0, 3), dtype=np.float64)
-    span = (
-        geometry.scene_projection_span(box_pts, cam, center=pivot)
-        if len(box_pts)
-        else 5.0
-    )
-    return pivot, span, None, None
-
-
-def _make_iso_poly_collection(
-    tris: np.ndarray,
-    cols: np.ndarray,
-    depths: np.ndarray,
-    alpha: float,
-    zorder: float,
-) -> collections.PolyCollection | None:
-    """Constructs a depth-sorted, un-sketched PolyCollection for smooth fill."""
-    if len(tris) == 0:
-        return None
-    order = np.argsort(depths)
-    coll = collections.PolyCollection(
-        cast(Any, tris[order]),
-        facecolors=cols[order],
-        edgecolors="none",
-        linewidths=0.0,
-        antialiaseds=False,
-        alpha=alpha,
-        zorder=zorder,
-    )
-    coll.set_sketch_params(0.0, 0.0, 0.0)
-    return coll
-
-
-def _split_depth_layer_collections(
-    tri_chunks: Sequence[np.ndarray],
-    dep_chunks: Sequence[np.ndarray],
-    rgb_chunks: Sequence[np.ndarray],
-    atom_xy: np.ndarray | None,
-    atom_depth: np.ndarray | None,
-    alpha: float,
-) -> tuple[
-    collections.PolyCollection | None,
-    collections.PolyCollection | None,
-]:
-    """Splits shaded triangles into behind-atom and front-of-atom layers."""
-    all_tris = np.concatenate(tri_chunks, axis=0)
-    all_deps = np.concatenate(dep_chunks, axis=0)
-    all_rgbs = np.concatenate(rgb_chunks, axis=0)
-    if atom_xy is not None and atom_depth is not None:
-        tri_xy = np.mean(all_tris, axis=1)
-        nearest = np.argmin(
-            np.sum((tri_xy[:, None, :] - atom_xy[None, :, :]) ** 2, axis=2),
-            axis=1,
-        )
-        back_mask = all_deps < (atom_depth[nearest] - 0.03)
-    else:
-        back_mask = np.zeros(len(all_tris), dtype=bool)
-    back_coll = _make_iso_poly_collection(
-        all_tris[back_mask],
-        all_rgbs[back_mask],
-        all_deps[back_mask],
-        alpha * 0.95,
-        zorder=1.4,
-    )
-    front_coll = _make_iso_poly_collection(
-        all_tris[~back_mask],
-        all_rgbs[~back_mask],
-        all_deps[~back_mask],
-        alpha,
-        zorder=40.0,
-    )
-    return back_coll, front_coll
-
-
-def _build_isosurface_layers(
-    meshes: Sequence[tuple[isosurface.IsosurfaceMesh, str]],
-    grid: electronic.VolumetricGrid,
-    cam: geometry.Camera,
-    alpha: float,
-) -> tuple[
-    collections.PolyCollection | None,
-    collections.PolyCollection | None,
-    list[tuple[str, float, list[np.ndarray]]],
-    np.ndarray | None,
-]:
-    """Splits shaded isosurface triangles behind/in front of atoms + rims."""
-    pivot, span, atom_xy, atom_depth = _iso_scene_frame(meshes, grid, cam)
-    basis = geometry.rotation_matrix(cam.azimuth, cam.elevation, cam.roll)
-    light_dir = np.array([-0.45, 0.55, 0.70], dtype=np.float64)
-    light_dir /= float(np.linalg.norm(light_dir))
-    tri_chunks: list[np.ndarray] = []
-    dep_chunks: list[np.ndarray] = []
-    rgb_chunks: list[np.ndarray] = []
-    xy_chunks: list[np.ndarray] = []
-    sil_draws: list[tuple[str, float, list[np.ndarray]]] = []
-    for mesh, hex_col in meshes:
-        tris, deps, rgbs, xy_m, sils = _collect_mesh_triangles(
-            mesh, cam, pivot, span, hex_col, basis, light_dir
-        )
-        if len(tris) > 0:
-            tri_chunks.append(tris)
-            dep_chunks.append(deps)
-            rgb_chunks.append(rgbs)
-            xy_chunks.append(xy_m)
-            z_sil = 41.0
-            if atom_xy is not None and atom_depth is not None:
-                c_xy = np.mean(tris.reshape(-1, 2), axis=0)
-                near = int(np.argmin(np.sum((atom_xy - c_xy) ** 2, axis=1)))
-                if float(np.mean(deps)) < float(atom_depth[near]) - 0.03:
-                    z_sil = 1.5
-            sil_draws.append((hex_col, z_sil, sils))
-    if not tri_chunks:
-        return None, None, [], None
-
-    back_coll, front_coll = _split_depth_layer_collections(
-        tri_chunks, dep_chunks, rgb_chunks, atom_xy, atom_depth, alpha
-    )
-    return back_coll, front_coll, sil_draws, np.vstack(xy_chunks)
-
-
 def _expand_isosurface_limits(
     ax: maxes.Axes,
     all_xy: np.ndarray,
@@ -934,6 +681,69 @@ def _expand_isosurface_limits(
     ax.set_ylim(float(my0) - pad, float(my1) + pad)
 
 
+def _extract_isosurface_meshes(
+    source: electronic.VolumetricGrid | str | pathlib.Path,
+    level: float | None,
+    symmetric: bool | None,
+    colors: tuple[str, str],
+) -> tuple[
+    electronic.VolumetricGrid,
+    list[tuple[isosurface.IsosurfaceMesh, str]],
+]:
+    """Coerces grid data and extracts positive and optional negative lobes."""
+    grid = _coerce_volumetric_grid(source)
+    max_abs = max(float(np.max(np.abs(grid.data))), 1e-12)
+    iso_level = 0.35 * max_abs if level is None else float(level)
+    if abs(iso_level) < 1e-15:
+        raise exceptions.StructureError("Isosurface level must be non-zero.")
+    sym_flag = (
+        bool(float(np.min(grid.data)) < -0.05 * max_abs)
+        if symmetric is None
+        else bool(symmetric)
+    )
+    meshes: list[tuple[isosurface.IsosurfaceMesh, str]] = [
+        (isosurface.extract_isosurface(grid, iso_level), colors[0])
+    ]
+    if sym_flag:
+        meshes.append(
+            (isosurface.extract_isosurface(grid, -abs(iso_level)), colors[1])
+        )
+    return grid, meshes
+
+
+def _draw_iso_art_batches(
+    ax: maxes.Axes,
+    art: artistic3d.ShadeArtData,
+    sketch_scale: float,
+) -> None:
+    """Draws front wash, stipple dots, comic strokes, and silhouettes."""
+    if art.front_coll is not None:
+        ax.add_collection(art.front_coll)
+    for pts, sz, col_s, al_s, z_s in art.dot_batches:
+        ax.scatter(
+            pts[:, 0],
+            pts[:, 1],
+            s=sz,
+            c=col_s,
+            alpha=al_s,
+            edgecolors="none",
+            zorder=z_s,
+        )
+    for segs, col_l, lw_l, al_l, z_l, sk in art.line_batches:
+        for poly in segs:
+            ln = ax.plot(
+                poly[:, 0],
+                poly[:, 1],
+                color=col_l,
+                linewidth=lw_l,
+                alpha=al_l,
+                solid_capstyle="round",
+                zorder=z_l,
+            )[0]
+            if sk is not None and sketch_scale > 0.0:
+                ln.set_sketch_params(sk[0] * sketch_scale, sk[1], sk[2])
+
+
 def plot_isosurface(
     source: electronic.VolumetricGrid | str | pathlib.Path,
     level: float | None = None,
@@ -943,6 +753,7 @@ def plot_isosurface(
     ax: maxes.Axes | None = None,
     colors: tuple[str, str] = ("#0072B2", "#D55E00"),
     alpha: float = 0.28,
+    shade: str = "solid",
     show_atoms: bool = True,
     palette: str = "xkcd",
     preset: str | theme.ThemePreset = "classic",
@@ -958,6 +769,11 @@ def plot_isosurface(
       ax: Optional target Matplotlib ``Axes``.
       colors: ``(positive_hex, negative_hex)`` lobe colors.
       alpha: Surface translucency opacity.
+      shade: Shading style: ``"solid"`` (smooth blending), ``"hatch"``
+        (parallel pen hatching), ``"crosshatch"`` (comic cross-hatching),
+        ``"contour"`` / ``"cross_contour"`` (3D curved form lines),
+        ``"stipple"`` (felt-tip stippling), ``"scumble"`` (xkcd scribble),
+        or ``"outline"``.
       show_atoms: Whether to draw embedded atomic ball-and-stick structure.
       palette: Atom element color palette when ``show_atoms=True``.
       preset: Visual theme preset name or ``ThemePreset``.
@@ -966,32 +782,14 @@ def plot_isosurface(
     Returns:
       Matplotlib ``Axes`` containing the rendered 3D isosurface.
     """
-    grid = _coerce_volumetric_grid(source)
-    max_abs = max(float(np.max(np.abs(grid.data))), 1e-12)
-    iso_level = 0.35 * max_abs if level is None else float(level)
-    if abs(iso_level) < 1e-15:
-        raise exceptions.StructureError("Isosurface level must be non-zero.")
-    sym_flag = (
-        bool(float(np.min(grid.data)) < -0.05 * max_abs)
-        if symmetric is None
-        else bool(symmetric)
-    )
-
-    meshes: list[tuple[isosurface.IsosurfaceMesh, str]] = [
-        (isosurface.extract_isosurface(grid, iso_level), colors[0])
-    ]
-    if sym_flag:
-        meshes.append(
-            (isosurface.extract_isosurface(grid, -abs(iso_level)), colors[1])
-        )
-
+    grid, meshes = _extract_isosurface_meshes(source, level, symmetric, colors)
     cam = geometry.resolve_camera(
         camera, cell=grid.atoms.cell if grid.atoms is not None else None
     )
-    back_coll, front_coll, sil_draws, all_xy = _build_isosurface_layers(
-        meshes, grid, cam, alpha
+    art = artistic3d.build_isosurface_art(
+        meshes, grid, cam, alpha, shade=shade
     )
-    ink_col = theme.get_preset(preset).ink_color
+    preset_obj = theme.get_preset(preset)
     has_atoms = bool(
         show_atoms and grid.atoms is not None and len(grid.atoms) > 0
     )
@@ -1001,8 +799,8 @@ def plot_isosurface(
             _, ax = plt.subplots(figsize=(5.6, 4.8))
         else:
             theme.style_existing_axes(ax, preset=preset)
-        if back_coll is not None:
-            ax.add_collection(back_coll)
+        if art.back_coll is not None:
+            ax.add_collection(art.back_coll)
         if has_atoms and grid.atoms is not None:
             structure3d.render_structure_3d(
                 grid.atoms,
@@ -1015,24 +813,13 @@ def plot_isosurface(
                 show_bonds=True,
                 radius_scale=1.08,
             )
-        if front_coll is not None:
-            ax.add_collection(front_coll)
-        for hex_col, z_sil, sil_paths in sil_draws:
-            for poly in sil_paths:
-                ax.plot(
-                    poly[:, 0],
-                    poly[:, 1],
-                    color=hex_col,
-                    linewidth=1.6,
-                    alpha=min(1.0, alpha + 0.44),
-                    zorder=z_sil,
-                )
-        if all_xy is not None:
-            _expand_isosurface_limits(ax, all_xy, has_atoms)
+        _draw_iso_art_batches(ax, art, preset_obj.sketch_scale)
+        if art.all_xy is not None:
+            _expand_isosurface_limits(ax, art.all_xy, has_atoms)
         ax.set_aspect("equal")
         ax.set_axis_off()
         if title:
-            ax.set_title(title, color=ink_col)
+            ax.set_title(title, color=preset_obj.ink_color)
     return ax
 
 
