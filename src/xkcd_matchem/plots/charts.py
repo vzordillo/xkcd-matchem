@@ -23,6 +23,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 from xkcd_matchem.core import exceptions
+from xkcd_matchem.render import primitives
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import patterns
 from xkcd_matchem.style import theme
@@ -166,6 +167,27 @@ def _annotate_bar_values(
         )
 
 
+def _configure_bar_ylim(
+    ax: maxes.Axes,
+    val_bounds: tuple[np.ndarray, np.ndarray],
+    ink_col: str,
+    guide_lw: float,
+) -> None:
+    """Sets balanced y-axis limits and zero guide line for bar charts."""
+    lows, highs = val_bounds
+    if not lows.size:
+        return
+    y_hi = float(np.max(highs))
+    y_lo = float(np.min(lows))
+    span = max(y_hi - min(0.0, y_lo), abs(y_hi), abs(y_lo), 1.0)
+    top = y_hi + 0.16 * span if y_hi >= 0.0 else 0.06 * span
+    bot = y_lo - 0.16 * span if y_lo < 0.0 else 0.0
+    ax.set_ylim(bot, top)
+    if y_lo < 0.0:
+        z_ln = ax.axhline(0.0, color=ink_col, lw=guide_lw, alpha=0.6)
+        z_ln.set_sketch_params(0.0, 0.0, 0.0)
+
+
 def plot_bar_comparison(
     labels: Sequence[str],
     values: Sequence[float] | np.ndarray,
@@ -185,6 +207,7 @@ def plot_bar_comparison(
     series = palettes.get_palette(palette)
     colors = [series[(i + 1) % len(series)] for i in range(len(labels))]
     ink_col = theme.get_preset(preset).ink_color
+    sw = theme.stroke_weights(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.2, 4.2))
@@ -199,7 +222,7 @@ def plot_bar_comparison(
             yerr=errors,
             color=colors,
             edgecolor=ink_col,
-            linewidth=1.5,
+            linewidth=round(0.85 * sw.primary, 2),
             width=0.62,
             capsize=4.0,
             alpha=0.88,
@@ -213,15 +236,9 @@ def plot_bar_comparison(
                     rect.set_sketch_params(0.0, 0.0, 0.0)
         if annotate_values:
             _annotate_bar_values(ax, bars, vals, err_lo, err_hi, ink_col)
-        if vals.size:
-            y_hi = float(np.max(vals + err_hi))
-            y_lo = float(np.min(vals - err_lo))
-            span = max(y_hi - min(0.0, y_lo), abs(y_hi), abs(y_lo), 1.0)
-            top = y_hi + 0.16 * span if y_hi >= 0.0 else 0.06 * span
-            bot = y_lo - 0.16 * span if y_lo < 0.0 else 0.0
-            ax.set_ylim(bot, top)
-            if y_lo < 0.0:
-                ax.axhline(0.0, color=ink_col, linewidth=1.0, alpha=0.6)
+        _configure_bar_ylim(
+            ax, (vals - err_lo, vals + err_hi), ink_col, sw.guide
+        )
         ax.set_xticks(xs)
         ax.set_xticklabels(labels)
         ax.set_ylabel(ylabel)
@@ -253,7 +270,12 @@ def plot_pipeline_diagram(
       Matplotlib ``Axes`` containing the flowchart.
     """
     series = palettes.get_palette(palette)
-    ink_col = theme.get_preset(preset).ink_color
+    preset_obj = theme.get_preset(preset)
+    ink_col = preset_obj.ink_color
+    detail_col = primitives.ensure_readable_text_color(
+        palettes.MUTED_GRAY, preset_obj.axes_facecolor
+    )
+    sw = theme.stroke_weights(preset)
     n_steps = len(steps)
     is_horiz = orientation.lower() == "horizontal"
     with theme.xkcd_style(preset=preset):
@@ -278,7 +300,7 @@ def plot_pipeline_diagram(
                 boxstyle="round,pad=0.06,rounding_size=0.12",
                 facecolor=col,
                 edgecolor=ink_col,
-                linewidth=1.6,
+                linewidth=round(0.90 * sw.primary, 2),
                 alpha=0.25,
                 zorder=2,
             )
@@ -300,7 +322,7 @@ def plot_pipeline_diagram(
                 ha="center",
                 va="center",
                 fontsize=8.5,
-                color=palettes.MUTED_GRAY,
+                color=detail_col,
                 zorder=4,
             )
             if idx < n_steps - 1:
@@ -317,7 +339,7 @@ def plot_pipeline_diagram(
                     arrowprops={
                         "arrowstyle": "->",
                         "color": ink_col,
-                        "lw": 1.8,
+                        "lw": sw.primary,
                     },
                     zorder=5,
                 )

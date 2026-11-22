@@ -117,6 +117,8 @@ def _ternary_lower_hull(
     energies: np.ndarray,
 ) -> tuple[set[int], set[tuple[int, int]]]:
     """Returns lower convex-hull vertex indices and tie-line edges."""
+    if len(xy) == 0:
+        return set(), set()
     uniq: list[int] = []
     for idx, (xy_pt, en) in enumerate(zip(xy, energies, strict=True)):
         hit = next(
@@ -183,8 +185,10 @@ def _draw_ternary_frame(
     show_grid: bool,
     shade: str | None,
     bg_color: str = palettes.PAPER,
+    sw: theme.StrokeHierarchy | None = None,
 ) -> None:
     """Draws the Gibbs triangle border, barycentric grid, and corner labels."""
+    weights = sw if sw is not None else theme.stroke_weights("classic")
     tri = np.array([[0.0, 0.0], [1.0, 0.0], [0.5, _SQRT3_HALF]])
     hatch = patterns.resolve_hatch(shade)
     bg_poly = patches.Polygon(
@@ -192,7 +196,7 @@ def _draw_ternary_frame(
         closed=True,
         facecolor=primitives.muted_surface_color(bg_color) if hatch else "none",
         edgecolor=ink_col,
-        linewidth=1.95,
+        linewidth=weights.frame,
         hatch=hatch,
         alpha=0.22 if hatch else 1.0,
         zorder=1.0,
@@ -207,11 +211,12 @@ def _draw_ternary_frame(
                 closed=True,
                 facecolor="none",
                 edgecolor=ink_col,
-                linewidth=1.95,
+                linewidth=weights.frame,
                 zorder=2.2,
             )
         )
     if show_grid:
+        grid_lw = round(0.85 * weights.guide, 2)
         for frac in (0.2, 0.4, 0.6, 0.8):
             p_ab = np.array([frac, 0.0])
             p_ac = np.array([0.5 * frac, _SQRT3_HALF * frac])
@@ -226,7 +231,7 @@ def _draw_ternary_frame(
                     [s_pt[0], e_pt[0]],
                     [s_pt[1], e_pt[1]],
                     color=palettes.MUTED_GRAY,
-                    linewidth=0.75,
+                    linewidth=grid_lw,
                     alpha=0.35,
                     linestyle="--",
                     zorder=1.2,
@@ -379,6 +384,10 @@ def plot_ternary_phase_diagram(
     tie_edges: set[tuple[int, int]] = set()
     if energies is not None:
         e_arr = np.asarray(energies, dtype=np.float64)
+        if e_arr.ndim != 1 or len(e_arr) != len(comp_arr):
+            raise exceptions.StructureError(
+                "energies must be 1D with the same length as compositions."
+            )
         stable_idx, tie_edges = _ternary_lower_hull(xy, e_arr)
 
     with theme.xkcd_style(preset=preset):
@@ -393,6 +402,7 @@ def plot_ternary_phase_diagram(
             show_grid,
             shade,
             preset_obj.axes_facecolor,
+            sw=sw,
         )
 
         for u, v in sorted(tie_edges):
@@ -485,11 +495,13 @@ def _draw_sunburst_rings(
     ink_col: str,
     shade: str | Sequence[str | None] | None,
     bg_color: str = palettes.PAPER,
+    sw: theme.StrokeHierarchy | None = None,
 ) -> None:
     """Draws inner crystal-system ring and outer space-group ring wedges."""
     total = float(sum(sys_totals.values()))
     if total <= 0.0:
         return
+    weights = sw if sw is not None else theme.stroke_weights("classic")
     ordered = [
         (name, sys_totals[name])
         for name, _, _ in _CRYSTAL_SYSTEM_RANGES
@@ -508,7 +520,7 @@ def _draw_sunburst_rings(
             width=0.33,
             facecolor=col,
             edgecolor=ink_col,
-            linewidth=1.5,
+            linewidth=round(0.85 * weights.primary, 2),
             alpha=0.86,
             hatch=hatch,
             zorder=3.0,
@@ -546,7 +558,7 @@ def _draw_sunburst_rings(
                 width=0.34,
                 facecolor=col,
                 edgecolor=ink_col,
-                linewidth=1.2,
+                linewidth=weights.overlay,
                 alpha=0.52,
                 zorder=2.5,
             )
@@ -618,6 +630,7 @@ def plot_spacegroup_distribution(
     series = palettes.get_palette(palette)
     preset_obj = theme.get_preset(preset)
     ink_col = preset_obj.ink_color
+    sw = theme.stroke_weights(preset)
 
     with theme.xkcd_style(preset=preset):
         if ax is None:
@@ -635,6 +648,7 @@ def plot_spacegroup_distribution(
                 ink_col,
                 shade,
                 preset_obj.axes_facecolor,
+                sw=sw,
             )
             ax.set_xlim(-1.12, 1.12)
             ax.set_ylim(-1.12, 1.12)
@@ -659,7 +673,7 @@ def plot_spacegroup_distribution(
                     [cnt],
                     color=col,
                     edgecolor=ink_col,
-                    linewidth=1.5,
+                    linewidth=round(0.85 * sw.primary, 2),
                     width=0.64,
                     alpha=0.88,
                     hatch=hatch,
@@ -899,21 +913,19 @@ def _facet_clearance(xy_f: np.ndarray) -> tuple[np.ndarray, float, float]:
     """Returns polygon 2D centroid, horizontal span, and min edge clearance."""
     ctr = np.mean(xy_f, axis=0)
     span_h = float(np.ptp(xy_f[:, 0]))
-    min_d = float("inf")
-    n_pts = len(xy_f)
-    for k in range(n_pts):
-        a = xy_f[k]
-        b = xy_f[(k + 1) % n_pts]
-        edge = b - a
-        e_len = float(np.linalg.norm(edge))
-        if e_len < 1e-9:
-            continue
-        dist = abs(
-            float((b[0] - a[0]) * (a[1] - ctr[1]))
-            - float((a[0] - ctr[0]) * (b[1] - a[1]))
-        ) / e_len
-        min_d = min(min_d, dist)
-    return ctr, span_h, (0.0 if min_d == float("inf") else min_d)
+    if len(xy_f) < 2:
+        return ctr, span_h, 0.0
+    nxt = np.roll(xy_f, -1, axis=0)
+    edges = nxt - xy_f
+    e_len = np.linalg.norm(edges, axis=1)
+    valid = e_len >= 1e-9
+    if not np.any(valid):
+        return ctr, span_h, 0.0
+    cross = np.abs(
+        edges[valid, 0] * (xy_f[valid, 1] - ctr[1])
+        - (xy_f[valid, 0] - ctr[0]) * edges[valid, 1]
+    )
+    return ctr, span_h, float(np.min(cross / e_len[valid]))
 
 
 def _collect_wulff_facet_visuals(
@@ -1242,7 +1254,7 @@ def _kpoint_label_offset(
             if score > best_score:
                 best_score = score
                 best_ang = float(ang)
-    step = 0.082 * span
+    step = 0.095 * span
     return step * math.cos(best_ang), step * math.sin(best_ang)
 
 

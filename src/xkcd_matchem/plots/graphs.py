@@ -59,6 +59,16 @@ def _spring_layout(
     )
     k_opt = math.sqrt(4.0 / max(n_nodes, 1))
     temp = 0.45
+    valid_e = [
+        (u, v)
+        for u, v in edges
+        if 0 <= u < n_nodes and 0 <= v < n_nodes and u != v
+    ]
+    e_arr = (
+        np.asarray(valid_e, dtype=np.int64)
+        if valid_e
+        else np.zeros((0, 2), dtype=np.int64)
+    )
     for _ in range(iterations):
         disp = np.zeros_like(pos)
         delta = pos[:, None, :] - pos[None, :, :]
@@ -67,15 +77,12 @@ def _spring_layout(
         rep = (k_opt * k_opt) / np.maximum(dist, 0.08)
         np.fill_diagonal(rep, 0.0)
         disp += np.sum(delta / dist[:, :, None] * rep[:, :, None], axis=1)
-        for u, v in edges:
-            if u == v or u >= n_nodes or v >= n_nodes:
-                continue
-            diff = pos[u] - pos[v]
-            d = max(float(np.linalg.norm(diff)), 0.05)
-            force = (d * d) / k_opt
-            step = (diff / d) * force
-            disp[u] -= step
-            disp[v] += step
+        if len(e_arr) > 0:
+            diff = pos[e_arr[:, 0]] - pos[e_arr[:, 1]]
+            d_e = np.maximum(np.linalg.norm(diff, axis=1), 0.05)
+            step = (diff / d_e[:, None]) * ((d_e * d_e) / k_opt)[:, None]
+            np.add.at(disp, e_arr[:, 0], -step)
+            np.add.at(disp, e_arr[:, 1], step)
         norms = np.maximum(np.linalg.norm(disp, axis=1, keepdims=True), 1e-6)
         pos += (disp / norms) * np.minimum(norms, temp)
         pos -= np.mean(pos, axis=0)
@@ -286,10 +293,10 @@ def _draw_all_graph_edges(
     norm_edges: Sequence[tuple[int, int, str | None]],
     xy: np.ndarray,
     dashed_flags: Sequence[bool],
-    style_cfg: tuple[bool, bool, str, str, float],
+    style_cfg: tuple[bool, bool, str, str, float, theme.StrokeHierarchy],
 ) -> None:
     """Draws all network edges with symmetric multi-edge arc fanning."""
-    directed, curve_dashed, ink_col, bg_color, shrink_pt = style_cfg
+    directed, curve_dashed, ink_col, bg_color, shrink_pt, sw = style_cfg
     pair_totals: dict[tuple[int, int], int] = {}
     for u, v, _ in norm_edges:
         if u < n_nodes and v < n_nodes:
@@ -324,7 +331,7 @@ def _draw_all_graph_edges(
             rad=rad,
             color="#0072B2" if is_dash else ink_col,
             ink_col=ink_col,
-            linewidth=1.30 if is_dash else 1.80,
+            linewidth=sw.overlay if is_dash else sw.primary,
             label=lbl,
             bg_color=bg_color,
             shrink_pt=shrink_pt,
@@ -534,6 +541,7 @@ def plot_graph_network(
             (min(u, v), max(u, v)) in dashed_set for u, v, _ in norm_edges
         ]
     shrink_pt = 26.0 if node_shape.strip().lower() == "pill" else 14.0
+    sw = theme.stroke_weights(preset)
 
     with theme.xkcd_style(preset=preset):
         if ax is None:
@@ -554,6 +562,7 @@ def plot_graph_network(
                 ink_col,
                 preset_obj.axes_facecolor,
                 shrink_pt,
+                sw,
             ),
         )
         base_r = _draw_graph_nodes(
@@ -655,6 +664,7 @@ def _add_structure_graph_overlays(
 ) -> None:
     """Adds optional unit-cell guide and periodic-edge legend to a graph."""
     ink_col = theme.get_preset(preset).ink_color
+    sw = theme.stroke_weights(preset)
     if (
         show_cell
         and atoms.cell is not None
@@ -667,7 +677,7 @@ def _add_structure_graph_overlays(
                 cam,
                 center=pivot,
                 edgecolor="#94A3B8",
-                linewidth=1.0,
+                linewidth=sw.guide,
                 draw_back=True,
                 draw_front=True,
                 base_plane_color=None,
@@ -689,12 +699,14 @@ def _add_structure_graph_overlays(
     if has_dashed:
         with theme.xkcd_style(preset=preset):
             handles = [
-                mlines.Line2D([], [], color=ink_col, lw=2.0, label="Bond"),
+                mlines.Line2D(
+                    [], [], color=ink_col, lw=sw.primary, label="Bond"
+                ),
                 mlines.Line2D(
                     [],
                     [],
                     color="#0072B2",
-                    lw=1.6,
+                    lw=sw.overlay,
                     linestyle="--",
                     label="Periodic edge",
                 ),
@@ -783,6 +795,7 @@ def _render_closed_cell_graph(
     preset_obj = theme.get_preset(preset)
     ink_col = preset_obj.ink_color
     series = palettes.get_palette("okabe_ito")
+    sw = theme.stroke_weights(preset)
 
     with theme.xkcd_style(preset=preset):
         if ax is None:
@@ -797,7 +810,7 @@ def _render_closed_cell_graph(
             edge_items,
             xy,
             dashed_flags,
-            (directed, False, ink_col, preset_obj.axes_facecolor, 13.0),
+            (directed, False, ink_col, preset_obj.axes_facecolor, 13.0, sw),
         )
         base_r = _draw_graph_nodes(
             ax,

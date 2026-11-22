@@ -185,7 +185,10 @@ def plot_bands(
                 t_line.set_sketch_params(0.0, 0.0, 0.0)
             ax.set_xticks(bands.k_ticks)
             ax.set_xticklabels(_format_k_labels(bands.k_labels))
-        ax.set_xlim(float(bands.k_distances[0]), float(bands.k_distances[-1]))
+        if bands.k_distances.size >= 2:
+            ax.set_xlim(
+                float(bands.k_distances[0]), float(bands.k_distances[-1])
+            )
         ax.set_ylim(ylim)
         ax.set_ylabel("$E - E_F$ (eV)" if shift_fermi else "Energy (eV)")
         ax.set_xlabel("Wavevector Path")
@@ -225,6 +228,108 @@ def _dos_window_limits(
     return d_lo, d_hi
 
 
+def _draw_dos_curves(
+    ax: maxes.Axes,
+    dos: electronic.DensityOfStates,
+    e_grid: np.ndarray,
+    *,
+    vert: bool,
+    cols: tuple[str, str, str],
+    series: Sequence[str],
+    shade: str | None,
+    sw: theme.StrokeHierarchy,
+) -> None:
+    """Plots total, optional spin-down, and projected DOS curves."""
+    total_col, fill_col, dn_col = cols
+    up_label = "Spin Up" if dos.spin_down_dos is not None else "Total DOS"
+
+    def _xy(y_vals: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        return (y_vals, e_grid) if vert else (e_grid, y_vals)
+
+    tx, ty = _xy(dos.total_dos)
+    ax.plot(tx, ty, color=total_col, lw=sw.primary, label=up_label)
+    patterns.shade_between(
+        ax,
+        e_grid,
+        0.0,
+        dos.total_dos,
+        color=fill_col,
+        shade=shade,
+        alpha=0.35,
+        vertical=vert,
+    )
+    if dos.spin_down_dos is not None:
+        dx, dy = _xy(-dos.spin_down_dos)
+        ax.plot(
+            dx,
+            dy,
+            color=dn_col,
+            lw=round(0.88 * sw.primary, 2),
+            label="Spin Down",
+        )
+        patterns.shade_between(
+            ax,
+            e_grid,
+            0.0,
+            -dos.spin_down_dos,
+            color=dn_col,
+            shade=shade,
+            alpha=0.35,
+            vertical=vert,
+        )
+    for idx, (lbl, p_vals) in enumerate(dos.projected_dos.items()):
+        px, py = _xy(p_vals)
+        ax.plot(
+            px,
+            py,
+            color=series[(idx + 1) % len(series)],
+            lw=sw.overlay,
+            label=lbl,
+        )
+
+
+def _configure_dos_axes(
+    ax: maxes.Axes,
+    *,
+    vert: bool,
+    e_ref: float,
+    d_lims: tuple[float, float],
+    xlim: tuple[float, float] | None,
+    shift_fermi: bool,
+    has_spin_down: bool,
+    ink_col: str,
+    sw: theme.StrokeHierarchy,
+) -> None:
+    """Configures straight Fermi/zero guide lines, labels, and DOS limits."""
+    e_label = "$E - E_F$ (eV)" if shift_fermi else "Energy (eV)"
+    if vert:
+        if has_spin_down:
+            z_ln = ax.axvline(0.0, color=ink_col, lw=sw.guide, alpha=0.55)
+            z_ln.set_sketch_params(0.0, 0.0, 0.0)
+        ef_ln = ax.axhline(
+            e_ref, color=palettes.MUTED_GRAY, linestyle="--", lw=sw.guide
+        )
+        ef_ln.set_sketch_params(0.0, 0.0, 0.0)
+        ax.set_xlabel("DOS (states/eV)")
+        ax.set_ylabel(e_label)
+        ax.set_xlim(d_lims[0], d_lims[1])
+        if xlim is not None:
+            ax.set_ylim(xlim)
+    else:
+        if has_spin_down:
+            z_ln = ax.axhline(0.0, color=ink_col, lw=sw.guide, alpha=0.55)
+            z_ln.set_sketch_params(0.0, 0.0, 0.0)
+        ef_ln = ax.axvline(
+            e_ref, color=palettes.MUTED_GRAY, linestyle="--", lw=sw.guide
+        )
+        ef_ln.set_sketch_params(0.0, 0.0, 0.0)
+        ax.set_xlabel(e_label)
+        ax.set_ylabel("DOS (states/eV)")
+        ax.set_ylim(d_lims[0], d_lims[1])
+        if xlim is not None:
+            ax.set_xlim(xlim)
+
+
 def plot_dos(
     dos: electronic.DensityOfStates,
     ax: maxes.Axes | None = None,
@@ -242,11 +347,12 @@ def plot_dos(
     e_ref = 0.0 if shift_fermi else dos.fermi_energy
     series = palettes.get_palette(palette)
     ink_col = theme.get_preset(preset).ink_color
+    sw = theme.stroke_weights(preset)
     total_col = ink_col if series[0] == "#000000" else series[0]
     fill_col = series[2 % len(series)]
     dn_col = series[6 % len(series)]
-    up_label = "Spin Up" if dos.spin_down_dos is not None else "Total DOS"
-    d_lo, d_hi = _dos_window_limits(e_grid, dos, xlim)
+    d_lims = _dos_window_limits(e_grid, dos, xlim)
+    vert = orientation.lower() == "vertical"
 
     with theme.xkcd_style(preset=preset):
         if ax is None:
@@ -255,109 +361,27 @@ def plot_dos(
             theme.style_existing_axes(ax, preset=preset)
         if background_grid:
             patterns.apply_background_grid(ax, style=background_grid)
-        vert = orientation.lower() == "vertical"
-        if vert:
-            ax.plot(
-                dos.total_dos,
-                e_grid,
-                color=total_col,
-                lw=1.9,
-                label=up_label,
-            )
-            patterns.shade_between(
-                ax,
-                e_grid,
-                0.0,
-                dos.total_dos,
-                color=fill_col,
-                shade=shade,
-                alpha=0.35,
-                vertical=True,
-            )
-            if dos.spin_down_dos is not None:
-                ax.plot(
-                    -dos.spin_down_dos,
-                    e_grid,
-                    color=dn_col,
-                    lw=1.6,
-                    label="Spin Down",
-                )
-                patterns.shade_between(
-                    ax,
-                    e_grid,
-                    0.0,
-                    -dos.spin_down_dos,
-                    color=dn_col,
-                    shade=shade,
-                    alpha=0.35,
-                    vertical=True,
-                )
-                ax.axvline(0.0, color=ink_col, lw=0.9, alpha=0.55)
-            for idx, (lbl, p_vals) in enumerate(dos.projected_dos.items()):
-                ax.plot(
-                    p_vals,
-                    e_grid,
-                    color=series[(idx + 1) % len(series)],
-                    lw=1.5,
-                    label=lbl,
-                )
-            ax.axhline(e_ref, color=palettes.MUTED_GRAY, linestyle="--", lw=1.2)
-            ax.set_xlabel("DOS (states/eV)")
-            ax.set_ylabel("$E - E_F$ (eV)" if shift_fermi else "Energy (eV)")
-            ax.set_xlim(d_lo, d_hi)
-            if xlim is not None:
-                ax.set_ylim(xlim)
-        else:
-            ax.plot(
-                e_grid,
-                dos.total_dos,
-                color=total_col,
-                lw=1.9,
-                label=up_label,
-            )
-            patterns.shade_between(
-                ax,
-                e_grid,
-                0.0,
-                dos.total_dos,
-                color=fill_col,
-                shade=shade,
-                alpha=0.35,
-                vertical=False,
-            )
-            if dos.spin_down_dos is not None:
-                ax.plot(
-                    e_grid,
-                    -dos.spin_down_dos,
-                    color=dn_col,
-                    lw=1.6,
-                    label="Spin Down",
-                )
-                patterns.shade_between(
-                    ax,
-                    e_grid,
-                    0.0,
-                    -dos.spin_down_dos,
-                    color=dn_col,
-                    shade=shade,
-                    alpha=0.35,
-                    vertical=False,
-                )
-                ax.axhline(0.0, color=ink_col, lw=0.9, alpha=0.55)
-            for idx, (lbl, p_vals) in enumerate(dos.projected_dos.items()):
-                ax.plot(
-                    e_grid,
-                    p_vals,
-                    color=series[(idx + 1) % len(series)],
-                    lw=1.5,
-                    label=lbl,
-                )
-            ax.axvline(e_ref, color=palettes.MUTED_GRAY, linestyle="--", lw=1.2)
-            ax.set_xlabel("$E - E_F$ (eV)" if shift_fermi else "Energy (eV)")
-            ax.set_ylabel("DOS (states/eV)")
-            ax.set_ylim(d_lo, d_hi)
-            if xlim is not None:
-                ax.set_xlim(xlim)
+        _draw_dos_curves(
+            ax,
+            dos,
+            e_grid,
+            vert=vert,
+            cols=(total_col, fill_col, dn_col),
+            series=series,
+            shade=shade,
+            sw=sw,
+        )
+        _configure_dos_axes(
+            ax,
+            vert=vert,
+            e_ref=e_ref,
+            d_lims=d_lims,
+            xlim=xlim,
+            shift_fermi=shift_fermi,
+            has_spin_down=dos.spin_down_dos is not None,
+            ink_col=ink_col,
+            sw=sw,
+        )
         ax.legend(loc="best", frameon=True)
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
@@ -615,6 +639,7 @@ def plot_volumetric_slice(
         else np.linspace(lo_lvl, hi_lvl, max(int(levels), 2))
     )
     preset_obj = theme.get_preset(preset)
+    sw = theme.stroke_weights(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(5.4, 4.6))
@@ -639,7 +664,7 @@ def plot_volumetric_slice(
                     plane,
                     levels=c_lvls,
                     colors=preset_obj.ink_color,
-                    linewidths=0.75,
+                    linewidths=round(0.85 * sw.guide, 2),
                     alpha=0.58,
                 )
         if show_atoms:
