@@ -23,9 +23,10 @@ html:
   use_edit_page_button: true
   home_page_in_navbar: true
   extra_footer: >-
-    Software licensed under Apache-2.0; tutorials and gallery licensed under
-    CC BY 4.0; default xkcd Script font licensed under CC BY-NC 3.0 with
-    commercial-safe alternates Patrick Hand and Comic Neue under SIL OFL 1.1.
+    Source code licensed under Apache-2.0; documentation and tutorials licensed
+    under CC BY 4.0; commercial-safe default fonts Patrick Hand (default) and
+    Comic Neue licensed under SIL OFL 1.1; optional non-commercial xkcd Script
+    opt-in licensed under CC BY-NC 3.0.
 
 parse:
   myst_enable_extensions:

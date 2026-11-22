@@ -58,15 +58,41 @@ Used by `xm.compute_xrd()` and `xm.plot_xrd()` to weight Bragg peak intensities 
 - **Citation**: Cromer, D. T.; Mann, J. B. (1967, distributed March 11, 1968). "X-Ray Scattering Factors Computed from Numerical Hartree-Fock Wave Functions". Los Alamos Scientific Laboratory Report LA-3816. DOI: [10.2172/4555098](https://doi.org/10.2172/4555098).
 - **Scope (`xm.CROMER_MANN_TABLE`)**: 4-Gaussian + $c$ analytical fits from Table II (report pp. 66–69) for all 102 neutral atoms from He ($Z=2$) through Lr/Lw ($Z=103$), parameterized in $s = \sin\theta/\lambda$ (Å⁻¹). Neutral H ($Z=1$) uses the exact analytical spherical $1s$ scattering factor $f_{\mathrm{H}}(s) = (1 + (2\pi a_0 s)^2)^{-2}$.
 
-### 7. Color Palettes & Bundled Fonts
+### 7. Color Palettes, Bundled Fonts & License Separation
+
+`xkcd-matchem` separates software, font, and documentation licenses cleanly so academic and commercial teams can adopt the library with zero ambiguity:
+
+| Component | Path / Activation | License | Commercial Use |
+| :--- | :--- | :--- | :--- |
+| **Source code, tests & scripts** | `src/`, `tests/`, `scripts/` | Apache-2.0 (`LICENSE`, `NOTICE`) | Permitted |
+| **Default hand-drawn fonts** | `Patrick Hand` (default), `Comic Neue` (`src/xkcd_matchem/data/fonts/`) | SIL OFL 1.1 (`PatrickHand-OFL.txt`, `ComicNeue-OFL.txt`) | Permitted |
+| **Optional non-commercial font** | `xkcd Script` (`xm.use_xkcd_script()` opt-in; blocked when `XM_COMMERCIAL_SAFE=1`) | CC BY-NC 3.0 (`xkcd-script-LICENSE.txt`) | Non-commercial only |
+| **Documentation & tutorials** | `book/` prose and tutorial notebooks | CC BY 4.0 (`book/LICENSE-CC-BY-4.0.txt`) | Permitted with attribution (note: any figures explicitly rendered with `xkcd Script` carry CC BY-NC 3.0 font terms) |
 
 - **Okabe & Ito CUD Palette**: Okabe, M.; Ito, K. (2002; mod. 2008). *Color Universal Design (CUD)* ([https://jfly.uni-koeln.de/color/](https://jfly.uni-koeln.de/color/)) — colorblind-accessible 8-color default series palette (`xm.OKABE_ITO`).
 - **Jmol Element Colors**: Jmol Development Team; Herráez, A.; Vervelle, N. *Jmol Colors* ([https://jmol.sourceforge.net/jscolors/](https://jmol.sourceforge.net/jscolors/), fallback `#FF1493` for $Z=110\text{–}118$).
-- **xkcd Script (default)**: Derived from Randall Munroe's handwriting via [`ipython/xkcd-font`](https://github.com/ipython/xkcd-font), Creative Commons Attribution-NonCommercial 3.0 Unported (CC BY-NC 3.0; non-commercial/academic use; see `src/xkcd_matchem/data/fonts/xkcd-script-LICENSE.txt`).
-- **Patrick Hand**: Patrick Wagesreiter, SIL Open Font License 1.1 (`PatrickHand-OFL.txt`; commercial-safe alternate, activated automatically when `XM_COMMERCIAL_SAFE=1` or via `xm.set_default_font("Patrick Hand")`).
-- **Comic Neue**: Craig Rozynski & Hrant Papazian, SIL Open Font License 1.1 (`ComicNeue-OFL.txt`; commercial-safe alternate via `xm.set_default_font("Comic Neue")`).
+- **Patrick Hand (default)**: Patrick Wagesreiter, SIL Open Font License 1.1 (`PatrickHand-OFL.txt`; commercial-safe default font across all built-in presets out of the box).
+- **Comic Neue**: Craig Rozynski & Hrant Papazian, SIL Open Font License 1.1 (`ComicNeue-OFL.txt`; bundled commercial-safe alternate via `xm.set_default_font("Comic Neue")`).
+- **xkcd Script (optional non-commercial opt-in)**: Derived from Randall Munroe's handwriting via [`ipython/xkcd-font`](https://github.com/ipython/xkcd-font), Creative Commons Attribution-NonCommercial 3.0 Unported (CC BY-NC 3.0; non-commercial/academic use only; see `src/xkcd_matchem/data/fonts/xkcd-script-LICENSE.txt`). Activate explicitly with `xm.use_xkcd_script()` (emits a one-time `UserWarning`, or raises `StyleError` when `XM_COMMERCIAL_SAFE=1`).
 
-### 8. Bundled MLIP MD Sample & Structural Order Metrics
+### 8. Bundled MLIP MD Sample Reproducibility Provenance
 
-- **MACE-MPA-0 Foundation Potential**: Batatia, I. et al. (2023/2024). "A foundation model for atomistic materials chemistry" ([arXiv:2401.00096](https://arxiv.org/abs/2401.00096)); `medium-mpa-0` weights trained on MPtrj + sAlexandria (PBE). Used locally via ASE Langevin MD (`scripts/simulate_water_to_ice_mlip.py`) to generate the bundled `water_to_ice.xyz` direct-coexistence water-to-ice $I_h$ trajectory sample (32 H₂O / 96 atoms).
+- **MACE-MPA-0 Foundation Potential**: Batatia, I. et al. (2023/2024). "A foundation model for atomistic materials chemistry" ([arXiv:2401.00096](https://arxiv.org/abs/2401.00096)); `medium-mpa-0` weights (`macempa0mediummodel`, trained on MPtrj + sAlexandria PBE).
 - **Tetrahedral Order Parameter (`xm.compute_tetrahedral_order`)**: Errington, J. R.; Debenedetti, P. G. (2001). "Relationship between structural order and the anomalies of liquid water". *Nature*, 409, 318-321. DOI: [10.1038/35053024](https://doi.org/10.1038/35053024).
+
+#### `water_to_ice.xyz` Provenance & Physical Qualification
+
+The bundled `water_to_ice.xyz` trajectory was generated locally via `scripts/simulate_water_to_ice_mlip.py` and represents **direct-coexistence seeded hexagonal Ice I<sub>h</sub> growth** — a fixed 16-H₂O crystalline Ice I<sub>h</sub> seed templating 16 melted liquid H₂O molecules under unconstrained NVT Langevin dynamics — **not** spontaneous homogeneous nucleation from bulk supercooled liquid water.
+
+| Parameter | Value / Artifact |
+| :--- | :--- |
+| **Model & Precision** | MACE-MPA-0 (`medium-mpa-0`, checkpoint `macempa0mediummodel`, `float32`) |
+| **Software Stack** | `ase 3.29.0`, `mace-torch 0.3.16`, `PyTorch 2.12.1+cu130` |
+| **Hardware** | NVIDIA RTX PRO 6000 Blackwell GPU |
+| **Periodic Cell & System** | Orthorhombic `9.036 × 7.825 × 14.712 Å` (`2 × 1 × 2` Ice I<sub>h</sub> cell, `a_hex = 4.518 Å`, `c_hex = 7.356 Å`), `32` H₂O / `96` atoms, `pbc=(True, True, True)` |
+| **RNG Seeds** | `seed = 42` (Bernal–Fowler proton ordering); `seed + 1 = 43` (mobile-layer scrambling & Langevin thermostat) |
+| **Seed & Melt Preparation** | Initial BFGS relaxation (`fmax = 0.03 eV/Å`, 50 steps); fix bottom 16 H₂O seed; scramble & melt top 16 H₂O at `550 K` for `1,500` NVT Langevin steps (`dt = 0.5 fs`, friction `0.04 fs⁻¹`) |
+| **Unconstrained Growth MD** | All constraints released; NVT Langevin `dt = 0.75 fs`, `330 K` for `12,000` steps (`9.0 ps`, friction `0.015 fs⁻¹`) |
+| **Annealing & Cryo Quench** | 16-stage linear ramp `330 → 5 K` over `8,000` steps (`6.0 ps`, friction `0.025 fs⁻¹`), followed by `1 K` cryo quench for `1,500` steps (`1.125 ps`, friction `0.05 fs⁻¹`) |
+| **Final 0 K Minimization** | 0 K BFGS relaxation to `fmax = 0.02 eV/Å` (max 200 steps); `28` evenly sampled frames saved spanning `0.000 → 16.425 ps` |
+| **Validated Structural Metrics** | Tetrahedral order `q(t)`: `0.774 → 0.978`; geometric `O–H···O` H-bonds (`infer_hbonds`): `52 → 63` (ideal Ice I<sub>h</sub>: `64`); exothermic `ΔE = −7.87 eV`; first O–O RDF peak sharpens from `r ≈ 2.77 Å` (`g ≈ 9.7`) to `r ≈ 2.72 Å` (`g ≈ 16.5`) |

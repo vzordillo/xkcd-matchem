@@ -38,7 +38,7 @@ All **29 native readers** below (plus native writers for `xyz` and `vasp` POSCAR
 | Format Key | Extensions / Filenames | Parsed Type | Supported Scope & Validation |
 | --- | --- | --- | --- |
 | `lammps_data` | `.lmp`, `.data`, `data.lammps` | `AtomsData` | Reads `Atoms # <style>` tags or explicit `atom_style=` via `xm.io.native.lammps.read_lammps_data()` (`atomic`, `charge`, `bond`, `angle`, `molecular`, `full`) plus optional `type_map=`; rejects ambiguous 6- or 8+-column tables unless styled explicitly |
-| `lammpstrj` | `.lammpstrj` (or content-detected `ITEM: TIMESTEP`) | `Trajectory` | Handles both orthogonal and triclinic `ITEM: BOX BOUNDS xy xz yz` bounds; requires an `element` column or explicit `type_map=` via `xm.io.native.lammps.read_lammpstrj()` |
+| `lammpstrj` | `.lammpstrj` (or content-detected `ITEM: TIMESTEP`) | `Trajectory` | Handles orthogonal and triclinic `ITEM: BOX BOUNDS xy xz yz` boxes, wrapped (`x/y/z`, `xs/ys/zs`) plus `ix/iy/iz` periodic image flags (`metadata["unwrapped_positions"]`), and direct unwrapped `xu/yu/zu` coordinates (`metadata["coords_unwrapped"] = True`); requires an `element` column or explicit `type_map=` via `xm.io.native.lammps.read_lammpstrj()` |
 | `gro` | `.gro` | `AtomsData` | Converts GROMACS nanometers to Angstroms (orthogonal and triclinic boxes) |
 | `xvg` | `.xvg` | `Spectrum` | Parses Grace / GROMACS two-column curves along with title and axis-label metadata |
 
@@ -53,13 +53,31 @@ All **29 native readers** below (plus native writers for `xyz` and `vasp` POSCAR
 | `orca_inp` | `.inp` | `AtomsData` | Inline `* xyz` geometry blocks and external `* xyzfile` references |
 | `orca_out` | `.orca`, ORCA `.out` (content-detected) | `AtomsData` + metadata | Geometry, molecular orbitals, IR frequencies, and TDDFT UV-Vis transitions |
 
+## Parser Safety Resource Ceilings & Format Subset Boundaries
+
+To protect interactive sessions and automated pipelines from malformed or adversarial inputs without out-of-memory crashes, native readers enforce configurable safety limits before large allocations and raise `ParseError` immediately when a ceiling is exceeded. Override any ceiling via environment variables when working with legitimately oversized datasets:
+
+| Environment Variable | Default Ceiling | Enforced On |
+| :--- | :--- | :--- |
+| `XM_MAX_ATOMS` | `200,000` atoms | Atom-table allocations in `.xyz`, VASP `POSCAR`/`CONTCAR`, `.cif`, and `.cube` |
+| `XM_MAX_GRID_VOXELS` | `64,000,000` voxels (`nx × ny × nz`) | 3D volumetric grids in Gaussian `.cube` and VASP `CHGCAR`/`LOCPOT`/`AECCAR*` |
+| `XM_MAX_FRAMES` | `50,000` frames | Multi-frame trajectories (`.xyz`, `XDATCAR`, `.lammpstrj`) |
+| `XM_MAX_FILE_BYTES` | `209,715,200` bytes (`200 MiB`) | Input file size check prior to bulk loading |
+
+### Explicit Format Subset Boundaries
+
+- **LAMMPS `.lammpstrj` & `.data`:** `.lammpstrj` supports orthogonal and triclinic `BOX BOUNDS xy xz yz`, wrapped coordinates (`x/y/z`, `xs/ys/zs`) with optional `ix/iy/iz` periodic image flags (reconstructed losslessly into `metadata["unwrapped_positions"]`), and direct unwrapped `xu/yu/zu` coordinates (`metadata["coords_unwrapped"] = True`). `.data` supports `atomic`, `charge`, `bond`, `angle`, `molecular`, and `full` styles; ambiguous unstyled tables raise `ParseError`.
+- **CIF:** Supports 61 built-in ITA space groups (including Origin Choice 1/2 for `Fd-3m` #227) and explicit `_symmetry_equiv_pos_as_xyz` loops; for modulated, magnetic, or non-standard CIFs, use `xm.io.read_via_ase()` or `pymatgen`.
+- **Quantum ESPRESSO `pw.in`:** Requires explicit `CELL_PARAMETERS` when `ibrav != 0`, and explicit `celldm(1)` or `A` whenever `alat` units are used.
+- **Offline Interactive 3D Studio HTML:** `export_interactive_html()` escapes `<`, `>`, `&`, `\u2028`, and `\u2029` inside embedded JSON payloads and HTML-escapes document titles so untrusted filenames or titles can never break out of `<script>` tags.
+
 ## Scientific Geometry & Analysis Safeguards
 
-Behind the playful visuals, core geometry routines avoid common shortcuts that break on real periodic materials:
+Behind the playful visuals, core geometry routines avoid common shortcuts that break on real periodic materials (see the [Capability & Validation Matrix](capabilities.md) for the full internal units contract and physical assumptions):
 
 - **Skewed & Triclinic Minimum-Image Vectors:** In a periodic crystal, two atoms near opposite box walls can actually be right next to each other across the boundary. Instead of naive fractional rounding (which picks the wrong neighbor in skewed cells), `xm.core.geometry.minimum_image_vector()` applies Gauss/LLL lattice reduction followed by a Gram-bounded integer closest-vector search across periodic axes.
 - **Property-Preserving Supercells:** `AtomsData.repeat()` tiles `charges`, `velocities`, `forces`, `occupancies`, `magnetic_moments`, and `atom_labels`, remaps periodic bond image shifts, and clears single-cell total energies so stale unscaled values never linger.
-- **Periodic RDF & Unwrapped RMSD/MSD:** `Trajectory.compute_rdf()` integrates exact spherical-shell volumes $\frac{4\pi}{3}(r_{\text{out}}^3 - r_{\text{in}}^3)$ across all periodic image shells enclosing $r_{\max}$ (with an optional `strict=True` guard enforcing that $r_{\max}$ stays within the Wigner–Seitz inradius—the largest sphere that fits inside the box without encountering self-images). `Trajectory.rmsd()` and `Trajectory.msd()` unwrap periodic boundary jumps across frames (with Kabsch superposition and `indices=` subsetting in `rmsd()`).
+- **Periodic RDF & Unwrapped RMSD/MSD:** `Trajectory.compute_rdf()` integrates exact spherical-shell volumes $\frac{4\pi}{3}(r_{\text{out}}^3 - r_{\text{in}}^3)$ across all periodic image shells enclosing $r_{\max}$ with exact $N_\alpha(N_\alpha - 1)$ same-species normalization by default (`same_species_correction=True`) and an optional `strict=True` guard enforcing $r_{\max} \le r_{\mathrm{WS}}$. `Trajectory.rmsd()` and `Trajectory.msd()` prefer lossless unwrapped positions (`xu/yu/zu` or `ix/iy/iz`) when available and warn if minimum-image frame jumps exceed $0.45\,r_{\mathrm{WS}}$.
 
 ## Optional Framework Adapters
 

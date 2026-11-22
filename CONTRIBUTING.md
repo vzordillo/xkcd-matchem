@@ -187,8 +187,9 @@ licensed under the repository's dual-component open licensing model:
   [Creative Commons Attribution 4.0 International (CC BY 4.0)](book/LICENSE-CC-BY-4.0.txt).
 - **Fonts:** Do not commit proprietary or unlicensed fonts. Bundled fonts are
   documented in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)
-  (`xkcd Script` under CC BY-NC 3.0 as the default academic/non-commercial font,
-  plus commercial-safe `Patrick Hand` and `Comic Neue` under SIL OFL 1.1).
+  (commercial-safe `Patrick Hand` as the default and `Comic Neue` as an
+  alternate under SIL OFL 1.1, plus optional non-commercial `xkcd Script` under
+  CC BY-NC 3.0 via `xm.use_xkcd_script()`).
 
 Thank you for helping make chemistry and materials science communication more
 accessible, rigorous, and fun!

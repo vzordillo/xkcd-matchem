@@ -1,15 +1,41 @@
-r"""Reproducible MACE-MPA-0 direct-coexistence water-to-ice Ih MD script.
+r"""Reproducible MACE-MPA-0 direct-coexistence seeded Ice Ih growth MD script.
+
+Physical qualification:
+  This script simulates **direct-coexistence seeded hexagonal Ice Ih growth**
+  (a fixed 16-H2O crystalline seed templating 16 melted liquid H2O molecules),
+  **not** spontaneous homogeneous nucleation from bulk supercooled water.
 
 Requires optional external MLIP tooling (not needed to use ``xkcd-matchem``):
 ``ase``, ``torch`` (CUDA recommended), and ``mace-torch`` with the cached
 ``medium-mpa-0`` foundation model.
 
-Protocol:
-  1. Relax proton-disordered Bernal-Fowler hexagonal Ice Ih (32 H2O, 96 atoms).
-  2. Fix the bottom 16 H2O seed layer and melt the top 16 H2O at 550 K.
-  3. Release all constraints for unconstrained MACE-MPA-0 crystallization MD
-     at 330 K, smooth cooling ramp down to 1 K, and final 0 K BFGS energy
-     minimization (fmax <= 0.02 eV/A).
+Reference Provenance (bundled ``water_to_ice.xyz``):
+  - Model artifact: MACE-MPA-0 (``medium-mpa-0``, checkpoint
+    ``macempa0mediummodel``, ``float32``, MPtrj + sAlexandria PBE).
+  - Software & hardware: ``ase 3.29.0``, ``mace-torch 0.3.16``,
+    ``PyTorch 2.12.1+cu130`` on NVIDIA RTX PRO 6000 Blackwell GPU.
+  - Periodic cell & system: orthorhombic ``9.036 x 7.825 x 14.712 A``
+    (``2 x 1 x 2`` Ice Ih supercell, ``a_hex = 4.518 A``, ``c_hex = 7.356 A``),
+    32 H2O / 96 atoms, ``pbc=(True, True, True)``.
+  - RNG seeds: ``seed = 42`` (Bernal-Fowler proton rules); ``seed + 1 = 43``
+    (mobile-water scrambling & NVT Langevin thermostat).
+  - NVT Langevin & quench protocol:
+    1. Relax initial proton-disordered Bernal-Fowler Ice Ih (BFGS,
+       ``fmax = 0.03 eV/A``, max 50 steps).
+    2. Fix bottom 16 H2O seed layer; scramble & melt top 16 H2O at 550 K
+       (1,500 steps, ``dt = 0.5 fs``, friction ``0.04 fs^-1``).
+    3. Release all constraints for unconstrained growth MD (``dt = 0.75 fs``):
+       - Growth: 330 K for 12,000 steps (9.0 ps, friction ``0.015 fs^-1``).
+       - Annealing: 16-stage linear ramp 330 -> 5 K over 8,000 steps
+         (6.0 ps, friction ``0.025 fs^-1``).
+       - Cryo quench: 1 K for 1,500 steps (1.125 ps, friction ``0.05 fs^-1``).
+       - Final 0 K BFGS minimization: ``fmax = 0.02 eV/A`` (max 200 steps;
+         28 exported frames spanning ``0.000 -> 16.425 ps``).
+  - Validated observables across ``water_to_ice.xyz``:
+    tetrahedral order ``q(t): 0.774 -> 0.978``, geometric O-H...O H-bond count
+    ``52 -> 63`` (ideal periodic Ice Ih: 64), exothermic ``dE = -7.87 eV``,
+    and first O-O RDF peak sharpening from ``r ~ 2.77 A`` (``g ~ 9.7``) to
+    ``r ~ 2.72 A`` (``g ~ 16.5``).
 
 Usage::
 

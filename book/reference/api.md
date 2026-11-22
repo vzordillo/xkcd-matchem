@@ -1,6 +1,6 @@
 # Python API Reference
 
-All high-level plotting functions, core data classes, primary style/layout/render helpers, and ecosystem conversion bridges are re-exported directly at the top level via `import xkcd_matchem as xm`. Lower-level helpers and format-specific readers live inside their dedicated subpackages (`xm.style`, `xm.io`, `xm.core`, `xm.render`, `xm.layout`, `xm.data`).
+All high-level plotting functions, core data classes, primary style/layout/render helpers, and ecosystem conversion bridges are re-exported directly at the top level via `import xkcd_matchem as xm`. Lower-level helpers and format-specific readers live inside their dedicated subpackages (`xm.style`, `xm.io`, `xm.core`, `xm.render`, `xm.layout`, `xm.data`). For validation status, canonical internal units, and explicit physical assumptions across every feature family, see the **[Capability & Validation Matrix](capabilities.md)** and **[Supported Formats & Validation Contracts](supported_formats.md)**.
 
 ## Quick Function Finder
 
@@ -9,6 +9,8 @@ Looking for the right function? Start here:
 | I want to... | Reach for |
 | --- | --- |
 | Load or save a structure, trajectory, spectrum, bands, or cube | `xm.load(path)`, `xm.load_trajectory(path)`, `xm.save(atoms, path)` |
+| Check canonical units, convert energy/time/pressure, or attach provenance | `xm.core.units.INTERNAL_UNITS`, `xm.core.units.ScientificProvenance`, `xm.core.units.convert_energy(...)`, `xm.core.units.convert_time(...)`, `xm.core.units.convert_pressure(...)` |
+| Analyze direct/indirect band gaps with occupation vs. Fermi-level semantics | `BandStructure.analyze_band_gap(...)`, `xm.core.BandGapResult`, `BandStructure.band_gap()` |
 | Plot a molecule in 3D or 2D skeletal view | `xm.plot_molecule(...)`, `xm.render_structure_3d(...)`, `xm.render_structure_2d(...)` |
 | Plot a crystal, Miller plane, Brillouin zone, Wulff shape, slab, or polyhedra | `xm.plot_crystal(...)`, `xm.plot_brillouin_zone(...)`, `xm.plot_wulff_shape(...)`, `xm.plot_slab(...)`, `xm.plot_coordination(...)` |
 | Spin a structure, trajectory, or CUBE orbital in the offline 3D Studio | `xm.view_structure(...)`, `xm.export_interactive_html(...)` |
@@ -40,7 +42,7 @@ Looking for the right function? Start here:
 - **Presets & themes:** Top-level `xm.PRESETS`, `xm.ThemePreset`, `xm.StrokeHierarchy`, `xm.list_presets()`, `xm.register_preset()`, `xm.xkcd_style()`, `xm.stroke_weights()`, `xm.style_existing_axes()`; submodule helpers `xm.style.get_preset()`, `xm.style.build_rc_params()`, `xm.style.apply_xkcd_spines()`.
 - **Palettes & elements:** Top-level `xm.OKABE_ITO`, `xm.get_palette()`, `xm.register_palette()`, `xm.get_element_color()`, `xm.register_element_palette()`, `xm.list_element_palettes()`; submodule helper `xm.style.list_palettes()`.
 - **Background grids & shading:** Top-level `xm.BACKGROUND_STYLES`, `xm.SHADE_STYLES`, `xm.list_background_styles()`, `xm.list_shade_styles()`, `xm.apply_background_grid()`, `xm.clear_background_grid()`, `xm.compute_background_grid_coords()`, `xm.resolve_hatch()`, `xm.shade_between()`.
-- **Fonts:** Top-level `xm.register_font()`, `xm.set_default_font()`, `xm.get_default_font()`, `xm.use_xkcd_script()`, `xm.fetch_xkcd_script()`; submodule helpers `xm.style.list_bundled_fonts()`, `xm.style.get_bundled_font_path()`, `xm.style.ensure_fonts_registered()`.
+- **Fonts:** Commercial-safe SIL OFL 1.1 `Patrick Hand` is the default font out of the box (alongside `Comic Neue`), with `xkcd Script` (CC BY-NC 3.0) available as a non-commercial opt-in via `xm.use_xkcd_script()` (blocked when `XM_COMMERCIAL_SAFE=1`). Top-level helpers: `xm.register_font()`, `xm.set_default_font()`, `xm.get_default_font()`, `xm.use_xkcd_script()`, `xm.fetch_xkcd_script()`; submodule helpers: `xm.style.list_bundled_fonts()`, `xm.style.get_bundled_font_path()`, `xm.style.ensure_fonts_registered()`.
 
 ```{eval-rst}
 .. automodule:: xkcd_matchem.style.theme
@@ -62,7 +64,15 @@ Looking for the right function? Start here:
    :members:
 ```
 
-## Core Data Models & Geometry (`xkcd_matchem.core`)
+## Core Data Models, Units & Geometry (`xkcd_matchem.core`)
+
+- **Canonical internal units & provenance (`xm.core.units`):** `INTERNAL_UNITS` (`Å`, `eV`, `eV/Å`, `GPa`, `fs`, `Å⁻¹`, `K`, `V`), zero-dependency converters (`convert_energy()`, `convert_time()`, `convert_pressure()`), and `ScientificProvenance` (`.to_dict()`) — see [Capability & Validation Matrix](capabilities.md) for the full contract.
+- **Electronic band-gap analysis (`xm.core.electronic`):** `BandGapResult` and `BandStructure.analyze_band_gap()` separate occupation-based (`"spin_polarized"`, `"spin_degenerate"`) vs. `"fermi_level"` band-gap conventions, reporting direct, indirect, metallic, and indeterminate states alongside backwards-compatible `BandStructure.band_gap()`.
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.core.units
+   :members:
+```
 
 ```{eval-rst}
 .. automodule:: xkcd_matchem.core.structure
