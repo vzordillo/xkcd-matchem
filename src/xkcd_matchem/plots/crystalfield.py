@@ -60,6 +60,7 @@ def crystal_field_levels(
     """Returns barycenter-conserving ``(label, energy, degeneracy)`` levels.
 
     Built-in geometries strictly satisfy ``sum(degeneracy * energy) == 0``:
+
     - ``"octahedral"``: ``t2g`` at ``-0.4 * delta`` (3), ``eg`` at
       ``+0.6 * delta`` (2).
     - ``"tetrahedral"``: ``e`` at ``-0.6 * delta`` (2), ``t2`` at
