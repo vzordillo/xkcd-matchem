@@ -45,6 +45,34 @@ from xkcd_matchem.plots import structure as struct_plots
 from xkcd_matchem.render import artistic3d
 from xkcd_matchem.style import fonts
 from xkcd_matchem.style import palettes
+from xkcd_matchem.style import theme
+
+
+_LARGE_SYSTEM_ATOM_THRESHOLD = 400
+_AUTO_LOD_ATOM_THRESHOLD = 500
+_ORDER_INFERENCE_ATOM_CAP = 500
+_MAX_ISO_GRID_DIM = 24
+_DEFAULT_ISO_COLORS: tuple[str, str] = ("#0072B2", "#D55E00")
+_DEFAULT_ISO_ALPHA = 0.28
+_DEFAULT_BOND_SCALE = 1.20
+_SNIPPET_EXTRA_KEYS = frozenset(
+    {
+        "animate",
+        "boundary_atoms",
+        "center_in_cell",
+        "custom_colors",
+        "fps",
+        "polyhedra_spec",
+        "show_atoms",
+        "show_iso",
+        "show_legend",
+        "show_vectors",
+        "supercell",
+        "symmetric_iso",
+        "vector_scale",
+        "vectors",
+    }
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -130,6 +158,10 @@ def _coerce_interactive_input(
     if isinstance(loaded, trajectory.Trajectory):
         if len(loaded) == 0:
             raise exceptions.StructureError("Trajectory contains zero frames.")
+        if src_name is None:
+            meta_src = loaded[0].metadata.get("source")
+            if meta_src:
+                src_name = pathlib.Path(str(meta_src)).name
         return loaded[0], list(loaded.frames), None, src_name
     if isinstance(loaded, electronic.VolumetricGrid):
         if loaded.atoms is None or len(loaded.atoms) == 0:
@@ -138,6 +170,10 @@ def _coerce_interactive_input(
             )
         return loaded.atoms, None, loaded, src_name
     if isinstance(loaded, structure.AtomsData):
+        if src_name is None:
+            meta_src = loaded.metadata.get("source")
+            if meta_src:
+                src_name = pathlib.Path(str(meta_src)).name
         return loaded, None, None, src_name
     raise exceptions.StructureError(
         f"Expected AtomsData, Trajectory, or VolumetricGrid, got "
@@ -182,7 +218,28 @@ def _resolve_js_vectors(
             f"Vectors shape {raw.shape} must match ({n_at}, 3)."
         )
     scaled = np.round(raw * float(vector_scale), 4)
-    return [[float(r[0]), float(r[1]), float(r[2])] for r in scaled]
+    return scaled.tolist()  # type: ignore[no-any-return]
+
+
+def _serialize_compact_iso_grid(
+    grid: electronic.VolumetricGrid,
+) -> dict[str, Any]:
+    """Serializes a compact volumetric field for live browser isovalues."""
+    nx, ny, nz = grid.data.shape
+    sx = max(1, (nx + _MAX_ISO_GRID_DIM - 1) // _MAX_ISO_GRID_DIM)
+    sy = max(1, (ny + _MAX_ISO_GRID_DIM - 1) // _MAX_ISO_GRID_DIM)
+    sz = max(1, (nz + _MAX_ISO_GRID_DIM - 1) // _MAX_ISO_GRID_DIM)
+    sub = grid.data[::sx, ::sy, ::sz]
+    vvecs = grid.voxel_vectors.copy()
+    vvecs[0] *= sx
+    vvecs[1] *= sy
+    vvecs[2] *= sz
+    return {
+        "origin": np.round(grid.origin, 5).tolist(),
+        "voxel_vectors": np.round(vvecs, 5).tolist(),
+        "shape": [int(sub.shape[0]), int(sub.shape[1]), int(sub.shape[2])],
+        "data": np.round(sub.ravel(), 5).tolist(),
+    }
 
 
 def _serialize_isosurface_meshes(
@@ -195,24 +252,32 @@ def _serialize_isosurface_meshes(
     ),
     isolevel: float | None,
     symmetric_iso: bool | None,
-) -> list[dict[str, Any]]:
-    """Extracts and serializes 3D isosurface triangles for the HTML viewer."""
+    colors: tuple[str, str] = _DEFAULT_ISO_COLORS,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Extracts and serializes 3D isosurface triangles and metadata."""
     if iso_source is None:
-        return []
-    meshes_and_cols: list[tuple[isosurf_mod.IsosurfaceMesh, str]] = []
+        return [], {}
+    pos_col, neg_col = str(colors[0]), str(colors[1])
+    meshes_and_cols: list[tuple[isosurf_mod.IsosurfaceMesh, str, int]] = []
+    meta: dict[str, Any] = {}
     if isinstance(iso_source, isosurf_mod.IsosurfaceMesh):
-        meshes_and_cols.append((iso_source, "#0072B2"))
+        meshes_and_cols.append((iso_source, pos_col, 1))
+        meta["iso_level"] = round(float(abs(iso_source.level)), 5)
+        meta["iso_max"] = round(max(float(abs(iso_source.level)) * 2.5, 0.1), 5)
+        meta["iso_symmetric"] = False
     else:
-        grid = (
+        if isinstance(iso_source, (str, pathlib.Path)):
+            meta["iso_source"] = str(iso_source)
+        raw_grid = (
             iso_source
             if isinstance(iso_source, electronic.VolumetricGrid)
             else loader.load(iso_source)
         )
-        if not isinstance(grid, electronic.VolumetricGrid):
+        if not isinstance(raw_grid, electronic.VolumetricGrid):
             raise exceptions.StructureError(
-                f"Expected VolumetricGrid, got {type(grid).__name__}."
+                f"Expected VolumetricGrid, got {type(raw_grid).__name__}."
             )
-        grid = isosurf_mod.upsample_coarse_grid(grid, min_dim=22)
+        grid = isosurf_mod.upsample_coarse_grid(raw_grid, min_dim=22)
         max_abs = max(float(np.max(np.abs(grid.data))), 1e-12)
         level = 0.35 * max_abs if isolevel is None else float(isolevel)
         sym_flag = (
@@ -221,37 +286,51 @@ def _serialize_isosurface_meshes(
             else bool(symmetric_iso)
         )
         meshes_and_cols.append(
-            (isosurf_mod.extract_isosurface(grid, level), "#0072B2")
+            (isosurf_mod.extract_isosurface(grid, abs(level)), pos_col, 1)
         )
         if sym_flag:
             meshes_and_cols.append(
-                (isosurf_mod.extract_isosurface(grid, -abs(level)), "#D55E00")
+                (isosurf_mod.extract_isosurface(grid, -abs(level)), neg_col, -1)
             )
+        meta["iso_level"] = round(abs(level), 5)
+        meta["iso_max"] = round(max_abs, 5)
+        meta["iso_symmetric"] = sym_flag
+        meta["iso_grid"] = _serialize_compact_iso_grid(grid)
 
     rows: list[dict[str, Any]] = []
-    for mesh, hex_col in meshes_and_cols:
+    for mesh, hex_col, sign_val in meshes_and_cols:
         if len(mesh.faces) == 0:
             continue
         rows.append(
             {
                 "color": hex_col,
+                "sign": sign_val,
                 "vertices": np.round(mesh.vertices, 4).tolist(),
                 "faces": mesh.faces.tolist(),
                 "normals": np.round(mesh.normals, 3).tolist(),
             }
         )
-    return rows
+    if not rows:
+        return [], {}
+    meta["iso_colors"] = [pos_col, neg_col]
+    meta["iso_alpha"] = _DEFAULT_ISO_ALPHA
+    return rows, meta
 
 
-def _serialize_bond_rows(atoms_obj: structure.AtomsData) -> list[list[Any]]:
-    """Extracts or infers bond index-order-shift quadruples."""
-    bonds = (
-        list(atoms_obj.bonds)
-        if atoms_obj.bonds
-        else bonding.infer_bonds(
-            atoms_obj, scale=1.20, use_pbc=atoms_obj.is_periodic
+def _serialize_bond_rows(
+    atoms_obj: structure.AtomsData,
+    bond_scale: float = _DEFAULT_BOND_SCALE,
+) -> list[list[Any]]:
+    """Extracts or infers bond index-order-shift quadruples cleanly."""
+    if atoms_obj.bonds and abs(float(bond_scale) - _DEFAULT_BOND_SCALE) < 1e-6:
+        bonds = list(atoms_obj.bonds)
+    else:
+        bonds = bonding.infer_bonds(
+            atoms_obj,
+            scale=float(bond_scale),
+            use_pbc=atoms_obj.is_periodic,
+            infer_orders=len(atoms_obj) < _ORDER_INFERENCE_ATOM_CAP,
         )
-    )
     return [
         [
             int(b.i),
@@ -362,11 +441,15 @@ def _attach_studio_extras(
     vec_rows = _resolve_js_vectors(atoms_obj, vectors, vector_scale)
     if vec_rows is not None:
         out["vectors"] = vec_rows
-    iso_rows = _serialize_isosurface_meshes(
+        if isinstance(vectors, str):
+            out["vector_source"] = vectors.strip().lower()
+        out["vector_scale"] = float(vector_scale)
+    iso_rows, iso_meta = _serialize_isosurface_meshes(
         auto_iso if isosurface is None else isosurface, isolevel, symmetric_iso
     )
     if iso_rows:
         out["isosurfaces"] = iso_rows
+        out.update(iso_meta)
     if frames_list is not None and len(frames_list) > 1:
         vec_attr = vectors if isinstance(vectors, str) else None
         out["frames"] = _serialize_trajectory_frames(
@@ -407,6 +490,8 @@ def serialize_structure(
     iso_shade: str = "solid",
     category: str | None = None,
     description: str | None = None,
+    preset: str = "classic",
+    bond_scale: float = _DEFAULT_BOND_SCALE,
 ) -> dict[str, Any]:
     """Serializes an ``AtomsData``, ``Trajectory``, or cube grid for Studio."""
     atoms_obj, frames_list, auto_iso, source_sample = _coerce_interactive_input(
@@ -417,6 +502,7 @@ def serialize_structure(
     else:
         cam = geometry.resolve_camera(camera, cell=atoms_obj.cell)
     palette_name, custom_colors = _resolve_custom_palette(atoms_obj, palette)
+    bond_rows = _serialize_bond_rows(atoms_obj, bond_scale=bond_scale)
 
     out: dict[str, Any] = {
         "name": name or atoms_obj.formula(reduce_formula=False),
@@ -429,13 +515,15 @@ def serialize_structure(
             else None
         ),
         "pbc": [bool(flag) for flag in atoms_obj.pbc],
-        "bonds": _serialize_bond_rows(atoms_obj),
+        "bonds": bond_rows,
         "polyhedra": _serialize_polyhedra_rows(atoms_obj, polyhedra),
         "style": style,
         "palette_name": palette_name,
         "custom_colors": custom_colors,
+        "preset": theme.get_preset(preset).name,
         "background": background,
         "scale": float(scale),
+        "bond_scale": float(bond_scale),
         "show_cell": show_cell,
         "iso_shade": artistic3d.normalize_iso_shade(iso_shade),
         "camera": {
@@ -445,7 +533,19 @@ def serialize_structure(
             "perspective": float(cam.perspective),
             "zoom": float(cam.zoom),
         },
+        "perf": {
+            "atomCount": len(atoms_obj),
+            "bondCount": len(bond_rows),
+            "largeSystem": len(atoms_obj) >= _LARGE_SYSTEM_ATOM_THRESHOLD,
+            "autoLod": len(atoms_obj) >= _AUTO_LOD_ATOM_THRESHOLD,
+        },
     }
+    if (
+        isinstance(polyhedra, tuple)
+        and len(polyhedra) == 2
+        and isinstance(polyhedra[0], str)
+    ):
+        out["polyhedra_spec"] = [polyhedra[0], polyhedra[1]]
     if category is not None:
         out["category"] = category
     if description is not None:
@@ -462,6 +562,564 @@ def serialize_structure(
         symmetric_iso=symmetric_iso,
     )
     return out
+
+
+def _py_str(value: str) -> str:
+    """Formats a string as a double-quoted Python literal."""
+    return json.dumps(str(value))
+
+
+def _format_call(
+    prefix: str,
+    callee: str,
+    args: Sequence[str],
+    indent: str = "",
+) -> str:
+    """Formats a PEP-8 Python call wrapped to <= 80 cols when needed."""
+    single = f"{indent}{prefix}{callee}({', '.join(args)})"
+    if len(single) <= 78 and all("\n" not in arg for arg in args):
+        return single
+    inner_indent = f"{indent}    "
+    joined = ",\n".join(f"{inner_indent}{arg}" for arg in args)
+    return f"{indent}{prefix}{callee}(\n{joined},\n{indent})"
+
+
+def _format_palette_arg(
+    palette_name: str,
+    custom_colors: Mapping[str, str],
+    symbols: Sequence[str],
+) -> str:
+    """Formats either a named palette literal or an element color mapping."""
+    if not custom_colors:
+        return _py_str(palette_name)
+    ordered: dict[str, str] = {}
+    for sym in dict.fromkeys(symbols):
+        ordered[sym] = str(
+            custom_colors.get(
+                sym, palettes.get_element_color(sym, scheme=palette_name)
+            )
+        )
+    for sym, col in custom_colors.items():
+        if sym not in ordered:
+            ordered[sym] = str(col)
+    items = [f"{_py_str(k)}: {_py_str(v)}" for k, v in ordered.items()]
+    inline = "{" + ", ".join(items) + "}"
+    if len(inline) <= 52:
+        return inline
+    body = ",\n        ".join(items)
+    return "{\n        " + body + ",\n    }"
+
+
+def _resolve_cell_arg(cell_val: bool | str) -> str | None:
+    """Maps Studio cell mode onto ``show_cell`` keyword expression."""
+    if cell_val is False:
+        return "False"
+    if cell_val is True:
+        return None
+    key = str(cell_val).strip().lower()
+    if key in ("off", "none", "false"):
+        return "False"
+    if key == "box":
+        return None
+    return _py_str(key)
+
+
+def _resolve_axes_arg(axes_val: bool | str | None) -> str | None:
+    """Maps Studio crystal-axes mode onto ``crystal_axes`` expression."""
+    if axes_val is None:
+        return None
+    if isinstance(axes_val, bool):
+        return "True" if axes_val else "False"
+    key = str(axes_val).strip().lower()
+    if key == "edges":
+        return None
+    if key in ("off", "none", "false"):
+        return "False"
+    return _py_str(key)
+
+
+def _extract_snippet_state(
+    scene: Mapping[str, Any],
+    overrides: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Merges serialized scene defaults with browser UI state overrides."""
+    cam_raw = scene.get("camera") or {}
+    cam_ov = overrides.get("camera")
+    if isinstance(cam_ov, geometry.Camera):
+        cam = {
+            "azimuth": cam_ov.azimuth,
+            "elevation": cam_ov.elevation,
+            "roll": cam_ov.roll,
+            "perspective": cam_ov.perspective,
+            "zoom": cam_ov.zoom,
+        }
+    elif isinstance(cam_ov, Mapping):
+        cam = {**cam_raw, **cam_ov}
+    else:
+        cam = dict(cam_raw)
+
+    preset_name = str(
+        overrides.get("preset") or scene.get("preset") or "classic"
+    )
+    preset_obj = theme.get_preset(preset_name)
+    pal_ov = overrides.get("palette")
+    custom_ov = overrides.get("custom_colors")
+    if isinstance(pal_ov, Mapping):
+        palette_name = str(scene.get("palette_name") or "xkcd")
+        custom_colors = dict(pal_ov)
+    else:
+        palette_name = str(pal_ov or scene.get("palette_name") or "xkcd")
+        custom_colors = dict(
+            custom_ov
+            if custom_ov is not None
+            else (scene.get("custom_colors") or {})
+        )
+
+    iso_colors_raw = overrides.get("iso_colors") or scene.get("iso_colors")
+    iso_cols = (
+        (str(iso_colors_raw[0]), str(iso_colors_raw[1]))
+        if iso_colors_raw and len(iso_colors_raw) >= 2
+        else _DEFAULT_ISO_COLORS
+    )
+    frames = scene.get("frames") or []
+    has_iso_data = bool(scene.get("isosurfaces"))
+    show_iso = bool(
+        overrides["show_iso"]
+        if overrides.get("show_iso") is not None
+        else has_iso_data
+    )
+    raw_src = (
+        overrides.get("source")
+        or scene.get("source_sample")
+        or scene.get("name")
+        or "structure.cif"
+    )
+    return {
+        "source": str(raw_src),
+        "is_trajectory": len(frames) > 1
+        or (bool(frames) and overrides.get("frame_index") is not None),
+        "n_frames": max(len(frames), 1),
+        "frame_index": int(overrides.get("frame_index") or 0),
+        "animate": bool(overrides.get("animate", False)),
+        "fps": int(overrides.get("fps") or 8),
+        "has_iso": has_iso_data and show_iso,
+        "iso_source": str(scene.get("iso_source") or raw_src),
+        "isovalue": (
+            overrides["isovalue"]
+            if overrides.get("isovalue") is not None
+            else scene.get("iso_level")
+        ),
+        "symmetric_iso": (
+            overrides["symmetric_iso"]
+            if overrides.get("symmetric_iso") is not None
+            else scene.get("iso_symmetric")
+        ),
+        "iso_shade": artistic3d.normalize_iso_shade(
+            str(overrides.get("iso_shade") or scene.get("iso_shade") or "solid")
+        ),
+        "iso_alpha": float(
+            overrides["iso_alpha"]
+            if overrides.get("iso_alpha") is not None
+            else scene.get("iso_alpha", _DEFAULT_ISO_ALPHA)
+        ),
+        "iso_colors": iso_cols,
+        "show_atoms": bool(overrides.get("show_atoms", True)),
+        "is_periodic": scene.get("cell") is not None,
+        "symbols": list(scene.get("symbols") or ()),
+        "azimuth": float(cam.get("azimuth", -118.0)),
+        "elevation": float(cam.get("elevation", 24.0)),
+        "roll": float(cam.get("roll", 0.0)),
+        "perspective": float(cam.get("perspective", 0.0)),
+        "zoom": float(cam.get("zoom", 1.0)),
+        "preset": preset_obj.name,
+        "preset_bg": preset_obj.figure_facecolor.upper(),
+        "preset_wiggle": float(preset_obj.sketch_scale),
+        "background": str(
+            overrides.get("background")
+            or scene.get("background")
+            or preset_obj.figure_facecolor
+        ).upper(),
+        "wiggle": float(
+            overrides["wiggle"]
+            if overrides.get("wiggle") is not None
+            else preset_obj.sketch_scale
+        ),
+        "style": str(
+            overrides.get("style") or scene.get("style") or "ball_and_stick"
+        ),
+        "palette_name": palette_name,
+        "custom_colors": custom_colors,
+        "atom_scale": float(
+            overrides["atom_scale"]
+            if overrides.get("atom_scale") is not None
+            else scene.get("scale", 1.0)
+        ),
+        "bond_scale": float(
+            overrides["bond_scale"]
+            if overrides.get("bond_scale") is not None
+            else scene.get("bond_scale", _DEFAULT_BOND_SCALE)
+        ),
+        "show_bonds": bool(overrides.get("show_bonds", True)),
+        "show_hbonds": bool(overrides.get("show_hbonds", False)),
+        "show_cell": (
+            overrides["show_cell"]
+            if overrides.get("show_cell") is not None
+            else scene.get("show_cell", True)
+        ),
+        "crystal_axes": overrides.get(
+            "crystal_axes", scene.get("crystal_axes")
+        ),
+        "show_labels": bool(overrides.get("show_labels", False)),
+        "show_legend": bool(overrides.get("show_legend", True)),
+        "boundary_atoms": bool(overrides.get("boundary_atoms", True)),
+        "center_in_cell": bool(overrides.get("center_in_cell", False)),
+        "supercell": tuple(overrides.get("supercell") or (1, 1, 1)),
+        "show_vectors": bool(overrides.get("show_vectors", True)),
+        "vector_source": (
+            overrides.get("vectors")
+            if overrides.get("vectors") is not None
+            else scene.get("vector_source")
+        ),
+        "vector_scale": float(
+            overrides["vector_scale"]
+            if overrides.get("vector_scale") is not None
+            else scene.get("vector_scale", 1.0)
+        ),
+        "polyhedra_spec": (
+            overrides.get("polyhedra_spec") or scene.get("polyhedra_spec")
+        ),
+    }
+
+
+def _build_isosurface_snippet_body(
+    st: dict[str, Any],
+    pal_expr: str,
+    indent: str,
+) -> tuple[list[str], str]:
+    """Builds loading lines and ``xm.plot_isosurface`` call."""
+    prep = [f"grid = xm.load({_py_str(st['iso_source'])})"]
+    args = ["grid"]
+    if st["isovalue"] is not None:
+        args.append(f"level={float(st['isovalue']):.4g}")
+    if st["symmetric_iso"] is not None:
+        args.append(f"symmetric={'True' if st['symmetric_iso'] else 'False'}")
+    args.append("camera=cam")
+    c_pos, c_neg = st["iso_colors"]
+    if (c_pos.upper(), c_neg.upper()) != _DEFAULT_ISO_COLORS:
+        args.append(f"colors=({_py_str(c_pos)}, {_py_str(c_neg)})")
+    if abs(st["iso_alpha"] - _DEFAULT_ISO_ALPHA) > 1e-3:
+        args.append(f"alpha={st['iso_alpha']:.2f}")
+    args.append(f"shade={_py_str(st['iso_shade'])}")
+    if not st["show_atoms"]:
+        args.append("show_atoms=False")
+    if st["custom_colors"] or st["palette_name"] != "xkcd":
+        args.append(f"palette={pal_expr}")
+    if st["preset"] != "classic":
+        args.append(f"preset={_py_str(st['preset'])}")
+    return prep, _format_call("ax = ", "xm.plot_isosurface", args, indent)
+
+
+def _append_periodic_cell_args(args: list[str], st: dict[str, Any]) -> None:
+    """Appends non-default ``show_cell`` and ``crystal_axes`` arguments."""
+    cell_arg = _resolve_cell_arg(st["show_cell"])
+    if cell_arg is not None:
+        args.append(f"show_cell={cell_arg}")
+    axes_arg = _resolve_axes_arg(st["crystal_axes"])
+    if axes_arg is not None:
+        args.append(f"crystal_axes={axes_arg}")
+
+
+def _append_vector_and_hbond_args(args: list[str], st: dict[str, Any]) -> None:
+    """Appends vector arrow and hydrogen-bond keyword arguments."""
+    if st["show_vectors"] and st["vector_source"]:
+        args.append(f"vectors={_py_str(st['vector_source'])}")
+        if abs(st["vector_scale"] - 1.0) > 1e-3:
+            args.append(f"vector_scale={st['vector_scale']:.2f}")
+    if st["show_hbonds"]:
+        args.append("show_hbonds=True")
+
+
+def _build_scaled_3d_snippet(
+    prep: list[str],
+    st: dict[str, Any],
+    pal_expr: str,
+    indent: str,
+) -> tuple[list[str], str]:
+    """Builds ``xm.render_structure_3d`` snippet when ``atom_scale != 1``."""
+    sc = st["supercell"]
+    has_sc = (int(sc[0]), int(sc[1]), int(sc[2])) != (1, 1, 1)
+    if st["is_periodic"]:
+        prep.append("atoms = atoms.wrap_positions()")
+        if st["center_in_cell"]:
+            prep.append("atoms = atoms.center_in_cell()")
+        if has_sc:
+            prep.append(f"atoms = atoms.repeat(({sc[0]}, {sc[1]}, {sc[2]}))")
+        if st["boundary_atoms"] and st["style"] != "polyhedra":
+            prep.append("atoms = atoms.with_boundary_atoms()")
+    args = [
+        "atoms",
+        "camera=cam",
+        f"style={_py_str(st['style'])}",
+        f"palette={pal_expr}",
+    ]
+    if st["is_periodic"]:
+        _append_periodic_cell_args(args, st)
+    else:
+        args.append("show_cell=False")
+    if st["show_labels"]:
+        args.append("show_labels=True")
+    if not st["show_bonds"]:
+        args.append("show_bonds=False")
+    args.append(f"radius_scale={st['atom_scale']:.2f}")
+    if abs(st["bond_scale"] - _DEFAULT_BOND_SCALE) > 1e-3:
+        args.append(f"bond_scale={st['bond_scale']:.2f}")
+    pspec = st["polyhedra_spec"]
+    if st["style"] == "polyhedra" and pspec and len(pspec) == 2:
+        lig = "None" if pspec[1] is None else _py_str(pspec[1])
+        args.append(f"polyhedra=({_py_str(pspec[0])}, {lig})")
+    _append_vector_and_hbond_args(args, st)
+    return prep, _format_call("ax = ", "xm.render_structure_3d", args, indent)
+
+
+def _build_coord_snippet(
+    prep: list[str],
+    st: dict[str, Any],
+    pal_expr: str,
+    indent: str,
+) -> tuple[list[str], str]:
+    """Builds ``xm.plot_coordination`` call for polyhedra crystal views."""
+    sc = st["supercell"]
+    has_sc = (int(sc[0]), int(sc[1]), int(sc[2])) != (1, 1, 1)
+    pspec = st["polyhedra_spec"]
+    args = ["atoms", _py_str(pspec[0])]
+    if pspec[1] is not None:
+        args.append(_py_str(pspec[1]))
+    if has_sc:
+        args.append(f"supercell=({sc[0]}, {sc[1]}, {sc[2]})")
+    args.extend(["camera=cam", f"palette={pal_expr}"])
+    if st["preset"] != "classic":
+        args.append(f"preset={_py_str(st['preset'])}")
+    _append_periodic_cell_args(args, st)
+    if st["show_bonds"]:
+        args.append("show_bonds=True")
+    return prep, _format_call("ax = ", "xm.plot_coordination", args, indent)
+
+
+def _can_use_plot_coordination(st: dict[str, Any]) -> bool:
+    """Returns whether ``xm.plot_coordination`` matches the active state."""
+    pspec = st["polyhedra_spec"]
+    if not (st["is_periodic"] and st["style"] == "polyhedra"):
+        return False
+    if pspec is None or len(pspec) != 2:
+        return False
+    has_vec = bool(st["show_vectors"] and st["vector_source"])
+    return not (
+        st["show_labels"]
+        or st["show_hbonds"]
+        or st["center_in_cell"]
+        or has_vec
+    )
+
+
+def _build_structure_snippet_body(
+    st: dict[str, Any],
+    pal_expr: str,
+    indent: str,
+) -> tuple[list[str], str]:
+    """Builds loading/transform lines and molecule/crystal/3D plot call."""
+    prep: list[str] = []
+    if st["is_trajectory"]:
+        f_idx = max(0, min(st["frame_index"], st["n_frames"] - 1))
+        prep.append(f"traj = xm.load_trajectory({_py_str(st['source'])})")
+        prep.append(f"atoms = traj[{f_idx}]")
+    else:
+        prep.append(f"atoms = xm.load({_py_str(st['source'])})")
+
+    if abs(st["atom_scale"] - 1.0) > 1e-3:
+        return _build_scaled_3d_snippet(prep, st, pal_expr, indent)
+
+    if abs(st["bond_scale"] - _DEFAULT_BOND_SCALE) > 1e-3:
+        pbc_lit = "True" if st["is_periodic"] else "False"
+        prep.append(
+            f"atoms.bonds = xm.infer_bonds("
+            f"atoms, scale={st['bond_scale']:.2f}, use_pbc={pbc_lit})"
+        )
+
+    if _can_use_plot_coordination(st):
+        return _build_coord_snippet(prep, st, pal_expr, indent)
+
+    sc = st["supercell"]
+    has_sc = (int(sc[0]), int(sc[1]), int(sc[2])) != (1, 1, 1)
+    fn = "xm.plot_crystal" if st["is_periodic"] else "xm.plot_molecule"
+    args = ["atoms"]
+    if st["is_periodic"] and has_sc:
+        args.append(f"supercell=({sc[0]}, {sc[1]}, {sc[2]})")
+    args.extend(
+        [
+            f"style={_py_str(st['style'])}",
+            "camera=cam",
+            f"palette={pal_expr}",
+        ]
+    )
+    if st["is_periodic"]:
+        _append_periodic_cell_args(args, st)
+    if st["show_labels"]:
+        args.append("show_labels=True")
+    if not st["show_legend"]:
+        args.append("show_legend=False")
+    if st["is_periodic"] and st["center_in_cell"]:
+        args.append("center_in_cell=True")
+    if st["preset"] != "classic":
+        args.append(f"preset={_py_str(st['preset'])}")
+    if not st["show_bonds"]:
+        args.append("show_bonds=False")
+    if st["is_periodic"] and not st["boundary_atoms"]:
+        args.append("boundary_atoms=False")
+    _append_vector_and_hbond_args(args, st)
+    return prep, _format_call("ax = ", fn, args, indent)
+
+
+def _assemble_snippet_from_state(st: dict[str, Any]) -> str:
+    """Assembles complete Python snippet text from normalized Studio state."""
+    pal_expr = _format_palette_arg(
+        st["palette_name"], st["custom_colors"], st["symbols"]
+    )
+    needs_style_ctx = (
+        st["background"] != st["preset_bg"]
+        or abs(st["wiggle"] - st["preset_wiggle"]) > 0.01
+        or (not st["has_iso"] and abs(st["atom_scale"] - 1.0) > 1e-3)
+    )
+    indent = "    " if needs_style_ctx else ""
+    if st["has_iso"]:
+        prep_lines, plot_block = _build_isosurface_snippet_body(
+            st, pal_expr, indent
+        )
+    else:
+        prep_lines, plot_block = _build_structure_snippet_body(
+            st, pal_expr, indent
+        )
+
+    cam_call = _format_call(
+        "cam = ",
+        "xm.Camera",
+        [
+            f"azimuth={st['azimuth']:.1f}",
+            f"elevation={st['elevation']:.1f}",
+            f"roll={st['roll']:.1f}",
+            f"perspective={st['perspective']:.2f}",
+            f"zoom={st['zoom']:.2f}",
+        ],
+    )
+    out_lines = ["import xkcd_matchem as xm", "", *prep_lines, cam_call]
+
+    if needs_style_ctx:
+        ctx_args = [_py_str(st["preset"])]
+        if abs(st["wiggle"] - st["preset_wiggle"]) > 0.01:
+            ctx_args.append(f"scale={st['wiggle']:.2f}")
+        if st["background"] != st["preset_bg"]:
+            ctx_args.append(f"background={_py_str(st['background'])}")
+        out_lines.append(_format_call("with ", "xm.xkcd_style", ctx_args) + ":")
+    out_lines.append(plot_block)
+
+    if st["is_trajectory"] and st["animate"] and not st["has_iso"]:
+        anim_args = [
+            "traj",
+            _py_str("trajectory.gif"),
+            f"fps={st['fps']}",
+            "camera=cam",
+            f"palette={pal_expr}",
+        ]
+        if st["preset"] != "classic":
+            anim_args.append(f"preset={_py_str(st['preset'])}")
+        if st["is_periodic"]:
+            cell_arg = _resolve_cell_arg(st["show_cell"])
+            if cell_arg is not None:
+                anim_args.append(f"show_cell={cell_arg}")
+        if st["show_hbonds"]:
+            anim_args.append("show_hbonds=True")
+        out_lines.append(
+            _format_call("gif_path = ", "xm.animate_trajectory", anim_args)
+        )
+    return "\n".join(out_lines) + "\n"
+
+
+def generate_python_snippet(
+    scene: (
+        Mapping[str, Any]
+        | structure.AtomsData
+        | trajectory.Trajectory
+        | electronic.VolumetricGrid
+        | str
+        | pathlib.Path
+    ),
+    *,
+    source: str | None = None,
+    camera: geometry.Camera | Mapping[str, float] | None = None,
+    preset: str | None = None,
+    background: str | None = None,
+    wiggle: float | None = None,
+    style: str | None = None,
+    palette: str | Mapping[str, str] | None = None,
+    atom_scale: float | None = None,
+    bond_scale: float | None = None,
+    show_bonds: bool | None = None,
+    show_hbonds: bool | None = None,
+    show_cell: bool | str | None = None,
+    crystal_axes: bool | str | None = None,
+    show_labels: bool | None = None,
+    isovalue: float | None = None,
+    iso_shade: str | None = None,
+    iso_alpha: float | None = None,
+    iso_colors: tuple[str, str] | None = None,
+    frame_index: int | None = None,
+    **extra_state: Any,
+) -> str:
+    """Builds runnable PEP-8 ``xkcd_matchem`` Python code for a Studio state.
+
+    Mirrors ``buildPythonSnippet()`` in ``viewer.html`` 1:1 across molecules,
+    periodic crystals, volumetric orbitals, and multi-frame trajectories using
+    real supported parameters of ``xm.plot_molecule``, ``xm.plot_crystal``,
+    ``xm.plot_coordination``, ``xm.render_structure_3d``,
+    ``xm.plot_isosurface``, ``xm.animate_trajectory``, ``xm.Camera``, and
+    ``xm.xkcd_style``.
+    """
+    unknown = sorted(set(extra_state) - _SNIPPET_EXTRA_KEYS)
+    if unknown:
+        raise TypeError(
+            f"Unsupported generate_python_snippet state keys: {unknown!r}"
+        )
+    scene_dict = (
+        dict(scene)
+        if isinstance(scene, Mapping)
+        else serialize_structure(scene)
+    )
+    return _assemble_snippet_from_state(
+        _extract_snippet_state(
+            scene_dict,
+            {
+                "source": source,
+                "camera": camera,
+                "preset": preset,
+                "background": background,
+                "wiggle": wiggle,
+                "style": style,
+                "palette": palette,
+                "atom_scale": atom_scale,
+                "bond_scale": bond_scale,
+                "show_bonds": show_bonds,
+                "show_hbonds": show_hbonds,
+                "show_cell": show_cell,
+                "crystal_axes": crystal_axes,
+                "show_labels": show_labels,
+                "isovalue": isovalue,
+                "iso_shade": iso_shade,
+                "iso_alpha": iso_alpha,
+                "iso_colors": iso_colors,
+                "frame_index": frame_index,
+                **extra_state,
+            },
+        )
+    )
 
 
 def _safe_json_for_script(payload: Any) -> str:
@@ -519,8 +1177,10 @@ def _build_font_css(font_family: str = "Patrick Hand") -> str:
         return ""
 
 
-def _build_viewer_tables() -> tuple[dict[str, Any], dict[str, dict[str, str]]]:
-    """Builds element radius/color tables for offline JS viewer switching."""
+def _build_viewer_tables() -> (
+    tuple[dict[str, Any], dict[str, dict[str, str]], dict[str, dict[str, Any]]]
+):
+    """Builds element, palette, and preset tables for offline JS switching."""
     elem_table: dict[str, dict[str, Any]] = {}
     pal_tables: dict[str, dict[str, str]] = {
         scheme: {} for scheme in palettes.list_element_palettes()
@@ -536,7 +1196,15 @@ def _build_viewer_tables() -> tuple[dict[str, Any], dict[str, dict[str, str]]]:
             col = palettes.get_element_color(sym, scheme=scheme)
             if col != elem_table[sym]["color"] or scheme == "xkcd":
                 table[sym] = col
-    return elem_table, pal_tables
+    presets_table: dict[str, dict[str, Any]] = {
+        name: {
+            "bg": p.figure_facecolor.upper(),
+            "wiggle": round(float(p.sketch_scale), 2),
+            "ink": p.ink_color,
+        }
+        for name, p in theme.PRESETS.items()
+    }
+    return elem_table, pal_tables, presets_table
 
 
 def build_interactive_html(
@@ -573,6 +1241,8 @@ def build_interactive_html(
     iso_shade: str = "solid",
     category: str | None = None,
     description: str | None = None,
+    preset: str = "classic",
+    bond_scale: float = _DEFAULT_BOND_SCALE,
 ) -> str:
     """Builds a standalone offline HTML document for the 3D xkcd Studio."""
     active_payload = serialize_structure(
@@ -593,13 +1263,16 @@ def build_interactive_html(
         iso_shade=iso_shade,
         category=category,
         description=description,
+        preset=preset,
+        bond_scale=bond_scale,
     )
-    elem_table, pal_tables = _build_viewer_tables()
+    elem_table, pal_tables, presets_table = _build_viewer_tables()
     payload = {
         "active": active_payload,
         "samples": list(samples) if samples is not None else [active_payload],
         "elements_table": elem_table,
         "palettes": pal_tables,
+        "presets_table": presets_table,
     }
     template = (
         importlib.resources.files("xkcd_matchem.data")
@@ -800,6 +1473,8 @@ def export_interactive_html(
     isolevel: float | None = None,
     symmetric_iso: bool | None = None,
     iso_shade: str = "solid",
+    preset: str = "classic",
+    bond_scale: float = _DEFAULT_BOND_SCALE,
 ) -> pathlib.Path:
     """Exports a standalone offline interactive 3D studio HTML file."""
     active_fname = _active_sample_filename(atoms)
@@ -830,6 +1505,8 @@ def export_interactive_html(
             iso_shade=iso_shade,
             category=lead_cat,
             description=lead_desc,
+            preset=preset,
+            bond_scale=bond_scale,
         )
         if active_fname and first.get("source_sample") is None:
             first["source_sample"] = active_fname
@@ -856,6 +1533,8 @@ def export_interactive_html(
         iso_shade=iso_shade,
         category=lead_cat,
         description=lead_desc,
+        preset=preset,
+        bond_scale=bond_scale,
     )
     out = pathlib.Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -907,7 +1586,7 @@ def view_structure(
       style: Visual representation (``"ball_and_stick"``, ``"spacefill"``,
         ``"stick"``, ``"polyhedra"``).
       palette: Named element palette or custom ``{symbol: color}`` dictionary.
-      preset: Theme preset name when rendering via ``"matplotlib"``.
+      preset: Theme preset name when rendering via ``"matplotlib"`` or Studio.
       camera: ``Camera`` instance or preset name (e.g. ``"isometric"``,
         ``"perspective"``, ``"top"``, ``"c*"``).
       supercell: Optional ``(na, nb, nc)`` replication applied before viewing.
@@ -1019,6 +1698,7 @@ def view_structure(
         isolevel=isolevel,
         symmetric_iso=symmetric_iso,
         iso_shade=iso_shade,
+        preset=preset,
     )
     view = InteractiveView(
         html_str=html_doc,
