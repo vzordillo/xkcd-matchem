@@ -76,7 +76,7 @@ body:
     id: environment
     attributes:
       label: Environment Details
-      description: OS, Python version (3.10 / 3.11 / 3.12), NumPy, SciPy, Matplotlib versions, and any optional extras (`ase`, `pymatgen`, `rdkit`, etc.).
+      description: OS, Python version (3.10 / 3.11 / 3.12 / 3.13), NumPy, SciPy, Matplotlib versions, and any optional extras (`ase`, `pymatgen`, `rdkit`, etc.).
       placeholder: "Ubuntu 24.04, Python 3.12, matplotlib 3.9, numpy 2.1, scipy 1.14"
     validations:
       required: true

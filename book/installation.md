@@ -4,14 +4,14 @@
 
 `xkcd-matchem` has a light core footprint: **Python 3.10+**, **NumPy**, **SciPy**, and **Matplotlib**. All **18 bundled sample files** (molecules, crystals, slabs, DFT outputs, LOBSTER COHP tables, Phonopy bands, spectra, orbital cubes, and MD/NEB trajectories) and bundled comic-style fonts ship inside the wheel. Out of the box, every built-in preset defaults to commercial-safe **`Patrick Hand`** (**SIL OFL 1.1**, pairing cleanly with the **Apache-2.0** source code), alongside **`Comic Neue`** (**SIL OFL 1.1**). For non-commercial/academic talks and notebooks, **`xkcd Script`** (**CC BY-NC 3.0**) is bundled as an explicit opt-in via `xm.use_xkcd_script()` (and blocked with a `StyleError` whenever `XM_COMMERCIAL_SAFE=1` is set).
 
-Install directly from GitHub:
+Install directly from [PyPI](https://pypi.org/project/xkcd-matchem/):
 
 ```bash
-pip install git+https://github.com/vzordillo/xkcd-matchem.git
+pip install xkcd-matchem
 ```
 
-:::{note}
-**PyPI Release Note:** Standard PyPI installation (`pip install xkcd-matchem`) will be enabled with the first tagged PyPI release. Until then, install from GitHub using the `git+https://...` commands on this page or from a local editable checkout below.
+:::{tip}
+To test unreleased commits from GitHub `main`, you can also install via `pip install git+https://github.com/vzordillo/xkcd-matchem.git`.
 :::
 
 ### Quick Verification
@@ -40,10 +40,10 @@ Already using ASE, pymatgen, RDKit, cclib, or MDAnalysis? Install only the bridg
 | `md` | `MDAnalysis>=2.6`, `mdtraj>=1.9` | Import MDAnalysis `Universe` or MDTraj `Trajectory` objects (`xm.from_mdanalysis`, `xm.from_mdtraj`) |
 | `animation` | `pillow>=10.0` | Export looping GIF animations via `xm.animate_trajectory()`, `xm.animate_orbit()`, and `xm.animate_isosurface()` |
 
-For example, to add ASE, pymatgen, RDKit, and GIF animation support together from GitHub:
+For example, to add ASE, pymatgen, RDKit, and GIF animation support together:
 
 ```bash
-pip install "xkcd-matchem[ase,pymatgen,rdkit,animation] @ git+https://github.com/vzordillo/xkcd-matchem.git"
+pip install "xkcd-matchem[ase,pymatgen,rdkit,animation]"
 ```
 
 :::{tip}

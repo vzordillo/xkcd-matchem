@@ -1,5 +1,6 @@
 # xkcd-matchem: An xkcd-Style Visualization Suite for Chemistry and Materials Science Communication
 
+[![PyPI](https://img.shields.io/pypi/v/xkcd-matchem.svg)](https://pypi.org/project/xkcd-matchem/)
 [![CI](https://github.com/vzordillo/xkcd-matchem/actions/workflows/ci.yml/badge.svg)](https://github.com/vzordillo/xkcd-matchem/actions/workflows/ci.yml)
 [![Docs](https://github.com/vzordillo/xkcd-matchem/actions/workflows/docs.yml/badge.svg)](https://github.com/vzordillo/xkcd-matchem/actions/workflows/docs.yml)
 [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/vzordillo/xkcd-matchem/main?urlpath=lab%2Ftree%2Fbook%2Ftutorials%2F01_quickstart_and_themes.ipynb)
@@ -25,13 +26,13 @@
 
 ## Installation & Quickstart
 
-Requires **Python 3.10+**, NumPy, SciPy, and Matplotlib (18 bundled sample datasets and comic-style fonts included; `pip install xkcd-matchem` will be enabled on the first PyPI release):
+Requires **Python 3.10+**, NumPy, SciPy, and Matplotlib (18 bundled sample datasets and comic-style fonts included):
 
 ```bash
-pip install git+https://github.com/vzordillo/xkcd-matchem.git
+pip install xkcd-matchem
 
 # Optional ecosystem extras (ase, pymatgen, rdkit, qm, md, animation):
-pip install "xkcd-matchem[ase,pymatgen,rdkit,animation] @ git+https://github.com/vzordillo/xkcd-matchem.git"
+pip install "xkcd-matchem[ase,pymatgen,rdkit,animation]"
 ```
 
 ### 1. Plot a Crystal & Annotate with a Stick Scientist

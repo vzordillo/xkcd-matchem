@@ -52,10 +52,14 @@ classrooms, and static documentation sites:
    - Serialized JSON payloads embedded in standalone HTML escape closing
      `</script>` tags and unsafe HTML delimiters, and interactive UI controls
      populate text nodes safely rather than executing untrusted markup.
-2. **Safe Text-Based File Parsing:**
+2. **Safe Text-Based File Parsing & Resource Ceilings:**
    - All 29 zero-dependency native parsers in `src/xkcd_matchem/io/native/`
      parse plain text and numeric chemistry/materials formats without calling
      `eval()`, `exec()`, `pickle`, or spawning subprocesses.
+   - Configurable pre-allocation resource ceilings (`io/native/_limits.py`:
+     `XM_MAX_FILE_BYTES`, `XM_MAX_ATOMS`, `XM_MAX_GRID_VOXELS`,
+     `XM_MAX_FRAMES`) and streaming LAMMPS line parsing guard against
+     denial-of-service memory spikes on malformed or adversarial inputs.
    - Optional third-party adapters (`ase`, `pymatgen`, `rdkit`, `cclib`,
      `MDAnalysis`, `mdtraj`) are imported lazily only when explicitly called by
      the user.

@@ -37,15 +37,15 @@ Verify your environment before making changes:
 | Directory | Purpose |
 | :--- | :--- |
 | `src/xkcd_matchem/core/` | Scientific data models, geometry, neighbors, bonding, XRD, isosurfaces, Brillouin zones, Wulff shapes (zero Matplotlib imports) |
-| `src/xkcd_matchem/data/` | Verified scientific tables (CODATA 2022, IUPAC/CIAAW, BODR, Alvarez/Mantina, Cromer–Mann), 61 ITA space groups, 17 bundled samples, fonts, and `viewer.html` |
-| `src/xkcd_matchem/io/` | Format auto-detection, 29 zero-dependency native parsers, and optional lazy ecosystem adapters (ASE, pymatgen, RDKit, cclib, MDAnalysis, MDTraj) |
-| `src/xkcd_matchem/style/` | Presets, 4-tier stroke hierarchy, colorblind-safe Okabe–Ito & Jmol palettes, bundled font handling, background grids, and hatched fills |
+| `src/xkcd_matchem/data/` | Verified scientific tables (CODATA 2022, IUPAC/CIAAW, BODR, Alvarez/Mantina, Cromer–Mann), 61 ITA space groups, 18 bundled samples, fonts, and `viewer.html` |
+| `src/xkcd_matchem/io/` | Format auto-detection, 29 zero-dependency native parsers (with configurable `XM_MAX_*` resource ceilings), and optional lazy ecosystem adapters (ASE, pymatgen, RDKit, cclib, MDAnalysis, MDTraj) |
+| `src/xkcd_matchem/style/` | Presets, 4-tier stroke hierarchy, colorblind-safe Okabe–Ito & Jmol palettes, bundled font handling, background grids, hatched fills, and layout anti-collision / figure auditing |
 | `src/xkcd_matchem/render/` | Low-level 2D/3D drawing primitives, pen-and-ink 3D shading, icons, callouts, and offline Interactive 3D Studio HTML exporter |
 | `src/xkcd_matchem/plots/` | High-level one-line domain plotters (structures, bands/DOS/COHP/phonons, crystal field, electrochemistry, spectroscopy/NMR/XPS, reactions, MD, thermodynamics, informatics, graphs) |
 | `src/xkcd_matchem/layout/` | Opt-in millimeter poster boards (`Board`/`Card`/`ScrollCard`), narrative `ComicStrip` tools, and turnkey SciComm templates |
 | `book/` | Executable Jupyter Book documentation, gallery, playground, reference pages, and step-by-step tutorials |
 | `scripts/generate_gallery.py` | Reproducible generator for every gallery PNG/GIF and the embedded 3D Studio HTML |
-| `tests/` | Unit, numerical-invariant, visual smoke, and Google-style AST compliance tests |
+| `tests/` | Unit, 9-domain scientific validation, dark/export fidelity, fixed-baseline visual regression (`tests/baselines/`), security/licensing, and Google-style AST compliance tests |
 
 ---
 
