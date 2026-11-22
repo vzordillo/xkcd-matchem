@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 from typing import Any
 
 import numpy as np
@@ -23,6 +24,141 @@ import numpy as np
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import structure
 from xkcd_matchem.data import elements
+
+
+@dataclasses.dataclass(frozen=True)
+class BandGapResult:
+    """Explicit electronic band-gap diagnostic with occupation semantics.
+
+    Attributes:
+      fundamental_gap: Fundamental gap ``min(CBM) - max(VBM)`` in eV, ``0.0``
+        when metallic, or ``None`` when indeterminate.
+      direct_gap: Minimum vertical gap ``min_k(CBM_k - VBM_k)`` in eV, ``0.0``
+        when metallic, or ``None`` when indeterminate.
+      indirect_gap: Indirect gap ``min(CBM) - max(VBM)`` in eV, ``0.0`` when
+        metallic, or ``None`` when indeterminate.
+      vbm: Valence-band maximum energy in eV (``None`` if metallic/unknown).
+      cbm: Conduction-band minimum energy in eV (``None`` if metallic/unknown).
+      is_metallic: True when bands cross the Fermi level, switch occupation
+        across k-points, overlap in energy, or exhibit fractional occupation.
+      is_indeterminate: True when eigenvalues/occupations cannot resolve a gap.
+      convention: Resolved convention: ``"spin_polarized"``,
+        ``"spin_degenerate"``, or ``"fermi_level"``.
+      occupation_threshold: Occupation cutoff (or ``0.0`` for Fermi level).
+      note: Human-readable explanation of the gap classification.
+    """
+
+    fundamental_gap: float | None
+    direct_gap: float | None
+    indirect_gap: float | None
+    vbm: float | None
+    cbm: float | None
+    is_metallic: bool
+    is_indeterminate: bool
+    convention: str
+    occupation_threshold: float
+    note: str
+
+
+def _indeterminate_gap(
+    convention: str,
+    threshold: float,
+    note: str,
+) -> BandGapResult:
+    """Builds an indeterminate ``BandGapResult``."""
+    return BandGapResult(
+        fundamental_gap=None,
+        direct_gap=None,
+        indirect_gap=None,
+        vbm=None,
+        cbm=None,
+        is_metallic=False,
+        is_indeterminate=True,
+        convention=convention,
+        occupation_threshold=threshold,
+        note=note,
+    )
+
+
+def _metallic_gap(
+    convention: str,
+    threshold: float,
+    note: str,
+) -> BandGapResult:
+    """Builds a metallic zero-gap ``BandGapResult``."""
+    return BandGapResult(
+        fundamental_gap=0.0,
+        direct_gap=0.0,
+        indirect_gap=0.0,
+        vbm=None,
+        cbm=None,
+        is_metallic=True,
+        is_indeterminate=False,
+        convention=convention,
+        occupation_threshold=threshold,
+        note=note,
+    )
+
+
+def _compute_insulator_gaps(
+    eigs: np.ndarray,
+    occ_mask: np.ndarray,
+    convention: str,
+    threshold: float,
+    note_suffix: str,
+) -> BandGapResult:
+    """Computes direct and indirect gaps from validated occupied state masks."""
+    unocc_mask = ~occ_mask
+    if not np.any(occ_mask):
+        return _indeterminate_gap(
+            convention,
+            threshold,
+            "Indeterminate: no occupied states present in band window.",
+        )
+    if not np.any(unocc_mask):
+        return _indeterminate_gap(
+            convention,
+            threshold,
+            "Indeterminate: no unoccupied states present in band window.",
+        )
+    vbm = float(np.max(eigs[occ_mask]))
+    cbm = float(np.min(eigs[unocc_mask]))
+    indirect_gap = cbm - vbm
+    if indirect_gap <= 1e-6:
+        return _metallic_gap(
+            convention,
+            threshold,
+            "Metallic: conduction and valence bands overlap in energy.",
+        )
+    direct_vals: list[float] = []
+    for k_idx in range(eigs.shape[1]):
+        e_k = eigs[:, k_idx, :]
+        occ_k = occ_mask[:, k_idx, :]
+        unocc_k = unocc_mask[:, k_idx, :]
+        if np.any(occ_k) and np.any(unocc_k):
+            direct_vals.append(
+                float(np.min(e_k[unocc_k]) - np.max(e_k[occ_k]))
+            )
+    if not direct_vals:
+        return _indeterminate_gap(
+            convention,
+            threshold,
+            "Indeterminate: no k-point contains both occupied and empty bands.",
+        )
+    direct_gap = float(min(direct_vals))
+    kind = "Direct" if abs(direct_gap - indirect_gap) <= 1e-5 else "Indirect"
+    return BandGapResult(
+        fundamental_gap=indirect_gap,
+        direct_gap=direct_gap,
+        indirect_gap=indirect_gap,
+        vbm=vbm,
+        cbm=cbm,
+        is_metallic=False,
+        is_indeterminate=False,
+        convention=convention,
+        occupation_threshold=threshold,
+        note=f"{kind} {note_suffix}",
+    )
 
 
 @dataclasses.dataclass
@@ -98,32 +234,183 @@ class BandStructure:
         """Returns eigenvalues shifted so ``fermi_energy`` lies at zero eV."""
         return self.eigenvalues - self.fermi_energy
 
-    def band_gap(self) -> float:
-        """Estimates the band gap from occupations or Fermi-level crossing."""
-        if self.occupations is not None:
-            occ_mask = self.occupations > 0.5
-            unocc_mask = ~occ_mask
-            if np.any((self.occupations > 1e-3) & (self.occupations < 0.999)):
-                return 0.0
-            if not np.any(occ_mask) or not np.any(unocc_mask):
-                return 0.0
-            vbm = float(np.max(self.eigenvalues[occ_mask]))
-            cbm = float(np.min(self.eigenvalues[unocc_mask]))
-            return max(0.0, cbm - vbm)
+    def _resolve_occ_convention(
+        self,
+        occ: np.ndarray,
+        scale_key: str,
+        smearing_tol: float,
+    ) -> tuple[float, str] | None:
+        """Determines full-band occupation scale ``(f_max, convention)``."""
+        max_occ = float(np.max(occ))
+        min_occ = float(np.min(occ))
+        pad = max(smearing_tol, 0.1)
+        if min_occ < -pad or max_occ > 2.0 + pad:
+            return None
+        if scale_key == "spin_degenerate":
+            return 2.0, "spin_degenerate"
+        if scale_key == "spin_polarized" or self.spin_polarized:
+            return (1.0, "spin_polarized") if max_occ <= 1.0 + pad else None
+        if max_occ > 1.0 + pad:
+            return 2.0, "spin_degenerate"
+        return 1.0, "spin_polarized"
 
-        shifted = self.shifted_eigenvalues()
-        if shifted.size == 0 or np.any(
-            (np.min(shifted, axis=1) < -1e-4)
-            & (np.max(shifted, axis=1) > 1e-4)
+    def _analyze_fermi_gap(
+        self,
+        occ_threshold: float | None,
+    ) -> BandGapResult:
+        """Evaluates spectral band gap relative to ``fermi_energy``."""
+        threshold = 0.0 if occ_threshold is None else float(occ_threshold)
+        if not math.isfinite(self.fermi_energy):
+            return _indeterminate_gap(
+                "fermi_level",
+                threshold,
+                "Indeterminate: non-finite Fermi energy.",
+            )
+        ef = float(self.fermi_energy)
+        band_min = np.min(self.eigenvalues, axis=1)
+        band_max = np.max(self.eigenvalues, axis=1)
+        if bool(np.any((band_min < ef - 1e-4) & (band_max > ef + 1e-4))):
+            return _metallic_gap(
+                "fermi_level",
+                threshold,
+                "Metallic: band disperses across Fermi energy.",
+            )
+        occ_mask = self.eigenvalues <= ef + 1e-6
+        return _compute_insulator_gaps(
+            self.eigenvalues,
+            occ_mask,
+            "fermi_level",
+            threshold,
+            "spectral gap from Fermi-level partitioning.",
+        )
+
+    def _analyze_occupation_gap(
+        self,
+        occ: np.ndarray,
+        scale_key: str,
+        occ_threshold: float | None,
+        smearing_tol: float,
+    ) -> BandGapResult:
+        """Evaluates fundamental gap from explicit band occupations."""
+        fallback_thr = 0.5 if occ_threshold is None else float(occ_threshold)
+        resolved = self._resolve_occ_convention(occ, scale_key, smearing_tol)
+        if not np.all(np.isfinite(occ)) or resolved is None:
+            return _indeterminate_gap(
+                scale_key,
+                fallback_thr,
+                "Indeterminate: occupations non-finite or out of [0, 2].",
+            )
+        f_max, convention = resolved
+        threshold = 0.5 * f_max if occ_threshold is None else fallback_thr
+        if threshold >= f_max:
+            return _indeterminate_gap(
+                convention,
+                threshold,
+                "Indeterminate: occ_threshold >= full-occupation scale.",
+            )
+        occ_frac = occ / f_max
+        has_frac = bool(
+            np.any((occ_frac > smearing_tol) & (occ_frac < 1.0 - smearing_tol))
+        )
+        occ_mask = occ >= threshold
+        n_occ_sk = np.sum(occ_mask, axis=2)
+        if has_frac or bool(np.any(n_occ_sk != n_occ_sk[:, :1])):
+            return _metallic_gap(
+                convention,
+                threshold,
+                "Metallic: fractional or k-switching band occupations.",
+            )
+        smeared = bool(
+            np.any((occ_frac > 1e-6) & (occ_frac <= smearing_tol))
+            or np.any(
+                (occ_frac >= 1.0 - smearing_tol) & (occ_frac < 1.0 - 1e-6)
+            )
+        )
+        suffix = (
+            f"fundamental gap from {convention} occupations "
+            "(finite-smearing tail within tolerance)."
+            if smeared
+            else f"fundamental gap from {convention} occupations."
+        )
+        return _compute_insulator_gaps(
+            self.eigenvalues,
+            occ_mask,
+            convention,
+            threshold,
+            suffix,
+        )
+
+    def analyze_band_gap(
+        self,
+        *,
+        occupation_scale: str = "auto",
+        occ_threshold: float | None = None,
+        smearing_tol: float = 0.05,
+    ) -> BandGapResult:
+        """Analyzes fundamental, direct, and indirect band gaps rigorously.
+
+        Args:
+          occupation_scale: Occupation convention: ``"auto"``,
+            ``"spin_polarized"`` (max occ ~ 1), ``"spin_degenerate"``
+            (max occ ~ 2), or ``"fermi_level"`` (ignore ``occupations``).
+          occ_threshold: Optional explicit occupation threshold overriding
+            ``0.5 * f_max``.
+          smearing_tol: Fractional smearing tolerance in ``[0, 0.5)`` so
+            weakly thermally smeared insulators are not misclassified as metals.
+
+        Returns:
+          ``BandGapResult`` detailing gap values, VBM/CBM, and convention.
+
+        Raises:
+          StructureError: If ``occupation_scale``, ``occ_threshold``, or
+            ``smearing_tol`` is invalid.
+        """
+        scale_key = occupation_scale.strip().lower()
+        valid_scales = (
+            "auto",
+            "spin_polarized",
+            "spin_degenerate",
+            "fermi_level",
+        )
+        if scale_key not in valid_scales:
+            raise exceptions.StructureError(
+                f"Unsupported occupation_scale {occupation_scale!r}; "
+                f"expected one of {valid_scales}."
+            )
+        if not (math.isfinite(smearing_tol) and 0.0 <= smearing_tol < 0.5):
+            raise exceptions.StructureError(
+                "smearing_tol must be finite and within [0.0, 0.5)."
+            )
+        if occ_threshold is not None and not (
+            math.isfinite(occ_threshold) and occ_threshold > 0.0
+        ):
+            raise exceptions.StructureError(
+                "occ_threshold must be finite and strictly positive."
+            )
+        if self.eigenvalues.size == 0 or not np.all(
+            np.isfinite(self.eigenvalues)
+        ):
+            return _indeterminate_gap(
+                "fermi_level" if self.occupations is None else scale_key,
+                0.0 if occ_threshold is None else float(occ_threshold),
+                "Indeterminate: empty or non-finite eigenvalue array.",
+            )
+        if self.occupations is None or scale_key == "fermi_level":
+            return self._analyze_fermi_gap(occ_threshold)
+        return self._analyze_occupation_gap(
+            self.occupations, scale_key, occ_threshold, smearing_tol
+        )
+
+    def band_gap(self) -> float:
+        """Estimates fundamental band gap in eV (0.0 if metallic/unknown)."""
+        res = self.analyze_band_gap()
+        if (
+            res.is_metallic
+            or res.is_indeterminate
+            or res.fundamental_gap is None
         ):
             return 0.0
-        occupied = shifted[shifted <= 1e-6]
-        unoccupied = shifted[shifted > 1e-6]
-        if occupied.size == 0 or unoccupied.size == 0:
-            return 0.0
-        vbm = float(np.max(occupied))
-        cbm = float(np.min(unoccupied))
-        return max(0.0, cbm - vbm)
+        return float(max(0.0, res.fundamental_gap))
 
 
 @dataclasses.dataclass

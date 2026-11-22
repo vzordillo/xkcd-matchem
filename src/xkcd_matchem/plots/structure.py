@@ -22,6 +22,7 @@ from typing import Any
 from typing import cast
 
 from matplotlib import axes as maxes
+from matplotlib import colors as mcolors
 from matplotlib import patches
 from matplotlib import pyplot as plt
 import numpy as np
@@ -163,41 +164,53 @@ def _draw_slab_backdrop(
     z_coord: np.ndarray,
     period_y: float,
     height_c: float,
+    preset_obj: theme.ThemePreset,
 ) -> patches.Rectangle:
     """Draws shaded vacuum and slab bands inside the unit cell frame."""
     clip_rect = patches.Rectangle(
         (0.0, 0.0), period_y, height_c, transform=ax.transData
     )
-    ax.add_patch(
-        patches.Rectangle(
-            (0.0, 0.0),
-            period_y,
-            height_c,
-            facecolor=palettes.VACUUM_TINT,
-            edgecolor="none",
-            zorder=0.5,
-        )
+    dark_bg = theme.is_dark_background(preset_obj.axes_facecolor)
+    vac_fill = (
+        theme.blend_colors(preset_obj.axes_facecolor, "#3A7CA5", 0.24)
+        if dark_bg
+        else palettes.VACUUM_TINT
     )
+    slab_fill = (
+        theme.blend_colors(preset_obj.axes_facecolor, "#2A9D8F", 0.24)
+        if dark_bg
+        else palettes.SLAB_TINT
+    )
+    vac_rect = patches.Rectangle(
+        (0.0, 0.0),
+        period_y,
+        height_c,
+        facecolor=vac_fill,
+        edgecolor="none",
+        zorder=0.5,
+    )
+    vac_rect.set_sketch_params(0.0, 0.0, 0.0)
+    ax.add_patch(vac_rect)
     pad_band = 0.65
     slab_lo = max(float(np.min(z_coord)) - pad_band, 0.0)
     slab_hi = min(float(np.max(z_coord)) + pad_band, height_c)
-    ax.add_patch(
-        patches.Rectangle(
-            (0.0, slab_lo),
-            period_y,
-            max(0.1, slab_hi - slab_lo),
-            facecolor=palettes.SLAB_TINT,
-            edgecolor="none",
-            zorder=0.7,
-        )
+    slab_rect = patches.Rectangle(
+        (0.0, slab_lo),
+        period_y,
+        max(0.1, slab_hi - slab_lo),
+        facecolor=slab_fill,
+        edgecolor="none",
+        zorder=0.7,
     )
+    slab_rect.set_sketch_params(0.0, 0.0, 0.0)
+    ax.add_patch(slab_rect)
     ax.add_patch(
         patches.Rectangle(
             (0.0, 0.0),
             period_y,
             height_c,
             facecolor="none",
-            edgecolor=primitives.resolve_ink(),
+            edgecolor=preset_obj.ink_color,
             linewidth=2.0,
             zorder=600.0,
         )
@@ -371,13 +384,16 @@ def _render_slab_side_view(
     vacuum_margin: float,
     vacuum_callout: bool,
     true_vac: float,
+    preset_obj: theme.ThemePreset,
     show_bonds: bool = True,
 ) -> None:
     """Draws a crisp 2D orthographic slab side view looking along ``a``."""
     x_coord, xy_side, z_coord, ey, ez, period_y, height_c = (
         _slab_side_coordinates(atoms, vacuum_margin)
     )
-    clip_rect = _draw_slab_backdrop(ax, z_coord, period_y, height_c)
+    clip_rect = _draw_slab_backdrop(
+        ax, z_coord, period_y, height_c, preset_obj
+    )
     n_items = _draw_slab_atoms_and_bonds(
         ax,
         atoms,
@@ -387,6 +403,9 @@ def _render_slab_side_view(
         show_bonds=show_bonds,
     )
 
+    dark_bg = theme.is_dark_background(preset_obj.axes_facecolor)
+    ink = preset_obj.ink_color
+    vac_txt_col = ink if dark_bg else "#2E4A5A"
     ax.text(
         0.5 * period_y,
         height_c - 0.45 * vacuum_margin,
@@ -394,17 +413,16 @@ def _render_slab_side_view(
         ha="center",
         va="center",
         fontsize=9.5,
-        color="#2E4A5A",
+        color=vac_txt_col,
         zorder=2.0 + 0.02 * (n_items + 2),
     )
-    ink = str(plt.rcParams.get("axes.edgecolor", palettes.INK))
     if vacuum_callout:
         callouts.draw_callout(
             ax,
             f"Vacuum ~ {true_vac:.1f} A",
             xy=(0.74 * period_y, height_c - 0.35 * vacuum_margin),
             xytext=(0.74 * period_y, height_c + 0.065 * height_c),
-            color="#0072B2",
+            color=theme.accent_color(preset_obj),
             fontsize=9.0,
         )
     ax.text(
@@ -481,13 +499,23 @@ def plot_molecule(
       Matplotlib ``Axes`` containing the rendered molecule.
     """
     atoms = _coerce_atoms(source)
+    preset_obj = theme.get_preset(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(5.4, 4.4))
+            theme.prepare_figure_canvas(ax, preset=preset_obj)
         else:
             theme.style_existing_axes(ax, preset=preset)
         if mode.lower() == "2d":
             structure2d.render_structure_2d(atoms, ax=ax, palette=palette)
+            if theme.is_dark_background(preset_obj.axes_facecolor):
+                for txt in ax.texts:
+                    safe_col = theme.ensure_wcag_color(
+                        mcolors.to_hex(txt.get_color()),
+                        preset_obj.axes_facecolor,
+                        min_ratio=4.6,
+                    )
+                    txt.set_color(safe_col)
         else:
             structure3d.render_structure_3d(
                 atoms,
@@ -509,7 +537,7 @@ def plot_molecule(
             else:
                 _pad_structure_view(ax, bottom_frac=0.04, top_frac=0.04)
         if title:
-            ax.set_title(title)
+            ax.set_title(title, color=preset_obj.ink_color)
     return ax
 
 
@@ -596,9 +624,11 @@ def plot_crystal(
     cam: geometry.Camera | str | None = camera
     if cam is None and miller_planes:
         cam = geometry.Camera(azimuth=32.0, elevation=22.0)
+    preset_obj = theme.get_preset(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(5.8, 5.0))
+            theme.prepare_figure_canvas(ax, preset=preset_obj)
         else:
             theme.style_existing_axes(ax, preset=preset)
         structure3d.render_structure_3d(
@@ -623,7 +653,7 @@ def plot_crystal(
         else:
             _pad_structure_view(ax, bottom_frac=0.05, top_frac=0.05)
         if title:
-            ax.set_title(title)
+            ax.set_title(title, color=preset_obj.ink_color)
     return ax
 
 
@@ -647,9 +677,11 @@ def plot_slab(
     if supercell != (1, 1, 1) and atoms.cell is not None:
         atoms = atoms.repeat(supercell)
     trimmed, true_vac = _trim_slab_vacuum(atoms, vacuum_margin=vacuum_margin)
+    preset_obj = theme.get_preset(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(5.8, 5.2))
+            theme.prepare_figure_canvas(ax, preset=preset_obj)
         else:
             theme.style_existing_axes(ax, preset=preset)
         if view.lower() == "side" and trimmed.cell is not None:
@@ -661,6 +693,7 @@ def plot_slab(
                 vacuum_margin=margin_v,
                 vacuum_callout=vacuum_callout,
                 true_vac=true_vac,
+                preset_obj=preset_obj,
                 show_bonds=show_bonds,
             )
             callouts.draw_element_legend(ax, atoms.symbols, scheme=palette)
@@ -691,11 +724,11 @@ def plot_slab(
                     f"Vacuum ~ {true_vac:.1f} A",
                     xy=(xlim[0] + 0.62 * x_span, ylim[0] + 0.72 * y_span),
                     xytext=(xlim[0] - 0.12 * x_span, ylim[0] + 0.94 * y_span),
-                    color="#0072B2",
+                    color=theme.accent_color(preset_obj),
                 )
             callouts.draw_element_legend(ax, atoms.symbols, scheme=palette)
         if title:
-            ax.set_title(title)
+            ax.set_title(title, color=preset_obj.ink_color)
     return ax
 
 
@@ -720,9 +753,11 @@ def plot_coordination(
         atoms = atoms.repeat(supercell)
     trimmed, _ = _trim_slab_vacuum(atoms, vacuum_margin=2.2)
     trimmed = trimmed.center_in_cell(axes=(0, 1))
+    preset_obj = theme.get_preset(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(5.8, 5.0))
+            theme.prepare_figure_canvas(ax, preset=preset_obj)
         else:
             theme.style_existing_axes(ax, preset=preset)
         structure3d.render_structure_3d(
@@ -739,5 +774,5 @@ def plot_coordination(
         _pad_structure_view(ax, bottom_frac=0.17, top_frac=0.06)
         callouts.draw_element_legend(ax, atoms.symbols, scheme=palette)
         if title:
-            ax.set_title(title)
+            ax.set_title(title, color=preset_obj.ink_color)
     return ax

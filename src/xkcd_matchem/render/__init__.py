@@ -43,6 +43,7 @@ __all__ = [
     "draw_vector_arrow_2d",
     "ensure_readable_text_color",
     "export_interactive_html",
+    "generate_python_snippet",
     "is_dark_color",
     "list_icons",
     "muted_surface_color",
@@ -73,6 +74,7 @@ draw_unit_cell_box = primitives.draw_unit_cell_box
 draw_vector_arrow_2d = primitives.draw_vector_arrow_2d
 ensure_readable_text_color = primitives.ensure_readable_text_color
 export_interactive_html = interactive.export_interactive_html
+generate_python_snippet = interactive.generate_python_snippet
 is_dark_color = primitives.is_dark_color
 list_icons = icons.list_icons
 muted_surface_color = primitives.muted_surface_color

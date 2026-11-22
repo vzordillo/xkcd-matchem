@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 from xkcd_matchem.style import fonts
+from xkcd_matchem.style import layout
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import patterns
 from xkcd_matchem.style import theme
@@ -28,20 +29,26 @@ __all__ = [
     "DARK_BOARD",
     "DARK_CHALK",
     "INK",
+    "LayoutAuditReport",
     "OKABE_ITO",
     "PAPER",
     "PRESETS",
     "SHADE_STYLES",
     "StrokeHierarchy",
     "ThemePreset",
+    "VisualFingerprint",
     "WARM_PAPER",
     "apply_background_grid",
     "apply_xkcd_spines",
+    "audit_figure_layout",
+    "avoid_text_overlaps",
     "build_rc_params",
     "clear_background_grid",
     "compute_background_grid_coords",
     "ensure_fonts_registered",
+    "ensure_wcag_contrast",
     "fetch_xkcd_script",
+    "figure_visual_fingerprint",
     "get_bundled_font_path",
     "get_default_font",
     "get_element_color",
@@ -57,6 +64,8 @@ __all__ = [
     "register_font",
     "register_palette",
     "register_preset",
+    "relative_luminance",
+    "resolve_1d_label_positions",
     "resolve_font_chain",
     "resolve_hatch",
     "set_default_font",
@@ -64,6 +73,8 @@ __all__ = [
     "stroke_weights",
     "style_existing_axes",
     "use_xkcd_script",
+    "visual_similarity",
+    "wcag_contrast_ratio",
     "xkcd_style",
 ]
 
@@ -73,20 +84,26 @@ BLUEPRINT_INK = patterns.BLUEPRINT_INK
 DARK_BOARD = palettes.DARK_BOARD
 DARK_CHALK = palettes.DARK_CHALK
 INK = palettes.INK
+LayoutAuditReport = layout.LayoutAuditReport
 OKABE_ITO = palettes.OKABE_ITO
 PAPER = palettes.PAPER
 PRESETS = theme.PRESETS
 SHADE_STYLES = patterns.SHADE_STYLES
 StrokeHierarchy = theme.StrokeHierarchy
 ThemePreset = theme.ThemePreset
+VisualFingerprint = layout.VisualFingerprint
 WARM_PAPER = palettes.WARM_PAPER
 apply_background_grid = patterns.apply_background_grid
 apply_xkcd_spines = theme.apply_xkcd_spines
+audit_figure_layout = layout.audit_figure_layout
+avoid_text_overlaps = layout.avoid_text_overlaps
 build_rc_params = theme.build_rc_params
 clear_background_grid = patterns.clear_background_grid
 compute_background_grid_coords = patterns.compute_background_grid_coords
 ensure_fonts_registered = fonts.ensure_fonts_registered
+ensure_wcag_contrast = layout.ensure_wcag_contrast
 fetch_xkcd_script = fonts.fetch_xkcd_script
+figure_visual_fingerprint = layout.figure_visual_fingerprint
 get_bundled_font_path = fonts.get_bundled_font_path
 get_default_font = fonts.get_default_font
 get_element_color = palettes.get_element_color
@@ -102,6 +119,8 @@ register_element_palette = palettes.register_element_palette
 register_font = fonts.register_font
 register_palette = palettes.register_palette
 register_preset = theme.register_preset
+relative_luminance = layout.relative_luminance
+resolve_1d_label_positions = layout.resolve_1d_label_positions
 resolve_font_chain = fonts.resolve_font_chain
 resolve_hatch = patterns.resolve_hatch
 set_default_font = fonts.set_default_font
@@ -109,4 +128,6 @@ shade_between = patterns.shade_between
 stroke_weights = theme.stroke_weights
 style_existing_axes = theme.style_existing_axes
 use_xkcd_script = fonts.use_xkcd_script
+visual_similarity = layout.visual_similarity
+wcag_contrast_ratio = layout.wcag_contrast_ratio
 xkcd_style = theme.xkcd_style

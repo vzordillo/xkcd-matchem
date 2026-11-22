@@ -9,9 +9,11 @@ Documentation and Gallery Figures
 ===========================================================================
 The documentation text and tutorial notebooks in `book/` are licensed under
 the Creative Commons Attribution 4.0 International License (CC BY 4.0; see
-`book/LICENSE-CC-BY-4.0.txt`). Rendered gallery figures that embed the
-default `xkcd Script` typeface are additionally subject to the non-commercial
-terms of `xkcd-script` (CC BY-NC 3.0) described below.
+`book/LICENSE-CC-BY-4.0.txt`). Figures rendered using the default commercial-
+safe `Patrick Hand` (or `Comic Neue`) typeface are covered by SIL OFL 1.1;
+any figures explicitly rendered with the optional `xkcd Script` typeface
+(`xm.use_xkcd_script()`) are additionally subject to its CC BY-NC 3.0 terms
+described below.
 
 ===========================================================================
 Bundled Fonts
@@ -19,26 +21,27 @@ Bundled Fonts
 This distribution includes the following fonts in
 `src/xkcd_matchem/data/fonts/`:
 
-1. xkcd Script (`xkcd-script.ttf`) — Default Font (Non-Commercial)
-   Derived from Randall Munroe's handwriting via the IPython xkcd-font project
-   (https://github.com/ipython/xkcd-font).
-   Licensed under the Creative Commons Attribution-NonCommercial 3.0 Unported
-   License (CC BY-NC 3.0).
-   Full license text: `src/xkcd_matchem/data/fonts/xkcd-script-LICENSE.txt`.
-   Note: For commercial workflows, switch to the bundled SIL OFL 1.1 fonts
-   (`Patrick Hand` or `Comic Neue`) via `xm.set_default_font("Patrick Hand")`.
-
-2. Patrick Hand (`PatrickHand-Regular.ttf`)
+1. Patrick Hand (`PatrickHand-Regular.ttf`) — Default Commercial-Safe Font
    Copyright 2011 The Patrick Hand Project Authors
    (Patrick Wagesreiter <pwagesreiter@gmail.com>)
    Licensed under the SIL Open Font License, Version 1.1.
    Full license text: `src/xkcd_matchem/data/fonts/PatrickHand-OFL.txt`.
 
-3. Comic Neue (`ComicNeue-Regular.ttf`, `ComicNeue-Bold.ttf`)
+2. Comic Neue (`ComicNeue-Regular.ttf`, `ComicNeue-Bold.ttf`) — Commercial-Safe Alternate
    Copyright 2014 The Comic Neue Project Authors
    (Craig Rozynski & Hrant Papazian)
    Licensed under the SIL Open Font License, Version 1.1.
    Full license text: `src/xkcd_matchem/data/fonts/ComicNeue-OFL.txt`.
+
+3. xkcd Script (`xkcd-script.ttf`) — Optional Non-Commercial Opt-In Font
+   Derived from Randall Munroe's handwriting via the IPython xkcd-font project
+   (https://github.com/ipython/xkcd-font).
+   Licensed under the Creative Commons Attribution-NonCommercial 3.0 Unported
+   License (CC BY-NC 3.0).
+   Full license text: `src/xkcd_matchem/data/fonts/xkcd-script-LICENSE.txt`.
+   Note: Not active by default. Opt in explicitly for non-commercial/academic
+   use via `xm.use_xkcd_script()` (blocked with `StyleError` when
+   `XM_COMMERCIAL_SAFE=1`).
 
 ===========================================================================
 Scientific Data Sources and Attributions

@@ -27,6 +27,7 @@ parts:
       - file: tutorials/15_animations_md_orbits_and_isosurfaces
   - caption: Reference
     chapters:
+      - file: reference/capabilities
       - file: reference/supported_formats
       - file: reference/api
       - file: reference/attributions

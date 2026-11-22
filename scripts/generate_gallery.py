@@ -556,11 +556,11 @@ def _make_opt_in_poster(out_dir: pathlib.Path) -> None:
 
 
 def _export_docs_assets() -> None:
-    """Exports offline interactive studio HTML and xkcd Script font file."""
+    """Exports offline interactive studio HTML and SIL OFL default font."""
     fonts_dir = _BOOK_STATIC / "fonts"
     fonts_dir.mkdir(parents=True, exist_ok=True)
-    ttf_src = xm.style.get_bundled_font_path("xkcd Script")
-    shutil.copy2(ttf_src, fonts_dir / "xkcd-script.ttf")
+    ttf_src = xm.style.get_bundled_font_path("Patrick Hand")
+    shutil.copy2(ttf_src, fonts_dir / "PatrickHand-Regular.ttf")
 
     xm.export_interactive_html(
         "water_homo.cube",
@@ -2109,25 +2109,32 @@ def main() -> None:
     """Generates all gallery PNGs, GIFs, and static interactive assets."""
     matplotlib.use("Agg")
     _OUT_DIR.mkdir(parents=True, exist_ok=True)
-    _make_hero(_OUT_DIR)
-    _make_molecules(_OUT_DIR)
-    _make_crystals(_OUT_DIR)
-    _make_electronic(_OUT_DIR)
-    _make_spectroscopy_reactions(_OUT_DIR)
-    _make_md_thermo(_OUT_DIR)
-    _make_opt_in_poster(_OUT_DIR)
-    _make_periodic_table_gallery(_OUT_DIR)
-    _make_materials_informatics_gallery(_OUT_DIR)
-    _make_scrolls_and_grids_gallery(_OUT_DIR)
-    _make_icons_and_graphs_gallery(_OUT_DIR)
-    _make_crystal_graphs_2d_gallery(_OUT_DIR)
-    _make_flagship_features_gallery(_OUT_DIR)
-    _make_isosurface_shading_gallery(_OUT_DIR)
-    _make_brillouin_cohp_volcano_gallery(_OUT_DIR)
-    _make_xkcd_comics_gallery(_OUT_DIR)
-    _make_electrochem_crystalfield_nmr_gallery(_OUT_DIR)
-    _make_scicomm_templates_gallery(_OUT_DIR)
-    _make_readme_gifs(_OUT_DIR)
+    # Render front-facing gallery showcase figures with optional xkcd Script,
+    # while keeping commercial-safe SIL OFL Patrick Hand as the library &
+    # interactive 3D Studio default.
+    xm.use_xkcd_script()
+    try:
+        _make_hero(_OUT_DIR)
+        _make_molecules(_OUT_DIR)
+        _make_crystals(_OUT_DIR)
+        _make_electronic(_OUT_DIR)
+        _make_spectroscopy_reactions(_OUT_DIR)
+        _make_md_thermo(_OUT_DIR)
+        _make_opt_in_poster(_OUT_DIR)
+        _make_periodic_table_gallery(_OUT_DIR)
+        _make_materials_informatics_gallery(_OUT_DIR)
+        _make_scrolls_and_grids_gallery(_OUT_DIR)
+        _make_icons_and_graphs_gallery(_OUT_DIR)
+        _make_crystal_graphs_2d_gallery(_OUT_DIR)
+        _make_flagship_features_gallery(_OUT_DIR)
+        _make_isosurface_shading_gallery(_OUT_DIR)
+        _make_brillouin_cohp_volcano_gallery(_OUT_DIR)
+        _make_xkcd_comics_gallery(_OUT_DIR)
+        _make_electrochem_crystalfield_nmr_gallery(_OUT_DIR)
+        _make_scicomm_templates_gallery(_OUT_DIR)
+        _make_readme_gifs(_OUT_DIR)
+    finally:
+        xm.set_default_font(None)
     _export_docs_assets()
     print(f"Generated gallery images, GIFs, and studio in {_BOOK_STATIC}")
 

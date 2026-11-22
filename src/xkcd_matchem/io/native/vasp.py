@@ -26,6 +26,7 @@ from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import structure
 from xkcd_matchem.core import trajectory
 from xkcd_matchem.io import registry
+from xkcd_matchem.io.native import _limits
 
 
 def _split_touching_floats(text: str) -> str:
@@ -35,6 +36,7 @@ def _split_touching_floats(text: str) -> str:
 
 def _parse_poscar_header(
     lines: list[str],
+    source: str | pathlib.Path = "",
 ) -> tuple[str, np.ndarray, np.ndarray, list[str], bool, int]:
     """Parses the common VASP 4/5 header lines through coordinate mode."""
     if len(lines) < 8:
@@ -87,6 +89,7 @@ def _parse_poscar_header(
 
     if len(species) != len(counts) or any(c < 0 for c in counts):
         raise exceptions.ParseError("Mismatch or negative VASP atom counts.")
+    _limits.check_atom_count(sum(counts), source=source)
     symbols: list[str] = []
     for sym, cnt in zip(species, counts, strict=True):
         symbols.extend([sym] * cnt)
@@ -107,9 +110,10 @@ def _parse_poscar_header(
 def read_poscar(path: str | pathlib.Path) -> structure.AtomsData:
     """Reads a VASP 4/5 ``POSCAR`` or ``CONTCAR`` structure file."""
     p = pathlib.Path(path)
+    _limits.check_file_size(p)
     lines = p.read_text(encoding="utf-8").splitlines()
     comment, cell, scale_vec, symbols, is_cart, start_row = (
-        _parse_poscar_header(lines)
+        _parse_poscar_header(lines, source=p)
     )
     n_atoms = len(symbols)
     if start_row + n_atoms > len(lines):
@@ -180,8 +184,11 @@ def _is_xdatcar_coord_header(line: str) -> tuple[bool, bool]:
 def read_xdatcar(path: str | pathlib.Path) -> trajectory.Trajectory:
     """Reads a multi-configuration VASP ``XDATCAR`` MD/relaxation trajectory."""
     p = pathlib.Path(path)
+    _limits.check_file_size(p)
     lines = p.read_text(encoding="utf-8").splitlines()
-    comment, cell, scale_vec, symbols, _, cursor = _parse_poscar_header(lines)
+    comment, cell, scale_vec, symbols, _, cursor = _parse_poscar_header(
+        lines, source=p
+    )
     n_atoms = len(symbols)
     frames: list[structure.AtomsData] = []
     idx = cursor - 1
@@ -194,7 +201,7 @@ def read_xdatcar(path: str | pathlib.Path) -> trajectory.Trajectory:
             sub_hdr, _ = _is_xdatcar_coord_header(lines[idx + 7])
             if sub_hdr:
                 comment, cell, scale_vec, symbols, is_cart, rel_cur = (
-                    _parse_poscar_header(lines[idx:])
+                    _parse_poscar_header(lines[idx:], source=p)
                 )
                 n_atoms = len(symbols)
                 idx += rel_cur - 1
@@ -203,6 +210,7 @@ def read_xdatcar(path: str | pathlib.Path) -> trajectory.Trajectory:
             idx += 1
             if idx + n_atoms > len(lines):
                 break
+            _limits.check_frame_count(len(frames) + 1, source=p)
             coords = np.array(
                 [
                     [float(x) for x in lines[idx + k].split()[:3]]
@@ -239,11 +247,13 @@ def read_xdatcar(path: str | pathlib.Path) -> trajectory.Trajectory:
 def read_doscar(path: str | pathlib.Path) -> electronic.DensityOfStates:
     """Reads total density of states from a VASP ``DOSCAR`` file."""
     p = pathlib.Path(path)
+    _limits.check_file_size(p)
     lines = p.read_text(encoding="utf-8").splitlines()
     if len(lines) < 7:
         raise exceptions.ParseError(f"Truncated VASP DOSCAR file: {p}")
     hdr = lines[5].split()
     nedos = int(hdr[2])
+    _limits.check_grid_voxels(nedos, source=p)
     fermi = float(hdr[3])
     data_rows = [
         [float(x) for x in _split_touching_floats(line).split()]
@@ -285,6 +295,7 @@ def read_eigenval(
       Parsed ``BandStructure`` with explicit ``k_coordinate_mode`` metadata.
     """
     p = pathlib.Path(path)
+    _limits.check_file_size(p)
     lines = p.read_text(encoding="utf-8").splitlines()
     if len(lines) < 8:
         raise exceptions.ParseError(f"Truncated VASP EIGENVAL file: {p}")
@@ -292,6 +303,11 @@ def read_eigenval(
     hdr = lines[5].split()
     n_k = int(hdr[1])
     n_bands = int(hdr[2])
+    if n_spin <= 0 or n_k < 0 or n_bands < 0:
+        raise exceptions.ParseError(
+            f"Invalid VASP EIGENVAL dimensions in {p}."
+        )
+    _limits.check_grid_voxels(n_spin * n_k * n_bands, source=p)
     cursor = 6
     k_coords = np.zeros((n_k, 3), dtype=np.float64)
     eig = np.zeros((n_spin, n_k, n_bands), dtype=np.float64)
@@ -340,9 +356,10 @@ def read_eigenval(
 def read_chgcar(path: str | pathlib.Path) -> electronic.VolumetricGrid:
     """Reads a VASP ``CHGCAR``, ``AECCAR*``, or ``LOCPOT`` 3D grid file."""
     p = pathlib.Path(path)
+    _limits.check_file_size(p)
     lines = p.read_text(encoding="utf-8").splitlines()
     comment, cell, scale_vec, symbols, is_cart, start_row = (
-        _parse_poscar_header(lines)
+        _parse_poscar_header(lines, source=p)
     )
     n_atoms = len(symbols)
     if start_row + n_atoms > len(lines):
@@ -372,8 +389,13 @@ def read_chgcar(path: str | pathlib.Path) -> electronic.VolumetricGrid:
     if cursor >= len(lines):
         raise exceptions.ParseError(f"Missing FFT grid dimensions in {p}.")
     dims = [int(x) for x in lines[cursor].split()[:3]]
+    if len(dims) < 3 or any(d <= 0 for d in dims):
+        raise exceptions.ParseError(
+            f"Invalid VASP FFT grid dimensions {dims!r} in {p}."
+        )
     nx, ny, nz = dims[0], dims[1], dims[2]
     n_vals = nx * ny * nz
+    _limits.check_grid_voxels(n_vals, source=p)
     vals = np.fromstring(
         " ".join(lines[cursor + 1 :]), sep=" ", dtype=np.float64, count=n_vals
     )
@@ -495,6 +517,8 @@ def _parse_procar_spin_block(
     if not (m_k and m_b and m_i):
         raise exceptions.ParseError(f"Malformed PROCAR header in {source}.")
     n_k, n_b, n_i = int(m_k.group(1)), int(m_b.group(1)), int(m_i.group(1))
+    _limits.check_atom_count(n_i, source=source)
+    _limits.check_grid_voxels(n_k * n_b, source=source)
     k_coords = np.zeros((n_k, 3), dtype=np.float64)
     eig = np.zeros((n_k, n_b), dtype=np.float64)
     occ = np.zeros((n_k, n_b), dtype=np.float64)
@@ -531,6 +555,7 @@ def read_procar(
 ) -> electronic.BandStructure:
     """Reads orbital-projected bands from a VASP ``PROCAR`` file."""
     p = pathlib.Path(path)
+    _limits.check_file_size(p)
     lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
     spin_blocks: list[
         tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, np.ndarray]]

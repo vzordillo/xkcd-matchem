@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     AtomsData = core.AtomsData
     BACKGROUND_STYLES = style.BACKGROUND_STYLES
     Badge = layout.Badge
+    BandGapResult = core.BandGapResult
     BandStructure = core.BandStructure
     Board = layout.Board
     Bond = core.Bond
@@ -58,8 +59,10 @@ if TYPE_CHECKING:
     ElementRecord = data.ElementRecord
     GraphicalAbstractLayout = layout.GraphicalAbstractLayout
     HydrogenBond = core.HydrogenBond
+    INTERNAL_UNITS = core.INTERNAL_UNITS
     InteractiveView = render.InteractiveView
     IsosurfaceMesh = core.IsosurfaceMesh
+    LayoutAuditReport = style.LayoutAuditReport
     MatchemError = core.MatchemError
     MechanismComicLayout = layout.MechanismComicLayout
     MolecularOrbitals = core.MolecularOrbitals
@@ -72,6 +75,7 @@ if TYPE_CHECKING:
     PhononBandStructure = core.PhononBandStructure
     SHADE_STYLES = style.SHADE_STYLES
     ScatteringCoeffs = data.ScatteringCoeffs
+    ScientificProvenance = core.ScientificProvenance
     ScrollCard = layout.ScrollCard
     Spectrum = core.Spectrum
     StrokeHierarchy = style.StrokeHierarchy
@@ -81,6 +85,7 @@ if TYPE_CHECKING:
     ThemePreset = style.ThemePreset
     Trajectory = core.Trajectory
     UnsupportedFormatError = core.UnsupportedFormatError
+    VisualFingerprint = style.VisualFingerprint
     VolumetricGrid = core.VolumetricGrid
     WulffFacet = core.WulffFacet
     WulffShape = core.WulffShape
@@ -91,6 +96,8 @@ if TYPE_CHECKING:
     annotate_distance = render.annotate_distance
     apply_background_grid = style.apply_background_grid
     atomic_form_factor = data.atomic_form_factor
+    audit_figure_layout = style.audit_figure_layout
+    avoid_text_overlaps = style.avoid_text_overlaps
     broaden_peaks = core.broaden_peaks
     clear_background_grid = style.clear_background_grid
     compute_background_grid_coords = style.compute_background_grid_coords
@@ -98,6 +105,9 @@ if TYPE_CHECKING:
     compute_tetrahedral_order = core.compute_tetrahedral_order
     compute_wulff_shape = core.compute_wulff_shape
     compute_xrd = core.compute_xrd
+    convert_energy = core.convert_energy
+    convert_pressure = core.convert_pressure
+    convert_time = core.convert_time
     create_conference_poster = layout.create_conference_poster
     create_graphical_abstract = layout.create_graphical_abstract
     create_mechanism_comic = layout.create_mechanism_comic
@@ -115,6 +125,7 @@ if TYPE_CHECKING:
     export_interactive_html = render.export_interactive_html
     extract_isosurface = core.extract_isosurface
     fetch_xkcd_script = style.fetch_xkcd_script
+    figure_visual_fingerprint = style.figure_visual_fingerprint
     find_coordination_polyhedra = core.find_coordination_polyhedra
     find_periodic_neighbors = core.find_periodic_neighbors
     from_ase = io.from_ase
@@ -124,6 +135,7 @@ if TYPE_CHECKING:
     from_pymatgen = io.from_pymatgen
     from_rdkit = io.from_rdkit
     from_smiles = io.from_smiles
+    generate_python_snippet = render.generate_python_snippet
     get_atomic_mass = data.get_atomic_mass
     get_covalent_radius = data.get_covalent_radius
     get_default_font = style.get_default_font
@@ -218,6 +230,7 @@ if TYPE_CHECKING:
     to_pymatgen = io.to_pymatgen
     use_xkcd_script = style.use_xkcd_script
     view_structure = render.view_structure
+    visual_similarity = style.visual_similarity
     xkcd_style = style.xkcd_style
 
 __version__ = _version.__version__
@@ -226,6 +239,7 @@ __all__ = [
     "AtomsData",
     "BACKGROUND_STYLES",
     "Badge",
+    "BandGapResult",
     "BandStructure",
     "Board",
     "Bond",
@@ -247,8 +261,10 @@ __all__ = [
     "ElementRecord",
     "GraphicalAbstractLayout",
     "HydrogenBond",
+    "INTERNAL_UNITS",
     "InteractiveView",
     "IsosurfaceMesh",
+    "LayoutAuditReport",
     "MatchemError",
     "MechanismComicLayout",
     "MolecularOrbitals",
@@ -261,6 +277,7 @@ __all__ = [
     "PhononBandStructure",
     "SHADE_STYLES",
     "ScatteringCoeffs",
+    "ScientificProvenance",
     "ScrollCard",
     "Spectrum",
     "StrokeHierarchy",
@@ -270,6 +287,7 @@ __all__ = [
     "ThemePreset",
     "Trajectory",
     "UnsupportedFormatError",
+    "VisualFingerprint",
     "VolumetricGrid",
     "WulffFacet",
     "WulffShape",
@@ -281,6 +299,8 @@ __all__ = [
     "annotate_distance",
     "apply_background_grid",
     "atomic_form_factor",
+    "audit_figure_layout",
+    "avoid_text_overlaps",
     "broaden_peaks",
     "clear_background_grid",
     "compute_background_grid_coords",
@@ -288,6 +308,9 @@ __all__ = [
     "compute_tetrahedral_order",
     "compute_wulff_shape",
     "compute_xrd",
+    "convert_energy",
+    "convert_pressure",
+    "convert_time",
     "core",
     "create_conference_poster",
     "create_graphical_abstract",
@@ -307,6 +330,7 @@ __all__ = [
     "export_interactive_html",
     "extract_isosurface",
     "fetch_xkcd_script",
+    "figure_visual_fingerprint",
     "find_coordination_polyhedra",
     "find_periodic_neighbors",
     "from_ase",
@@ -316,6 +340,7 @@ __all__ = [
     "from_pymatgen",
     "from_rdkit",
     "from_smiles",
+    "generate_python_snippet",
     "get_atomic_mass",
     "get_covalent_radius",
     "get_default_font",
@@ -415,6 +440,7 @@ __all__ = [
     "to_pymatgen",
     "use_xkcd_script",
     "view_structure",
+    "visual_similarity",
     "xkcd_style",
 ]
 
@@ -438,6 +464,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "AtomsData": (_CORE, "AtomsData"),
     "BACKGROUND_STYLES": (_STYLE, "BACKGROUND_STYLES"),
     "Badge": (_LAYOUT, "Badge"),
+    "BandGapResult": (_CORE, "BandGapResult"),
     "BandStructure": (_CORE, "BandStructure"),
     "Board": (_LAYOUT, "Board"),
     "Bond": (_CORE, "Bond"),
@@ -459,8 +486,10 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "ElementRecord": (_DATA, "ElementRecord"),
     "GraphicalAbstractLayout": (_LAYOUT, "GraphicalAbstractLayout"),
     "HydrogenBond": (_CORE, "HydrogenBond"),
+    "INTERNAL_UNITS": (_CORE, "INTERNAL_UNITS"),
     "InteractiveView": (_RENDER, "InteractiveView"),
     "IsosurfaceMesh": (_CORE, "IsosurfaceMesh"),
+    "LayoutAuditReport": (_STYLE, "LayoutAuditReport"),
     "MatchemError": (_CORE, "MatchemError"),
     "MechanismComicLayout": (_LAYOUT, "MechanismComicLayout"),
     "MolecularOrbitals": (_CORE, "MolecularOrbitals"),
@@ -473,6 +502,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "PhononBandStructure": (_CORE, "PhononBandStructure"),
     "SHADE_STYLES": (_STYLE, "SHADE_STYLES"),
     "ScatteringCoeffs": (_DATA, "ScatteringCoeffs"),
+    "ScientificProvenance": (_CORE, "ScientificProvenance"),
     "ScrollCard": (_LAYOUT, "ScrollCard"),
     "Spectrum": (_CORE, "Spectrum"),
     "StrokeHierarchy": (_STYLE, "StrokeHierarchy"),
@@ -482,6 +512,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "ThemePreset": (_STYLE, "ThemePreset"),
     "Trajectory": (_CORE, "Trajectory"),
     "UnsupportedFormatError": (_CORE, "UnsupportedFormatError"),
+    "VisualFingerprint": (_STYLE, "VisualFingerprint"),
     "VolumetricGrid": (_CORE, "VolumetricGrid"),
     "WulffFacet": (_CORE, "WulffFacet"),
     "WulffShape": (_CORE, "WulffShape"),
@@ -492,6 +523,8 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "annotate_distance": (_RENDER, "annotate_distance"),
     "apply_background_grid": (_STYLE, "apply_background_grid"),
     "atomic_form_factor": (_DATA, "atomic_form_factor"),
+    "audit_figure_layout": (_STYLE, "audit_figure_layout"),
+    "avoid_text_overlaps": (_STYLE, "avoid_text_overlaps"),
     "broaden_peaks": (_CORE, "broaden_peaks"),
     "clear_background_grid": (_STYLE, "clear_background_grid"),
     "compute_background_grid_coords": (
@@ -502,6 +535,9 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "compute_tetrahedral_order": (_CORE, "compute_tetrahedral_order"),
     "compute_wulff_shape": (_CORE, "compute_wulff_shape"),
     "compute_xrd": (_CORE, "compute_xrd"),
+    "convert_energy": (_CORE, "convert_energy"),
+    "convert_pressure": (_CORE, "convert_pressure"),
+    "convert_time": (_CORE, "convert_time"),
     "create_conference_poster": (_LAYOUT, "create_conference_poster"),
     "create_graphical_abstract": (_LAYOUT, "create_graphical_abstract"),
     "create_mechanism_comic": (_LAYOUT, "create_mechanism_comic"),
@@ -519,6 +555,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "export_interactive_html": (_RENDER, "export_interactive_html"),
     "extract_isosurface": (_CORE, "extract_isosurface"),
     "fetch_xkcd_script": (_STYLE, "fetch_xkcd_script"),
+    "figure_visual_fingerprint": (_STYLE, "figure_visual_fingerprint"),
     "find_coordination_polyhedra": (_CORE, "find_coordination_polyhedra"),
     "find_periodic_neighbors": (_CORE, "find_periodic_neighbors"),
     "from_ase": (_IO, "from_ase"),
@@ -528,6 +565,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "from_pymatgen": (_IO, "from_pymatgen"),
     "from_rdkit": (_IO, "from_rdkit"),
     "from_smiles": (_IO, "from_smiles"),
+    "generate_python_snippet": (_RENDER, "generate_python_snippet"),
     "get_atomic_mass": (_DATA, "get_atomic_mass"),
     "get_covalent_radius": (_DATA, "get_covalent_radius"),
     "get_default_font": (_STYLE, "get_default_font"),
@@ -625,6 +663,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "to_pymatgen": (_IO, "to_pymatgen"),
     "use_xkcd_script": (_STYLE, "use_xkcd_script"),
     "view_structure": (_RENDER, "view_structure"),
+    "visual_similarity": (_STYLE, "visual_similarity"),
     "xkcd_style": (_STYLE, "xkcd_style"),
 }
 

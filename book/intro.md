@@ -9,7 +9,7 @@ Built for students, educators, and researchers, it turns chemistry and materials
 | 3D Coordination Polyhedra Orbit | MACE-MPA-0 Water → Ice I<sub>h</sub> MD | Climbing-Image NEB Pathway |
 | :---: | :---: | :---: |
 | ![TiO2 coordination polyhedra orbit](_static/gallery/crystal_orbit.gif) | ![MACE-MPA-0 water to ice Ih MD freezing](_static/gallery/water_to_ice_md.gif) | ![SN2 NEB reaction animation](_static/gallery/neb_reaction.gif) |
-| *Orbiting TiO₆ coordination octahedra with depth-sorted faces* | *MLIP water freezing with dynamic H-bonds & order q(t)* | *Animating a 9-image S<sub>N</sub>2 reaction path into a looping GIF* |
+| *Orbiting TiO₆ coordination octahedra with depth-sorted faces* | *Seeded direct-coexistence MLIP ice growth with H-bonds & order q(t)* | *Animating a 9-image S<sub>N</sub>2 reaction path into a looping GIF* |
 
 ## Pick Your Starting Point
 
@@ -22,12 +22,12 @@ Not sure where to jump in? Choose the path that fits what you want to do right n
 
 :::{note}
 **Defaults first, full control whenever you want it.**
-Every plotter runs in a single line using balanced white-canvas defaults (`classic` preset, unified `xkcd Script` typography, borderless structure frames). Whenever you want to match a poster color scheme or dark slide deck, you can override individual element colors, cameras, backgrounds, fonts, line wiggles, and reusable presets.
+Every plotter runs in a single line using balanced white-canvas defaults (`classic` preset, commercial-safe **SIL OFL 1.1 `Patrick Hand`** typography in library code and the 3D Studio, borderless structure frames). The front-facing showcase figures on this page and in the Visual Gallery are rendered with the optional non-commercial **`xkcd Script`** opt-in (`xm.use_xkcd_script()`, CC BY-NC 3.0). Whenever you want to match a poster color scheme or dark slide deck, you can override individual element colors, cameras, backgrounds, fonts (including bundled `Comic Neue` under SIL OFL 1.1), line wiggles, and reusable presets.
 :::
 
 :::{warning}
 **Playful Exploration & SciComm vs. Journal Archival Figures**
-Intentional xkcd-style stroke jitter makes slides, posters, and tutorials engaging and approachable. Because that wiggle can subtly soften sharp peak shoulders or fine numerical grid details, standard straight-line Matplotlib plots remain the better choice for archival journal spectra and quantitative peak fitting.
+Intentional xkcd-style stroke jitter makes slides, posters, and tutorials engaging and approachable. Because that wiggle can subtly soften sharp peak shoulders or fine numerical grid details, standard straight-line Matplotlib plots remain the better choice for archival journal spectra and quantitative peak fitting. Check the **[Capability & Validation Matrix](reference/capabilities.md)** to see which helpers are validated numerical algorithms vs. approximate models or educational illustrations.
 :::
 
 ## How This Book Is Organized
@@ -35,4 +35,4 @@ Intentional xkcd-style stroke jitter makes slides, posters, and tutorials engagi
 1. **[Getting Started](installation.md)** — Install the core package (plus optional adapters), browse the visual gallery, or test-drive the offline 3D Studio.
 2. **Basic Usage** — Hands-on notebooks focused on clean default presets for themes, molecules, crystals/slabs, band structures/DOS, and spectra/XRD.
 3. **Advanced Usage** — Deeper customization, storytelling, and domain analysis covering orbitals/cubes, NEB transition-state barriers, triclinic MD & RDF, convex hulls & EOS fits, poster boards, the periodic table & GNN graphs, 3D isosurfaces/phonons/Wulff shapes/comic strips, Brillouin zones/COHP/volcanos/defects, crystal-field splitting/electrochemistry/NMR/XPS & turnkey SciComm layout templates, looping MD/NEB/orbit/isosurface GIF animations, and ecosystem bridges.
-4. **[Reference](reference/supported_formats.md)** — Exact native file format contracts, scientific geometry safeguards, searchable API reference, citation metadata, and data attributions.
+4. **[Reference](reference/capabilities.md)** — Feature capability & validation matrix, canonical internal units, native file format contracts & parser limits, searchable API reference, citation metadata, and full MLIP/data attributions.

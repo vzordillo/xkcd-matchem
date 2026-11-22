@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import json
 import pathlib
 
 import matplotlib
@@ -685,8 +686,13 @@ def test_playground_scenes_and_top_level_lazy_exports(
     html_text = out_html.read_text(encoding="utf-8")
     for sample_name in expected_samples:
         assert sample_name in html_text
-    for cat in expected_categories:
-        assert cat in html_text
+    marker = "const PAYLOAD = "
+    p_start = html_text.index(marker) + len(marker)
+    p_end = html_text.index(";\n  const ELEM_TABLE", p_start)
+    embedded_payload = json.loads(html_text[p_start:p_end])
+    assert {
+        s["category"] for s in embedded_payload["samples"]
+    } == expected_categories
     for dom_hook in (
         'id="xm-scene-bar"',
         'id="xm-scene-chips"',

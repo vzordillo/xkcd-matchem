@@ -1,6 +1,6 @@
 # Visual Gallery
 
-Every figure and animated GIF below is generated automatically by `scripts/generate_gallery.py` using real bundled sample files, unified `xkcd Script` typography, and depth-sorted 3D scenes. Click any tutorial link to see the exact code behind each plot.
+Every figure and animated GIF below is generated automatically by `scripts/generate_gallery.py` using real bundled sample files and depth-sorted 3D scenes. To showcase the classic xkcd aesthetic, these front-facing gallery images are rendered with the bundled optional **`xkcd Script`** font (**CC BY-NC 3.0**, activated via `xm.use_xkcd_script()`), while the library code and Interactive 3D Studio default out of the box to commercial-safe **SIL OFL 1.1 `Patrick Hand`** (alongside `Comic Neue`). Click any tutorial link to see the exact code behind each plot.
 
 ## Animated Motion & Theme Explorer
 
@@ -13,7 +13,7 @@ Looping GIFs are rendered with `xm.animate_trajectory()`, `xm.animate_orbit()`, 
 
 ### MLIP Water → Ice I<sub>h</sub> Crystallization MD
 
-Direct-coexistence freezing of 32 H₂O molecules simulated locally with the **MACE-MPA-0** foundation potential (`scripts/simulate_water_to_ice_mlip.py`, bundled as `water_to_ice.xyz`), cooled and annealed down to a stable **0 K** hexagonal Ice I<sub>h</sub> crystal (`q = 0.98`, `fmax = 0.02 eV/Å`), rendered with dynamic dashed hydrogen bonds (`show_hbonds=True`), live Errington–Debenedetti tetrahedral order $q(t)$, and exothermic potential energy $\Delta E(t)$ — see [Tutorial 15: Animated GIFs](tutorials/15_animations_md_orbits_and_isosurfaces.ipynb):
+Direct-coexistence **seeded ice growth** of 32 H₂O molecules (16-H₂O Ice I<sub>h</sub> seed templating 16 melted water molecules — not spontaneous homogeneous nucleation) simulated locally with the **MACE-MPA-0** foundation potential (`scripts/simulate_water_to_ice_mlip.py`, bundled as `water_to_ice.xyz`; full provenance in [Citation & Scientific Attributions](reference/attributions.md)), cooled and annealed down to a stable **0 K** hexagonal Ice I<sub>h</sub> crystal (`q = 0.98`, `fmax = 0.02 eV/Å`), rendered with dynamic dashed hydrogen bonds (`show_hbonds=True`), live Errington–Debenedetti tetrahedral order $q(t)$, and exothermic potential energy $\Delta E(t)$ — see [Tutorial 15: Animated GIFs](tutorials/15_animations_md_orbits_and_isosurfaces.ipynb):
 
 ![MACE-MPA-0 water to ice Ih MD crystallization animation](_static/gallery/water_to_ice_md.gif)
 

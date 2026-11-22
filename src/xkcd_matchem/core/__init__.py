@@ -25,11 +25,14 @@ from xkcd_matchem.core import neighbors
 from xkcd_matchem.core import spectroscopy
 from xkcd_matchem.core import structure
 from xkcd_matchem.core import trajectory
+from xkcd_matchem.core import units
 from xkcd_matchem.core import wulff
 
 
 __all__ = [
+    "INTERNAL_UNITS",
     "AtomsData",
+    "BandGapResult",
     "BandStructure",
     "Bond",
     "BrillouinFacet",
@@ -48,6 +51,7 @@ __all__ = [
     "ParseError",
     "Peak",
     "PhononBandStructure",
+    "ScientificProvenance",
     "Spectrum",
     "StructureError",
     "StyleError",
@@ -64,6 +68,9 @@ __all__ = [
     "compute_tetrahedral_order",
     "compute_wulff_shape",
     "compute_xrd",
+    "convert_energy",
+    "convert_pressure",
+    "convert_time",
     "extract_isosurface",
     "find_coordination_polyhedra",
     "find_periodic_neighbors",
@@ -78,7 +85,9 @@ __all__ = [
     "unit_cell_edges",
 ]
 
+INTERNAL_UNITS = units.INTERNAL_UNITS
 AtomsData = structure.AtomsData
+BandGapResult = electronic.BandGapResult
 BandStructure = electronic.BandStructure
 Bond = structure.Bond
 BrillouinFacet = brillouin.BrillouinFacet
@@ -97,6 +106,7 @@ OptionalDependencyError = exceptions.OptionalDependencyError
 ParseError = exceptions.ParseError
 Peak = spectroscopy.Peak
 PhononBandStructure = electronic.PhononBandStructure
+ScientificProvenance = units.ScientificProvenance
 Spectrum = spectroscopy.Spectrum
 StructureError = exceptions.StructureError
 StyleError = exceptions.StyleError
@@ -113,6 +123,9 @@ compute_brillouin_zone = brillouin.compute_brillouin_zone
 compute_tetrahedral_order = trajectory.compute_tetrahedral_order
 compute_wulff_shape = wulff.compute_wulff_shape
 compute_xrd = spectroscopy.compute_xrd
+convert_energy = units.convert_energy
+convert_pressure = units.convert_pressure
+convert_time = units.convert_time
 extract_isosurface = isosurface.extract_isosurface
 find_coordination_polyhedra = bonding.find_coordination_polyhedra
 find_periodic_neighbors = neighbors.find_periodic_neighbors

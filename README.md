@@ -13,10 +13,11 @@
   <a href="https://vzordillo.github.io/xkcd-matchem/playground.html">Live 3D Studio</a> &middot;
   <a href="https://vzordillo.github.io/xkcd-matchem/gallery.html">Visual Gallery</a> &middot;
   <a href="https://vzordillo.github.io/xkcd-matchem/tutorials/01_quickstart_and_themes.html">Tutorials (01&ndash;15)</a> &middot;
+  <a href="https://vzordillo.github.io/xkcd-matchem/reference/capabilities.html">Capabilities &amp; Scope</a> &middot;
   <a href="https://vzordillo.github.io/xkcd-matchem/reference/api.html">API Reference</a>
 </p>
 
-> **Scope:** Built for posters, talks, lectures, and science communication (scicomm) — because intentional xkcd stroke wiggle can soften subtle curve shoulders, use standard straight-line Matplotlib for archival quantitative peak fitting.
+> **Scope:** Built for posters, talks, lectures, and science communication (scicomm) — see the **[Capability &amp; Validation Matrix](https://vzordillo.github.io/xkcd-matchem/reference/capabilities.html)** for exact numerical guarantees vs. approximate models. Because intentional xkcd stroke wiggle can soften subtle curve shoulders, use standard straight-line Matplotlib for archival quantitative peak fitting.
 
 ![xkcd-matchem hero showcase](book/_static/gallery/hero_showcase.png)
 
@@ -62,18 +63,19 @@ xkcd-matchem view mos2_2h.poscar -o mos2_studio.html
 ```
 
 <details>
-<summary>Custom Themes &amp; Commercial-Safe Fonts</summary>
+<summary>Custom Themes, Commercial-Safe Default Font &amp; Opt-In xkcd Script</summary>
 
-`xkcd-matchem` uses the bundled [`xkcd Script`](https://github.com/ipython/xkcd-font) font (**CC BY-NC 3.0**, non-commercial/academic use) by default. For commercial work, set environment variable `XM_COMMERCIAL_SAFE=1` or switch globally to a bundled **SIL OFL 1.1** font (`Patrick Hand` or `Comic Neue`), and derive reusable custom themes or element palettes:
+Out of the box, `xkcd-matchem` defaults to the bundled **`Patrick Hand`** font (**SIL OFL 1.1**, commercial-safe and pairing cleanly with Apache-2.0 source code) alongside **`Comic Neue`** (**SIL OFL 1.1**). For non-commercial/academic talks, [`xkcd Script`](https://github.com/ipython/xkcd-font) (**CC BY-NC 3.0**) is bundled as an explicit opt-in via `xm.use_xkcd_script()` (and blocked with a `StyleError` when `XM_COMMERCIAL_SAFE=1` is set). The front-facing showcase figures and GIFs in this README and the Visual Gallery are rendered with `xm.use_xkcd_script()` to demonstrate the classic xkcd aesthetic:
 
 ```python
 import xkcd_matchem as xm
 
-xm.set_default_font("Patrick Hand")  # or "Comic Neue", or a local .ttf path
+xm.set_default_font("Comic Neue")  # or "Patrick Hand" (default), or a local .ttf path
 xm.register_preset("my_talk", base="dark_chalk", sketch_scale=1.1)
 ax = xm.plot_crystal("mos2_2h.poscar", preset="my_talk", palette={"Mo": "#2A9D8F", "S": "#E9C46A"})
 xm.save_figure(ax.figure, "mos2_dark.png")
-xm.set_default_font(None)  # reset to bundled xkcd Script default
+xm.set_default_font(None)  # reset to commercial-safe bundled Patrick Hand default
+# Non-commercial/academic opt-in: xm.use_xkcd_script()
 ```
 
 </details>
@@ -85,7 +87,7 @@ xm.set_default_font(None)  # reset to bundled xkcd Script default
 | 3D Coordination Polyhedra Orbit | MACE-MPA-0 Water → Ice I<sub>h</sub> MD | Climbing-Image NEB Pathway |
 | :---: | :---: | :---: |
 | ![TiO2 coordination polyhedra orbit](book/_static/gallery/crystal_orbit.gif) | ![MACE-MPA-0 water to ice Ih MD freezing](book/_static/gallery/water_to_ice_md.gif) | ![SN2 NEB reaction animation](book/_static/gallery/neb_reaction.gif) |
-| *Orbiting TiO₆ octahedra with depth-sorted faces* | *MLIP water freezing with dynamic H-bonds & order q(t)* | *Looping 9-image S<sub>N</sub>2 transition-state path* |
+| *Orbiting TiO₆ octahedra with depth-sorted faces* | *Seeded direct-coexistence MLIP ice growth with H-bonds & q(t)* | *Looping 9-image S<sub>N</sub>2 transition-state path* |
 
 | Pen-and-Ink 3D Orbital Shading Modes | Brillouin Zones, COHP, Volcanos & Defects |
 | :---: | :---: |
@@ -147,6 +149,7 @@ If `xkcd-matchem` helps with your poster, talk, or tutorial, please cite it via 
 
 **Acknowledgements:** Developed semi-autonomously with **Google DeepMind's Gemini** frontier models inside **[Google Antigravity](https://antigravity.google)**, supported by Google's **Antigravity for Science** academic researcher access program. Many thanks to the Google Antigravity, Google Research, and Google DeepMind teams for supporting open scientific communication tooling.
 
-- **Code**: [Apache License, Version 2.0](LICENSE) &middot; **Documentation & Tutorials**: [CC BY 4.0](book/LICENSE-CC-BY-4.0.txt)
-- **Bundled Fonts**: Default `xkcd Script` under **CC BY-NC 3.0** ([`xkcd-script-LICENSE.txt`](src/xkcd_matchem/data/fonts/xkcd-script-LICENSE.txt)) plus commercial-safe alternates `Patrick Hand` and `Comic Neue` under **SIL OFL 1.1** ([`NOTICE`](NOTICE), [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md))
-- **Scientific Data & Attributions**: CODATA 2022, IUPAC 2021 / CIAAW 2024, BODR, Alvarez/Mantina vdW radii, Cromer-Mann (LA-3816), Okabe-Ito, and Jmol colors — see **[Citation & Attributions](https://vzordillo.github.io/xkcd-matchem/reference/attributions.html)**.
+- **Source Code**: [Apache License, Version 2.0](LICENSE) ([`NOTICE`](NOTICE)) &middot; **Documentation &amp; Tutorials**: [CC BY 4.0](book/LICENSE-CC-BY-4.0.txt)
+- **Bundled Commercial-Safe Fonts (Code Default)**: `Patrick Hand` (default across all presets and the 3D Studio) and `Comic Neue` under **SIL OFL 1.1** ([`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md))
+- **Optional Non-Commercial Font (Opt-In & Showcase Gallery)**: `xkcd Script` under **CC BY-NC 3.0** via `xm.use_xkcd_script()` ([`xkcd-script-LICENSE.txt`](src/xkcd_matchem/data/fonts/xkcd-script-LICENSE.txt); used to render the showcase figures in `book/_static/gallery/` and blocked when `XM_COMMERCIAL_SAFE=1`)
+- **Scientific Scope &amp; Attributions**: CODATA 2022, IUPAC 2021 / CIAAW 2024, BODR, Alvarez/Mantina vdW radii, Cromer-Mann (LA-3816), Okabe-Ito, and Jmol colors — see **[Capabilities &amp; Validation](https://vzordillo.github.io/xkcd-matchem/reference/capabilities.html)** and **[Citation &amp; Attributions](https://vzordillo.github.io/xkcd-matchem/reference/attributions.html)**.

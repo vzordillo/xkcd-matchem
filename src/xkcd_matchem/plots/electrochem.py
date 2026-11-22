@@ -147,22 +147,37 @@ def _draw_cv_scan_arrows(
         )
 
 
+def _series_color_for_theme(
+    series: Sequence[str],
+    index: int,
+    preset_obj: theme.ThemePreset,
+) -> str:
+    """Resolves a series color, replacing near-black traces on dark themes."""
+    col = str(series[index % len(series)])
+    if (
+        theme.is_dark_background(preset_obj.axes_facecolor)
+        and theme.relative_luminance(col) < 0.04
+    ):
+        return preset_obj.ink_color
+    return col
+
+
 def _annotate_cv_peaks_and_ehalf(
     ax: maxes.Axes,
     peaks: tuple[float, float, float, float, float],
     flags: tuple[bool, bool],
-    colors: tuple[str, str, str],
+    colors: tuple[str, str, str, str],
     sw: theme.StrokeHierarchy,
 ) -> None:
     """Draws straight E_1/2 guide and haloed ink peak/separation callouts."""
     e_pa, j_pa, e_pc, j_pc, e_half = peaks
     annotate_peaks, show_e_half = flags
-    trace_col, ink_col, bg_col = colors
+    trace_col, ink_col, bg_col, guide_col = colors
 
     if show_e_half:
         eh_line = ax.axvline(
             e_half,
-            color=palettes.MUTED_GRAY,
+            color=guide_col,
             linestyle="--",
             lw=sw.guide,
             alpha=0.80,
@@ -310,6 +325,7 @@ def plot_cyclic_voltammetry(
         )
     series = palettes.get_palette(palette)
     preset_obj = theme.get_preset(preset)
+    guide_col = theme.guide_color(preset_obj)
     sw = theme.stroke_weights(preset)
     ref_idx = max(range(len(scans)), key=lambda i: float(np.ptp(scans[i][1])))
     peaks = _detect_cv_peaks(scans[ref_idx][0], scans[ref_idx][1])
@@ -322,7 +338,7 @@ def plot_cyclic_voltammetry(
 
         z_ln = ax.axhline(
             0.0,
-            color=palettes.MUTED_GRAY,
+            color=guide_col,
             linestyle=":",
             lw=sw.guide,
             alpha=0.65,
@@ -334,7 +350,7 @@ def plot_cyclic_voltammetry(
             ax.plot(
                 pot_s,
                 cur_s,
-                color=series[(5 + idx) % len(series)],
+                color=_series_color_for_theme(series, 5 + idx, preset_obj),
                 lw=sw.primary if idx == ref_idx else sw.overlay + 0.15,
                 label=scan_labels[idx] if scan_labels is not None else None,
                 zorder=3.5 + idx * 0.1,
@@ -353,9 +369,10 @@ def plot_cyclic_voltammetry(
             peaks,
             (annotate_peaks, show_e_half),
             (
-                series[(5 + ref_idx) % len(series)],
+                _series_color_for_theme(series, 5 + ref_idx, preset_obj),
                 preset_obj.ink_color,
                 preset_obj.axes_facecolor,
+                guide_col,
             ),
             sw,
         )
@@ -366,7 +383,7 @@ def plot_cyclic_voltammetry(
             ax.legend(loc="lower right", frameon=True, fontsize=8.5)
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
-            ax.set_title(title)
+            ax.set_title(title, color=preset_obj.ink_color)
     return ax
 
 
@@ -572,7 +589,7 @@ def plot_tafel(
         ax.legend(loc="lower right", frameon=True, fontsize=8.5)
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
-            ax.set_title(title)
+            ax.set_title(title, color=preset_obj.ink_color)
     return ax
 
 
@@ -726,6 +743,7 @@ def plot_battery_profile(
         capacity, voltage, charge_voltage, charge_capacity, cycle_labels
     )
     series = palettes.get_palette(palette)
+    preset_obj = theme.get_preset(preset)
     sw = theme.stroke_weights(preset)
 
     with theme.xkcd_style(preset=preset):
@@ -739,7 +757,7 @@ def plot_battery_profile(
         )
         has_labels = False
         for idx, (q_arr, v_arr, lbl, ls) in enumerate(traces):
-            col = series[(5 + idx) % len(series)]
+            col = _series_color_for_theme(series, 5 + idx, preset_obj)
             ax.plot(
                 q_arr,
                 v_arr,
@@ -771,7 +789,7 @@ def plot_battery_profile(
             ax.legend(loc="best", frameon=True, fontsize=8.5)
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
-            ax.set_title(title)
+            ax.set_title(title, color=preset_obj.ink_color)
     return ax
 
 
@@ -993,7 +1011,7 @@ def plot_dqdv(
 
         z_ln = ax.axhline(
             0.0,
-            color=palettes.MUTED_GRAY,
+            color=theme.guide_color(preset_obj),
             linestyle=":",
             lw=sw.guide,
             alpha=0.68,
@@ -1058,5 +1076,5 @@ def plot_dqdv(
             ax.legend(loc="best", frameon=True, fontsize=8.5)
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
-            ax.set_title(title)
+            ax.set_title(title, color=preset_obj.ink_color)
     return ax

@@ -21,6 +21,7 @@ import dataclasses
 import functools
 import itertools
 import math
+import warnings
 
 import numpy as np
 from scipy import optimize
@@ -357,6 +358,26 @@ def compute_wulff_shape(
     )
 
 
+_EOS_BASIS_ALIASES: dict[str, str] = {
+    "cell": "cell",
+    "formula_unit": "formula_unit",
+    "f.u.": "formula_unit",
+    "fu": "formula_unit",
+    "atom": "atom",
+}
+
+
+def normalize_eos_basis(energy_basis: str) -> str:
+    """Validates and normalizes EOS ``energy_basis`` names."""
+    key = energy_basis.strip().lower()
+    if key not in _EOS_BASIS_ALIASES:
+        raise exceptions.StructureError(
+            f"Unsupported energy_basis {energy_basis!r}; "
+            "expected 'cell', 'formula_unit', or 'atom'."
+        )
+    return _EOS_BASIS_ALIASES[key]
+
+
 @dataclasses.dataclass(frozen=True)
 class EOSFitResult:
     """Fitted third-order Birch-Murnaghan equation-of-state parameters.
@@ -368,6 +389,16 @@ class EOSFitResult:
       b0_gpa: Equilibrium isothermal bulk modulus ``B_0`` in GPa.
       b0_prime: Pressure derivative ``B_0' = (dB/dP)_0`` (dimensionless).
       rms_residual: Root-mean-square energy residual in eV.
+      v0_err: 1-sigma covariance std error on ``V_0`` in A^3, if finite.
+      e0_err: 1-sigma covariance std error on ``E_0`` in eV, if finite.
+      b0_gpa_err: 1-sigma covariance std error on ``B_0`` in GPa, if finite.
+      bp_err: 1-sigma covariance std error on ``B_0'``, if finite.
+      rmse_ev: Root-mean-square energy fit error in eV.
+      r_squared: Coefficient of determination ``R^2`` on input points.
+      spans_minimum: True when ``min(volumes) < v0 < max(volumes)``.
+      fit_status: ``"ok"`` when spanning minimum, else ``"extrapolated"``.
+      energy_basis: Energy normalization basis (``"cell"``,
+        ``"formula_unit"``, or ``"atom"``).
     """
 
     e0: float
@@ -376,6 +407,15 @@ class EOSFitResult:
     b0_gpa: float
     b0_prime: float
     rms_residual: float
+    v0_err: float | None = None
+    e0_err: float | None = None
+    b0_gpa_err: float | None = None
+    bp_err: float | None = None
+    rmse_ev: float = 0.0
+    r_squared: float = 1.0
+    spans_minimum: bool = True
+    fit_status: str = "ok"
+    energy_basis: str = "cell"
 
 
 def _validate_eos_inputs(
@@ -472,19 +512,40 @@ def _validate_eos_fit_arrays(
     return vs, es
 
 
-def fit_birch_murnaghan(
-    volumes: Sequence[float] | np.ndarray,
-    energies: Sequence[float] | np.ndarray,
-) -> EOSFitResult:
-    """Fits the 3rd-order Birch-Murnaghan EOS via Eulerian-strain OLS + NLS."""
-    vs, es = _validate_eos_fit_arrays(volumes, energies)
+def _extract_pcov_errors(
+    pcov: np.ndarray,
+) -> tuple[float | None, float | None, float | None, float | None]:
+    """Extracts finite 1-sigma std errors ``(e0, v0, b0_gpa, bp)``."""
+    cov_arr = np.asarray(pcov, dtype=np.float64)
+    if cov_arr.shape != (4, 4):
+        return None, None, None, None
+    diag = np.diag(cov_arr)
+    stds: list[float | None] = [
+        math.sqrt(float(val))
+        if np.isfinite(val) and float(val) >= 0.0
+        else None
+        for val in diag
+    ]
+    b0_gpa_err = (
+        stds[2] * elements.CODATA2022.ev_per_a3_to_gpa
+        if stds[2] is not None
+        else None
+    )
+    return stds[0], stds[1], b0_gpa_err, stds[3]
+
+
+def _initial_eos_guess(
+    vs: np.ndarray,
+    es: np.ndarray,
+) -> list[float]:
+    """Computes quadratic + Eulerian-strain OLS initial parameter estimate."""
     v_min, v_max = float(np.min(vs)), float(np.max(vs))
     min_idx = int(np.argmin(es))
     v0_g, e0_g, b0_g, bp_g = float(vs[min_idx]), float(es[min_idx]), 0.5, 4.0
     quad = np.polyfit(vs, es, 2)
     if quad[0] > 1e-12:
         v0_g = float(
-            np.clip(-quad[1] / (2.0 * quad[0]), 0.75 * v_min, 1.25 * v_max)
+            np.clip(-quad[1] / (2.0 * quad[0]), 0.65 * v_min, 1.45 * v_max)
         )
         b0_g = float(np.clip(2.0 * quad[0] * v0_g, 1e-4, 25.0))
         e0_g = float(np.polyval(quad, v0_g))
@@ -498,31 +559,75 @@ def fit_birch_murnaghan(
         bp_g = float(
             np.clip(4.0 + float(c_ols[2]) / float(c_ols[1]), 0.5, 12.0)
         )
-    p0 = [
+    return [
         e0_g,
         float(np.clip(v0_g, 0.55 * v_min, 1.9 * v_max)),
         float(np.clip(b0_g, 1e-5, 25.0)),
         float(np.clip(bp_g, -1.5, 20.0)),
     ]
+
+
+def fit_birch_murnaghan(
+    volumes: Sequence[float] | np.ndarray,
+    energies: Sequence[float] | np.ndarray,
+    *,
+    energy_basis: str = "cell",
+    allow_extrapolation: bool = True,
+) -> EOSFitResult:
+    """Fits the 3rd-order Birch-Murnaghan EOS via Eulerian-strain OLS + NLS."""
+    canon_basis = normalize_eos_basis(energy_basis)
+    vs, es = _validate_eos_fit_arrays(volumes, energies)
+    v_min, v_max = float(np.min(vs)), float(np.max(vs))
+    p0 = _initial_eos_guess(vs, es)
     bounds = (
-        [-np.inf, 0.5 * v_min, 1e-6, -2.0],
-        [np.inf, 2.0 * v_max, 50.0, 25.0],
+        [-np.inf, 0.4 * v_min, 1e-6, -2.0],
+        [np.inf, 2.5 * v_max, 50.0, 25.0],
     )
-    popt, _ = optimize.curve_fit(
-        birch_murnaghan_energy,
-        vs,
-        es,
-        p0=p0,
-        bounds=bounds,
-        maxfev=12000,
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", optimize.OptimizeWarning)
+        popt, pcov = optimize.curve_fit(
+            birch_murnaghan_energy,
+            vs,
+            es,
+            p0=p0,
+            bounds=bounds,
+            maxfev=12000,
+        )
     e0_f, v0_f, b0_f, bp_f = (float(v) for v in popt)
-    pred = birch_murnaghan_energy(vs, e0_f, v0_f, b0_f, bp_f)
+    spans_min = bool(v_min < v0_f < v_max)
+    if not spans_min:
+        if not allow_extrapolation:
+            raise exceptions.StructureError(
+                f"Fitted equilibrium volume v0={v0_f:.3f} A^3 lies outside "
+                f"input volume interval [{v_min:.3f}, {v_max:.3f}] A^3."
+            )
+        fit_status = "extrapolated"
+    else:
+        fit_status = "ok"
+    residuals = es - birch_murnaghan_energy(vs, e0_f, v0_f, b0_f, bp_f)
+    rmse = math.sqrt(float(np.mean(np.square(residuals))))
+    ss_res = float(np.sum(np.square(residuals)))
+    ss_tot = float(np.sum(np.square(es - float(np.mean(es)))))
+    r_sq = (
+        1.0 - (ss_res / ss_tot)
+        if ss_tot > 1e-30
+        else (1.0 if ss_res <= 1e-30 else 0.0)
+    )
+    e0_err, v0_err, b0_gpa_err, bp_err = _extract_pcov_errors(pcov)
     return EOSFitResult(
         e0=e0_f,
         v0=v0_f,
         b0_ev_a3=b0_f,
         b0_gpa=b0_f * elements.CODATA2022.ev_per_a3_to_gpa,
         b0_prime=bp_f,
-        rms_residual=math.sqrt(float(np.mean(np.square(es - pred)))),
+        rms_residual=rmse,
+        v0_err=v0_err,
+        e0_err=e0_err,
+        b0_gpa_err=b0_gpa_err,
+        bp_err=bp_err,
+        rmse_ev=rmse,
+        r_squared=r_sq,
+        spans_minimum=spans_min,
+        fit_status=fit_status,
+        energy_basis=canon_basis,
     )
