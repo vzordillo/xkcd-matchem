@@ -9,6 +9,7 @@ Looping GIFs are rendered with `xm.animate_trajectory()` (requires `pip install 
 | 3D Coordination Polyhedra Orbit | Climbing-Image NEB Pathway | Live Theme & Palette Switching |
 | :---: | :---: | :---: |
 | ![TiO2 coordination polyhedra orbit](_static/gallery/crystal_orbit.gif) | ![SN2 NEB reaction animation](_static/gallery/neb_reaction.gif) | ![Theme and color scheme switcher](_static/gallery/theme_switcher.gif) |
+| *Orbiting TiO₆ coordination octahedra with depth-sorted faces* | *Animating a 9-image S<sub>N</sub>2 reaction path into a looping GIF* | *Switching light, warm paper, and dark chalkboard presets on the fly* |
 
 ## Full Multi-Domain Showcase
 
@@ -25,7 +26,7 @@ See [Tutorial 02: Molecules in 3D, 2D & Interactive Studio](tutorials/02_molecul
 
 ## Crystals, Slabs, Miller Planes & Powder XRD
 
-Combine `plot_crystal()` with `(111)` Miller lattice planes (slices cutting cleanly across the repeating unit cell) and supercells, `plot_slab(..., view="side")` (automatic shaded slab/vacuum band detection for $\text{TiO}_2(110)$), `plot_coordination()` (highlighting $\text{TiO}_6$ octahedral ligand cages), and pure-NumPy $\text{Cu K}\alpha_1$ powder diffraction via `plot_xrd()`.
+Combine `plot_crystal()` with `(111)` Miller lattice planes (slices cutting cleanly across the repeating unit cell) and supercells, `plot_slab(..., view="side")` (automatic shaded slab/vacuum band detection for TiO₂(110)), `plot_coordination()` (highlighting TiO₆ octahedral ligand cages), and pure-NumPy Cu Kα₁ powder diffraction via `plot_xrd()`.
 See [Tutorial 03: Crystals, Slabs & Polyhedra](tutorials/03_crystals_slabs_and_polyhedra.ipynb).
 
 ![Crystals slabs polyhedra and XRD](_static/gallery/crystal_polyhedra_xrd.png)
@@ -149,7 +150,7 @@ See [Tutorial 13: Brillouin Zones, Catalysis Volcanos, Defects & LOBSTER COHP](t
 
 ## Crystal-Field Theory, Electrochemistry, Battery dQ/dV, NMR & XPS
 
-Plot barycenter-conserving $d$-orbital crystal-field splittings with high/low-spin Hund filling (`plot_crystal_field()`), IUPAC or US-convention cyclic voltammograms with automatic $E_{pa}$, $E_{pc}$, $E_{1/2}$, and $\Delta E_p$ callouts (`plot_cyclic_voltammetry()`), Tafel kinetic slopes (`plot_tafel()`), galvanostatic battery charge/discharge plateaus (`plot_battery_profile()`), smoothed differential capacity redox peaks (`plot_dqdv()`), first-order $^1\mathrm{H}$ NMR multiplet splitting trees and step integrals (`plot_nmr()`), and XPS core-level fits with iterative Shirley backgrounds (`plot_xps()`).
+Plot barycenter-conserving *d*-orbital crystal-field splittings with high/low-spin Hund filling (`plot_crystal_field()`), IUPAC or US-convention cyclic voltammograms with automatic *E*<sub>pa</sub>, *E*<sub>pc</sub>, *E*<sub>1/2</sub>, and Δ*E*<sub>p</sub> callouts (`plot_cyclic_voltammetry()`), Tafel kinetic slopes (`plot_tafel()`), galvanostatic battery charge/discharge plateaus (`plot_battery_profile()`), smoothed differential capacity redox peaks (`plot_dqdv()`), first-order ¹H NMR multiplet splitting trees and step integrals (`plot_nmr()`), and XPS core-level fits with iterative Shirley backgrounds (`plot_xps()`).
 See [Tutorial 14: Crystal-Field Splitting, Electrochemistry, NMR/XPS & SciComm Templates](tutorials/14_crystalfield_electrochem_nmr_and_templates.ipynb).
 
 ![Crystal-field theory, electrochemistry, battery dQ/dV, NMR, and XPS spectroscopy](_static/gallery/electrochem_crystalfield_nmr.png)

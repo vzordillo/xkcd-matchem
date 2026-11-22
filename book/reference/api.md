@@ -13,9 +13,9 @@ Looking for the right function? Start here:
 | Plot a crystal, Miller plane, Brillouin zone, Wulff shape, slab, or polyhedra | `xm.plot_crystal(...)`, `xm.plot_brillouin_zone(...)`, `xm.plot_wulff_shape(...)`, `xm.plot_slab(...)`, `xm.plot_coordination(...)` |
 | Spin a structure, trajectory, or CUBE orbital in the offline 3D Studio | `xm.view_structure(...)`, `xm.export_interactive_html(...)` |
 | Plot band structures, COHP, phonons, DOS, MOs, or 3D/2D cubes | `xm.plot_bands(...)`, `xm.plot_cohp(...)`, `xm.plot_phonon_bands(...)`, `xm.plot_dos(...)`, `xm.plot_bands_dos(...)`, `xm.plot_mo_diagram(...)`, `xm.plot_volumetric_slice(...)`, `xm.plot_isosurface(...)` |
-| Plot IR/UV-Vis, $^1\mathrm{H}$ NMR multiplets, XPS Shirley fits, or powder XRD | `xm.plot_spectrum(...)`, `xm.plot_nmr(...)`, `xm.plot_xps(...)`, `xm.plot_xrd(...)`, `xm.compute_xrd(...)` |
-| Plot crystal-field $d$-orbital splitting diagrams | `xm.plot_crystal_field(...)` |
-| Plot cyclic voltammetry, Tafel slopes, battery cycling, or $dQ/dV$ | `xm.plot_cyclic_voltammetry(...)`, `xm.plot_tafel(...)`, `xm.plot_battery_profile(...)`, `xm.plot_dqdv(...)` |
+| Plot IR/UV-Vis, ¹H NMR multiplets, XPS Shirley fits, or powder XRD | `xm.plot_spectrum(...)`, `xm.plot_nmr(...)`, `xm.plot_xps(...)`, `xm.plot_xrd(...)`, `xm.compute_xrd(...)` |
+| Plot crystal-field *d*-orbital splitting diagrams | `xm.plot_crystal_field(...)` |
+| Plot cyclic voltammetry, Tafel slopes, battery cycling, or `dQ/dV` | `xm.plot_cyclic_voltammetry(...)`, `xm.plot_tafel(...)`, `xm.plot_battery_profile(...)`, `xm.plot_dqdv(...)` |
 | Sketch reaction pathways, schemes, or NEB barriers | `xm.plot_reaction_profile(...)`, `xm.plot_reaction_scheme(...)`, `xm.plot_neb(...)` |
 | Analyze or animate MD trajectories & RDFs | `xm.plot_md_timeseries(...)`, `xm.plot_rdf(...)`, `xm.plot_rmsd(...)`, `xm.animate_trajectory(...)` |
 | Plot hulls, EOS fits, Pourbaix, volcanos, defects, or parity | `xm.plot_phase_diagram_2d(...)`, `xm.plot_eos(...)`, `xm.plot_pourbaix(...)`, `xm.plot_volcano(...)`, `xm.plot_defect_formation(...)`, `xm.plot_parity(...)`, `xm.plot_bar_comparison(...)`, `xm.plot_pipeline_diagram(...)` |

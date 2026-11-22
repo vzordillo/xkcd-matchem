@@ -27,7 +27,7 @@ Every physical constant, atomic weight, atomic radius, X-ray scattering form fac
 ### 1. Fundamental Physical Constants (CODATA 2022)
 
 - **Citation**: Mohr, P. J.; Newell, D. B.; Taylor, B. N.; Tiesinga, E. (2025). "CODATA recommended values of the fundamental physical constants: 2022". *Reviews of Modern Physics*, 97(2), 025002. DOI: [10.1103/RevModPhys.97.025002](https://doi.org/10.1103/RevModPhys.97.025002). Primary online table: NIST Standard Reference Database 121 ([physics.nist.gov/constants](https://physics.nist.gov/constants)).
-- **Usage (`xm.CODATA2022`)**: Bohr-to-Angstrom (`0.529177210544` Å), Hartree-to-eV (`27.211386245981` eV), Rydberg-to-eV (`13.6056931229905` eV), exact SI defining constants ($e = 1.602176634 \times 10^{-19}$ C, $N_A = 6.02214076 \times 10^{23}\text{ mol}^{-1}$) yielding eV-to-kJ/mol (`96.48533212331002`), thermochemical eV-to-kcal/mol (`23.06054783061903`), and eV/$\text{\AA}^3$-to-GPa (`160.2176634`), spectroscopic conversions (`8065.543937349212` $\text{cm}^{-1}/\text{eV}$, `219474.63136314` $\text{cm}^{-1}/E_h$, `33.3564095198152` $\text{cm}^{-1}/\text{THz}$, `4.135667696923859` $\text{meV}/\text{THz}$), Boltzmann constant (`8.617333262145179e-5` eV/K), and the CODATA 2022 Table XXXIV $\text{Cu K}\alpha_1$ X-ray wavelength (`1.54059313` Å, from $1537.400\text{ xu} \times 1.00207697 \times 10^{-3}\text{ \AA}$).
+- **Usage (`xm.CODATA2022`)**: Bohr-to-Angstrom (`0.529177210544` Å), Hartree-to-eV (`27.211386245981` eV), Rydberg-to-eV (`13.6056931229905` eV), exact SI defining constants ($e = 1.602176634 \times 10^{-19}$ C, $N_A = 6.02214076 \times 10^{23}\text{ mol}^{-1}$) yielding eV-to-kJ/mol (`96.48533212331002`), thermochemical eV-to-kcal/mol (`23.06054783061903`), and eV/Å³-to-GPa (`160.2176634`), spectroscopic conversions (`8065.543937349212` $\text{cm}^{-1}/\text{eV}$, `219474.63136314` $\text{cm}^{-1}/E_h$, `33.3564095198152` $\text{cm}^{-1}/\text{THz}$, `4.135667696923859` $\text{meV}/\text{THz}$), Boltzmann constant (`8.617333262145179e-5` eV/K), and the CODATA 2022 Table XXXIV Cu Kα₁ X-ray wavelength (`1.54059313` Å, from $1537.400\text{ xu} \times 1.00207697 \times 10^{-3}\text{ Å}$).
 
 ### 2. Standard Atomic Weights
 
@@ -47,7 +47,7 @@ Every physical constant, atomic weight, atomic radius, X-ray scattering form fac
 
 Used for 3D spacefill sphere radii and periodic-table size heatmaps:
 
-- **Alvarez (2013)**: Alvarez, S. (2013). "A cartography of the van der Waals territories". *Dalton Transactions*, 42(24), 8617-8636. DOI: [10.1039/c3dt50599e](https://doi.org/10.1039/c3dt50599e) (Table 1, Supplementary Table S1, and Section 6 heuristic $r_{\mathrm{vdW}} = r_{\mathrm{cov}} + 0.90\text{ \AA}$ for unmeasured heavy and superheavy elements).
+- **Alvarez (2013)**: Alvarez, S. (2013). "A cartography of the van der Waals territories". *Dalton Transactions*, 42(24), 8617-8636. DOI: [10.1039/c3dt50599e](https://doi.org/10.1039/c3dt50599e) (Table 1, Supplementary Table S1, and Section 6 heuristic $r_{\mathrm{vdW}} = r_{\mathrm{cov}} + 0.90\text{ Å}$ for unmeasured heavy and superheavy elements).
 - **Mantina et al. (2009)**: Mantina, M.; Chamberlin, A. C.; Valero, R.; Cramer, C. J.; Truhlar, D. G. (2009). "Consistent van der Waals Radii for the Whole Main Group". *The Journal of Physical Chemistry A*, 113(19), 5806-5812. DOI: [10.1021/jp8111556](https://doi.org/10.1021/jp8111556) (Table 12 main-group values for Po, At, Rn, Fr, and Ra).
 
 ### 6. Atomic X-Ray Scattering Form Factors
@@ -55,7 +55,7 @@ Used for 3D spacefill sphere radii and periodic-table size heatmaps:
 Used by `xm.compute_xrd()` and `xm.plot_xrd()` to weight Bragg peak intensities accurately by atomic number and scattering angle:
 
 - **Citation**: Cromer, D. T.; Mann, J. B. (1967, distributed March 11, 1968). "X-Ray Scattering Factors Computed from Numerical Hartree-Fock Wave Functions". Los Alamos Scientific Laboratory Report LA-3816. DOI: [10.2172/4555098](https://doi.org/10.2172/4555098).
-- **Scope (`xm.CROMER_MANN_TABLE`)**: 4-Gaussian + $c$ analytical fits from Table II (report pp. 66–69) for all 102 neutral atoms from He ($Z=2$) through Lr/Lw ($Z=103$), parameterized in $s = \sin\theta/\lambda$ ($\text{\AA}^{-1}$). Neutral H ($Z=1$) uses the exact analytical spherical $1s$ scattering factor $f_{\mathrm{H}}(s) = (1 + (2\pi a_0 s)^2)^{-2}$.
+- **Scope (`xm.CROMER_MANN_TABLE`)**: 4-Gaussian + $c$ analytical fits from Table II (report pp. 66–69) for all 102 neutral atoms from He ($Z=2$) through Lr/Lw ($Z=103$), parameterized in $s = \sin\theta/\lambda$ (Å⁻¹). Neutral H ($Z=1$) uses the exact analytical spherical $1s$ scattering factor $f_{\mathrm{H}}(s) = (1 + (2\pi a_0 s)^2)^{-2}$.
 
 ### 7. Color Palettes & Bundled Fonts
 
