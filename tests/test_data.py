@@ -69,3 +69,48 @@ def test_bundled_samples_present() -> None:
         assert path.is_file()
         assert path.stat().st_size > 20
         assert samples_registry.describe_sample(name)
+    with pytest.raises(FileNotFoundError):
+        samples_registry.get_sample_path("nonexistent_sample.xyz")
+    with pytest.raises(FileNotFoundError):
+        samples_registry.describe_sample("nonexistent_sample.xyz")
+
+
+def test_codata_unit_conversion_round_trips_and_element_helpers() -> None:
+    c = elements.CODATA2022
+    # Exact round-trip conversions across length, energy, and wavenumber units.
+    for val in (0.529177210544, 1.0, 3.75, 12.4):
+        in_ang = val * c.bohr_to_angstrom
+        assert in_ang / c.bohr_to_angstrom == pytest.approx(val, rel=1e-15)
+
+        in_ev = val * c.hartree_to_ev
+        assert in_ev / c.hartree_to_ev == pytest.approx(val, rel=1e-15)
+
+        in_kj = in_ev * c.ev_to_kj_mol
+        assert in_kj / c.ev_to_kj_mol == pytest.approx(in_ev, rel=1e-15)
+
+        in_kcal = in_ev * c.ev_to_kcal_mol
+        assert in_kcal / c.ev_to_kcal_mol == pytest.approx(in_ev, rel=1e-15)
+
+        in_cm = in_ev * c.ev_to_cm_inv
+        assert in_cm / c.ev_to_cm_inv == pytest.approx(in_ev, rel=1e-15)
+
+    # Physical cross-consistency among CODATA 2022 constants.
+    assert c.ev_to_kj_mol == pytest.approx(
+        c.ev_to_joule * c.avogadro / 1000.0, rel=1e-12
+    )
+    assert c.ev_to_kcal_mol == pytest.approx(c.ev_to_kj_mol / 4.184, rel=1e-12)
+    assert c.hartree_to_cm_inv == pytest.approx(
+        c.hartree_to_ev * c.ev_to_cm_inv, rel=1e-9
+    )
+
+    # Helper functions and Z>103 Lr-scaled form factor fallback.
+    assert elements.get_atomic_mass("Si") == pytest.approx(28.085)
+    assert elements.get_covalent_radius("Si") == pytest.approx(1.16)
+    assert elements.get_vdw_radius("Si") == pytest.approx(2.19)
+    assert elements.get_jmol_color("Si") == "#F0C8A0"
+    assert float(scattering.atomic_form_factor("Og", 0.0)) == pytest.approx(
+        float(scattering.atomic_form_factor("Lr", 0.0)) * 118.0 / 103.0
+    )
+    with pytest.raises(exceptions.StructureError):
+        elements.get_element(999)
+

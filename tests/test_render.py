@@ -246,3 +246,193 @@ def test_interactive_studio_and_exports(tmp_path: pathlib.Path) -> None:
         payload_line.split("const PAYLOAD = ", 1)[1].rstrip(";")
     )
     assert embedded["active"]["positions"][0] == pytest.approx([0.0, 0.0, 0.0])
+
+
+def test_render_3d_cell_modes_vectors_polyhedra_and_edge_cases() -> None:
+    """Covers cell/axes modes, polyhedra bond filtering, vectors, & guards."""
+    matplotlib.use("Agg")
+    empty = structure.AtomsData(symbols=[], positions=np.zeros((0, 3)))
+    ax_empty = structure3d.render_structure_3d(empty)
+    assert len(ax_empty.patches) == 0
+    plt.close(ax_empty.figure)
+
+    si = loader.load("si_diamond.cif")
+    for cell_mode in ("none", "wireframe", "clean", "tripod"):
+        ax_m = structure3d.render_structure_3d(
+            si, show_cell=cell_mode, crystal_axes=True
+        )
+        plt.close(ax_m.figure)
+    ax_f = structure3d.render_structure_3d(
+        si, show_cell=True, crystal_axes=False, show_labels="none"
+    )
+    plt.close(ax_f.figure)
+
+    with pytest.raises(exceptions.StructureError):
+        structure3d.render_structure_3d(si, crystal_axes="invalid_axes")
+    with pytest.raises(exceptions.StructureError):
+        structure3d.render_structure_3d(si, vectors="unknown_vec")
+    with pytest.raises(exceptions.StructureError):
+        structure3d.render_structure_3d(si, vectors=np.zeros((2, 2)))
+
+    # Missing forces vector attribute returns None cleanly; 0-norm & -z spin.
+    ax_nf = structure3d.render_structure_3d(si, vectors="forces")
+    plt.close(ax_nf.figure)
+
+    spins = np.zeros((len(si), 3), dtype=np.float64)
+    spins[0, 2] = -1.5
+    spins[1, 2] = 1.5
+    labeled_si = si.copy()
+    labeled_si.atom_labels = [f"Site{i}" for i in range(len(si))]
+    labeled_si.bonds = [structure.Bond(0, 1, 1.0), structure.Bond(0, 99, 1.0)]
+    ax_sp = structure3d.render_structure_3d(
+        labeled_si,
+        vectors=spins,
+        vector_color="spin",
+        show_labels=True,
+        miller_planes=[(0, 0, 0), (10, 1, 0)],
+    )
+    assert any("Site0" in t.get_text() for t in ax_sp.texts)
+    assert any("(10 1 0)" in t.get_text() for t in ax_sp.texts)
+    plt.close(ax_sp.figure)
+
+    # Polyhedra style with explicit CoordinationPolyhedron list & bond skip.
+    tio2 = loader.load("tio2_slab.poscar")
+    polys = struct_plots.bonding.find_coordination_polyhedra(
+        tio2, "Ti", "O", min_coordination=4
+    )
+    ax_p1 = structure3d.render_structure_3d(
+        tio2, style="polyhedra", polyhedra=("Ti", "O"), show_bonds=True
+    )
+    ax_p2 = structure3d.render_structure_3d(
+        tio2, style="polyhedra", polyhedra=polys, show_bonds=True
+    )
+    plt.close(ax_p1.figure)
+    plt.close(ax_p2.figure)
+
+    # Large structure (> 2000 atoms) emits UserWarning when autobonding skipped.
+    big = structure.AtomsData(
+        symbols=["C"] * 2005,
+        positions=np.zeros((2005, 3), dtype=np.float64),
+    )
+    with pytest.warns(UserWarning, match="skipping automatic bond inference"):
+        ax_big = structure3d.render_structure_3d(big)
+    plt.close(ax_big.figure)
+
+
+def test_interactive_view_vectors_isosurface_and_backends(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Covers Studio browser opening, vector/mesh serialization, & errors."""
+    matplotlib.use("Agg")
+    opened_uris: list[str] = []
+    monkeypatch.setattr(
+        "webbrowser.open", lambda uri: opened_uris.append(uri) or True
+    )
+
+    view = interactive.view_structure(
+        "si_diamond.cif",
+        backend="browser",
+        output=tmp_path / "browser_out.html",
+        center=True,
+        supercell=(2, 1, 1),
+    )
+    assert isinstance(view, interactive.InteractiveView)
+    assert (tmp_path / "browser_out.html").is_file()
+    assert len(opened_uris) == 1
+
+    tmp_open = view.open_in_browser(path=None)
+    assert tmp_open.is_file()
+    tmp_open.unlink(missing_ok=True)
+
+    saved_html = tmp_path / "saved_view.html"
+    interactive.view_structure(
+        "aspirin.xyz", backend="html", output=saved_html
+    )
+    assert saved_html.is_file()
+
+    # Matplotlib backend branches for periodic crystal & coordination polyhedra.
+    ax_c = interactive.view_structure("si_diamond.cif", backend="matplotlib")
+    plt.close(ax_c.figure)
+    ax_p = interactive.view_structure(
+        "tio2_slab.poscar", backend="matplotlib", polyhedra=("Ti", "O")
+    )
+    plt.close(ax_p.figure)
+
+    # Vector resolution: velocities, 1D/2D magmom, None, explicit array, errors.
+    mol = loader.load("aspirin.xyz")
+    mol.velocities = np.ones((len(mol), 3)) * 0.2
+    mol.magnetic_moments = np.ones(len(mol)) * 0.5
+    p_vel = interactive.serialize_structure(mol, vectors="velocities")
+    p_mag1 = interactive.serialize_structure(mol, vectors="magmom")
+    mol.magnetic_moments = np.ones((len(mol), 3)) * 0.5
+    p_mag2 = interactive.serialize_structure(mol, vectors="spin")
+    p_none = interactive.serialize_structure(mol, vectors="forces")
+    p_arr = interactive.serialize_structure(
+        mol, vectors=np.ones((len(mol), 3))
+    )
+    assert len(p_vel["vectors"]) == len(mol)
+    assert len(p_mag1["vectors"]) == len(mol)
+    assert len(p_mag2["vectors"]) == len(mol)
+    assert "vectors" not in p_none
+    assert len(p_arr["vectors"]) == len(mol)
+
+    with pytest.raises(exceptions.StructureError):
+        interactive.serialize_structure(mol, vectors="invalid_vec")
+    with pytest.raises(exceptions.StructureError):
+        interactive.serialize_structure(mol, vectors=np.ones((2, 3)))
+
+    # Trajectory frames with forces + explicit IsosurfaceMesh + empty mesh.
+    f0 = mol.copy()
+    f0.forces = np.ones((len(f0), 3)) * 0.1
+    f1 = f0.copy()
+    traj = interactive.trajectory.Trajectory(frames=[f0, f1])
+    p_traj = interactive.serialize_structure(traj, vectors="forces")
+    assert "vectors" in p_traj["frames"][0]
+
+    empty_mesh = interactive.isosurf_mod.IsosurfaceMesh(
+        vertices=np.zeros((0, 3)),
+        faces=np.zeros((0, 3), dtype=np.int64),
+        normals=np.zeros((0, 3)),
+        level=0.1,
+    )
+    p_empty_iso = interactive.serialize_structure(mol, isosurface=empty_mesh)
+    assert "isosurfaces" not in p_empty_iso
+
+    nonempty_mesh = interactive.isosurf_mod.IsosurfaceMesh(
+        vertices=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]),
+        faces=np.array([[0, 1, 2]], dtype=np.int64),
+        normals=np.array([[0.0, 0.0, 1.0]]),
+        level=0.1,
+    )
+    p_mesh = interactive.serialize_structure(mol, isosurface=nonempty_mesh)
+    assert len(p_mesh["isosurfaces"]) == 1
+    with pytest.raises(exceptions.StructureError):
+        interactive.view_structure(
+            mol, backend="matplotlib", isosurface=nonempty_mesh
+        )
+    with pytest.raises(exceptions.StructureError):
+        interactive.serialize_structure(mol, isosurface="si_qe_bands.dat")
+
+    # Input coercion errors & custom element palette resolution.
+    with pytest.raises(exceptions.StructureError):
+        interactive.serialize_structure(
+            interactive.trajectory.Trajectory(frames=[])
+        )
+    with pytest.raises(exceptions.StructureError):
+        interactive.serialize_structure(
+            interactive.electronic.VolumetricGrid(
+                origin=np.zeros(3),
+                voxel_vectors=np.eye(3),
+                data=np.zeros((2, 2, 2)),
+                atoms=None,
+            )
+        )
+    with pytest.raises(exceptions.StructureError):
+        interactive.serialize_structure("si_qe_bands.dat")
+
+    assert interactive._build_font_css("NonBundledFont") == ""
+    mol_src = mol.copy()
+    mol_src.metadata["source"] = str(tmp_path / "aspirin.xyz")
+    assert interactive._active_sample_filename(mol_src) == "aspirin.xyz"
+

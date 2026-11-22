@@ -563,3 +563,94 @@ def test_isosurface_orthographic_orbit_bounds_and_studio_shades() -> None:
     assert 'value="cross_contour"' in html_out
     assert "cross_contour" in html_out
     assert "isoShade" in html_out
+
+
+def _check_bz_euler_and_symmetry(
+    bz: brillouin.BrillouinZone,
+    expected_v: int | None = None,
+    expected_e: int | None = None,
+    expected_f: int | None = None,
+) -> None:
+    """Asserts V - E + F == 2, 2-manifold edge incidence, and inversion."""
+    v_rounded = {
+        tuple(np.round(pt, 5).tolist())
+        for f in bz.facets
+        for pt in f.vertices
+    }
+    edges: dict[tuple[tuple[float, ...], tuple[float, ...]], int] = {}
+    normal_area_sum = np.zeros(3, dtype=np.float64)
+    for facet in bz.facets:
+        pts = [tuple(np.round(pt, 5).tolist()) for pt in facet.vertices]
+        m_pts = len(pts)
+        assert m_pts >= 3
+        for idx in range(m_pts):
+            p1, p2 = pts[idx], pts[(idx + 1) % m_pts]
+            edge_key = (p1, p2) if p1 <= p2 else (p2, p1)
+            edges[edge_key] = edges.get(edge_key, 0) + 1
+        normal_area_sum += facet.area * facet.normal
+        # Opposite facet (-h, -k, -l) must exist with equal area and distance.
+        assert any(
+            np.allclose(other.normal, -facet.normal, atol=1e-6)
+            and math.isclose(other.area, facet.area, rel_tol=1e-5)
+            and math.isclose(other.distance, facet.distance, rel_tol=1e-6)
+            for other in bz.facets
+        )
+
+    n_v = len(v_rounded)
+    n_e = len(edges)
+    n_f = len(bz.facets)
+    assert all(count == 2 for count in edges.values())
+    assert n_v - n_e + n_f == 2
+    assert float(np.linalg.norm(normal_area_sum)) < 1e-8
+    if expected_v is not None:
+        assert n_v == expected_v
+    if expected_e is not None:
+        assert n_e == expected_e
+    if expected_f is not None:
+        assert n_f == expected_f
+    for v_pt in bz.vertices:
+        assert np.any(np.all(np.isclose(bz.vertices, -v_pt, atol=1e-5), axis=1))
+
+
+def test_brillouin_zone_euler_characteristic_and_symmetry_invariants() -> None:
+    """Verifies V - E + F == 2 and centrosymmetry across Bravais BZs."""
+    # FCC -> truncated octahedron (24 vertices, 36 edges, 14 facets).
+    si = xm.load("si_diamond.cif")
+    _check_bz_euler_and_symmetry(
+        brillouin.compute_brillouin_zone(si),
+        expected_v=24,
+        expected_e=36,
+        expected_f=14,
+    )
+    # Simple cubic -> cube (8 vertices, 12 edges, 6 facets).
+    _check_bz_euler_and_symmetry(
+        brillouin.compute_brillouin_zone(si, use_primitive=False),
+        expected_v=8,
+        expected_e=12,
+        expected_f=6,
+    )
+    # BCC -> rhombic dodecahedron (14 vertices, 24 edges, 12 facets).
+    bcc = structure.AtomsData(
+        symbols=["Fe", "Fe"],
+        positions=[[0.0, 0.0, 0.0], [1.435, 1.435, 1.435]],
+        cell=2.87 * np.eye(3),
+        pbc=(True, True, True),
+    )
+    _check_bz_euler_and_symmetry(
+        brillouin.compute_brillouin_zone(bcc),
+        expected_v=14,
+        expected_e=24,
+        expected_f=12,
+    )
+    # Hexagonal -> hexagonal prism (12 vertices, 18 edges, 8 facets).
+    mos2 = xm.load("mos2_2h.poscar")
+    _check_bz_euler_and_symmetry(
+        brillouin.compute_brillouin_zone(mos2),
+        expected_v=12,
+        expected_e=18,
+        expected_f=8,
+    )
+    # Skewed triclinic cell -> closed convex polyhedron with V - E + F == 2.
+    triclinic = np.array([[3.2, 0.5, 0.1], [0.3, 3.7, 0.4], [0.2, 0.3, 4.4]])
+    _check_bz_euler_and_symmetry(brillouin.compute_brillouin_zone(triclinic))
+
