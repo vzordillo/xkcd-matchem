@@ -4,15 +4,16 @@
 
 If `xkcd-matchem` helps you build a poster, talk, tutorial, or science communication figure, please cite it using the metadata in `CITATION.cff`:
 
-> Ordillo, V. (2026). *xkcd-matchem: An xkcd-Style Visualization Suite for Chemistry and Materials Science Communication* (Version 0.1.0) [Computer software]. https://github.com/vzordillo/xkcd-matchem
+> Ordillo, V. (2026). *xkcd-matchem: An xkcd-Style Visualization Suite for Chemistry and Materials Science Communication* (Version 0.1.0) [Computer software]. Nara Institute of Science and Technology. https://github.com/vzordillo/xkcd-matchem
 
 ```bibtex
 @software{ordillo2026xkcdmatchem,
-  author  = {Ordillo, Viejay},
-  title   = {{xkcd-matchem}: An xkcd-Style Visualization Suite for Chemistry and Materials Science Communication},
-  year    = {2026},
-  version = {0.1.0},
-  url     = {https://github.com/vzordillo/xkcd-matchem}
+  author      = {Ordillo, Viejay},
+  institution = {Nara Institute of Science and Technology},
+  title       = {{xkcd-matchem}: An xkcd-Style Visualization Suite for Chemistry and Materials Science Communication},
+  year        = {2026},
+  version     = {0.1.0},
+  url         = {https://github.com/vzordillo/xkcd-matchem}
 }
 ```
 

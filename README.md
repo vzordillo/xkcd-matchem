@@ -136,11 +136,12 @@ If `xkcd-matchem` helps with your poster, talk, or tutorial, please cite it via 
 
 ```bibtex
 @software{ordillo2026xkcdmatchem,
-  author  = {Ordillo, Viejay},
-  title   = {{xkcd-matchem}: An xkcd-Style Visualization Suite for Chemistry and Materials Science Communication},
-  year    = {2026},
-  version = {0.1.0},
-  url     = {https://github.com/vzordillo/xkcd-matchem}
+  author      = {Ordillo, Viejay},
+  institution = {Nara Institute of Science and Technology},
+  title       = {{xkcd-matchem}: An xkcd-Style Visualization Suite for Chemistry and Materials Science Communication},
+  year        = {2026},
+  version     = {0.1.0},
+  url         = {https://github.com/vzordillo/xkcd-matchem}
 }
 ```
 
