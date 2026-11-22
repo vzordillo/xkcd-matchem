@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import pathlib
+from typing import Any
 
 import numpy as np
 
@@ -68,9 +69,9 @@ def _resolve_lammps_style(
                 f"expected at least {spec[0]} for atom_style={key!r}."
             )
         return spec
-    if len(row) == 5:
+    if len(row) in (5, 8):
         return _LAMMPS_ATOM_STYLES["atomic"]
-    if len(row) == 7:
+    if len(row) in (7, 10):
         return _LAMMPS_ATOM_STYLES["full"]
     raise exceptions.ParseError(
         f"Ambiguous LAMMPS Atoms row with {len(row)} columns; "
@@ -83,11 +84,13 @@ def _parse_lammps_atom_rows(
     masses: dict[int, float],
     atom_style: str | None = None,
     type_map: dict[int, str] | None = None,
-) -> tuple[list[str], list[list[float]], dict[int, int]]:
-    """Extracts symbols, coordinates, and ID mapping from LAMMPS data rows."""
+) -> tuple[list[str], list[list[float]], dict[int, int], np.ndarray | None]:
+    """Extracts symbols, coordinates, IDs, & optional image flags."""
     id_to_idx: dict[int, int] = {}
     symbols: list[str] = []
     coords: list[list[float]] = []
+    img_rows: list[list[int]] = []
+    has_images = True
     for idx, row in enumerate(atom_rows):
         min_cols, type_col, xyz_col = _resolve_lammps_style(row, atom_style)
         if len(row) < min_cols:
@@ -101,6 +104,16 @@ def _parse_lammps_atom_rows(
             float(row[xyz_col + 1]),
             float(row[xyz_col + 2]),
         ]
+        if len(row) >= xyz_col + 6:
+            img_rows.append(
+                [
+                    int(row[xyz_col + 3]),
+                    int(row[xyz_col + 4]),
+                    int(row[xyz_col + 5]),
+                ]
+            )
+        else:
+            has_images = False
         if type_map is not None:
             if atype not in type_map:
                 raise exceptions.ParseError(
@@ -115,7 +128,28 @@ def _parse_lammps_atom_rows(
             )
         symbols.append(sym)
         coords.append(xyz)
-    return symbols, coords, id_to_idx
+    img_arr = (
+        np.array(img_rows, dtype=np.int64) if has_images and img_rows else None
+    )
+    return symbols, coords, id_to_idx, img_arr
+
+
+def _build_lammps_bonds(
+    bond_rows: list[list[str]],
+    id_to_idx: dict[int, int],
+) -> list[structure.Bond]:
+    """Maps LAMMPS Bonds table rows into indexed ``Bond`` instances."""
+    bonds: list[structure.Bond] = []
+    for row in bond_rows:
+        if len(row) >= 4:
+            i_id, j_id = int(row[2]), int(row[3])
+            if i_id in id_to_idx and j_id in id_to_idx:
+                bonds.append(
+                    structure.Bond(
+                        i=id_to_idx[i_id], j=id_to_idx[j_id], order=1.0
+                    )
+                )
+    return bonds
 
 
 def read_lammps_data(
@@ -176,30 +210,24 @@ def read_lammps_data(
         ],
         dtype=np.float64,
     )
-    symbols, coords, id_to_idx = _parse_lammps_atom_rows(
+    symbols, coords, id_to_idx, img_arr = _parse_lammps_atom_rows(
         atom_rows,
         masses,
         atom_style=detected_style,
         type_map=type_map,
     )
-
-    bonds: list[structure.Bond] = []
-    for row in bond_rows:
-        if len(row) >= 4:
-            i_id, j_id = int(row[2]), int(row[3])
-            if i_id in id_to_idx and j_id in id_to_idx:
-                bonds.append(
-                    structure.Bond(
-                        i=id_to_idx[i_id], j=id_to_idx[j_id], order=1.0
-                    )
-                )
+    pos = np.array(coords, dtype=np.float64)
+    meta: dict[str, Any] = {"source": str(p)}
+    if img_arr is not None:
+        meta["image_flags"] = img_arr
+        meta["unwrapped_positions"] = pos + img_arr.astype(np.float64) @ cell
     return structure.AtomsData(
         symbols=symbols,
-        positions=np.array(coords, dtype=np.float64),
+        positions=pos,
         cell=cell,
         pbc=(True, True, True),
-        bonds=bonds,
-        metadata={"source": str(p)},
+        bonds=_build_lammps_bonds(bond_rows, id_to_idx),
+        metadata=meta,
     )
 
 
@@ -263,6 +291,71 @@ def _lammpstrj_symbols(
     )
 
 
+def _extract_lammpstrj_positions(
+    rows: list[list[str]],
+    col_idx: dict[str, int],
+    origin: np.ndarray,
+    cell: np.ndarray,
+    source: str,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Extracts wrapped/unwrapped Cartesian positions and image flags."""
+    has_wrap_cart = all(k in col_idx for k in ("x", "y", "z"))
+    has_wrap_scal = all(k in col_idx for k in ("xs", "ys", "zs"))
+    has_unwrap_cart = all(k in col_idx for k in ("xu", "yu", "zu"))
+    has_unwrap_scal = all(k in col_idx for k in ("xsu", "ysu", "zsu"))
+    has_images = all(k in col_idx for k in ("ix", "iy", "iz"))
+    if not (
+        has_wrap_cart or has_wrap_scal or has_unwrap_cart or has_unwrap_scal
+    ):
+        raise exceptions.ParseError(
+            f"Missing coordinate columns in LAMMPS dump {source}."
+        )
+
+    def _read_xyz(kx: str, ky: str, kz: str, *, scaled: bool) -> np.ndarray:
+        ix_c, iy_c, iz_c = col_idx[kx], col_idx[ky], col_idx[kz]
+        arr = np.array(
+            [[float(r[ix_c]), float(r[iy_c]), float(r[iz_c])] for r in rows],
+            dtype=np.float64,
+        )
+        if scaled:
+            return np.asarray(arr @ cell + origin, dtype=np.float64)
+        return arr
+
+    extra_meta: dict[str, Any] = {}
+    if has_images:
+        ix_i, iy_i, iz_i = col_idx["ix"], col_idx["iy"], col_idx["iz"]
+        img = np.array(
+            [[int(r[ix_i]), int(r[iy_i]), int(r[iz_i])] for r in rows],
+            dtype=np.int64,
+        )
+        extra_meta["image_flags"] = img
+
+    if has_wrap_scal:
+        pos = _read_xyz("xs", "ys", "zs", scaled=True)
+    elif has_wrap_cart:
+        pos = _read_xyz("x", "y", "z", scaled=False)
+    elif has_unwrap_scal:
+        pos = _read_xyz("xsu", "ysu", "zsu", scaled=True)
+        extra_meta["coords_unwrapped"] = True
+    else:
+        pos = _read_xyz("xu", "yu", "zu", scaled=False)
+        extra_meta["coords_unwrapped"] = True
+
+    if has_unwrap_cart:
+        extra_meta["unwrapped_positions"] = _read_xyz(
+            "xu", "yu", "zu", scaled=False
+        )
+    elif has_unwrap_scal:
+        extra_meta["unwrapped_positions"] = _read_xyz(
+            "xsu", "ysu", "zsu", scaled=True
+        )
+    elif has_images:
+        extra_meta["unwrapped_positions"] = (
+            pos + extra_meta["image_flags"].astype(np.float64) @ cell
+        )
+    return pos, extra_meta
+
+
 def _parse_lammpstrj_frame(
     lines: list[str],
     idx: int,
@@ -297,42 +390,21 @@ def _parse_lammpstrj_frame(
         )
     rows = [lines[idx + k].split() for k in range(n_atoms)]
     col_idx = {name: k for k, name in enumerate(cols)}
-    is_scaled = "xs" in col_idx or "xsu" in col_idx
-    if "xsu" in col_idx:
-        xk, yk, zk = "xsu", "ysu", "zsu"
-    elif "xs" in col_idx:
-        xk, yk, zk = "xs", "ys", "zs"
-    elif "xu" in col_idx:
-        xk, yk, zk = "xu", "yu", "zu"
-    else:
-        xk, yk, zk = "x", "y", "z"
-    if any(k not in col_idx for k in (xk, yk, zk)):
-        raise exceptions.ParseError(
-            f"Missing coordinate columns in LAMMPS dump {source}."
-        )
     if "id" in col_idx:
         rows.sort(key=lambda r: int(r[col_idx["id"]]))
 
     symbols = _lammpstrj_symbols(rows, col_idx, type_map)
-    pos = np.array(
-        [
-            [
-                float(r[col_idx[xk]]),
-                float(r[col_idx[yk]]),
-                float(r[col_idx[zk]]),
-            ]
-            for r in rows
-        ],
-        dtype=np.float64,
+    pos, extra_meta = _extract_lammpstrj_positions(
+        rows, col_idx, origin, cell, source
     )
-    if is_scaled:
-        pos = pos @ cell + origin
+    frame_meta: dict[str, Any] = {"timestep": timestep, "source": source}
+    frame_meta.update(extra_meta)
     atoms = structure.AtomsData(
         symbols=symbols,
         positions=pos,
         cell=cell,
         pbc=pbc_tuple,
-        metadata={"timestep": timestep, "source": source},
+        metadata=frame_meta,
     )
     return atoms, float(timestep), idx + n_atoms
 

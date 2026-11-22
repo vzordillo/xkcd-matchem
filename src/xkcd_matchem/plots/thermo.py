@@ -26,6 +26,7 @@ import numpy as np
 from scipy import optimize
 
 from xkcd_matchem.core import exceptions
+from xkcd_matchem.core import wulff
 from xkcd_matchem.data import elements
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import patterns
@@ -249,6 +250,22 @@ def _fit_birch_murnaghan(vs: np.ndarray, es: np.ndarray) -> np.ndarray:
     return np.asarray(popt, dtype=np.float64)
 
 
+_EOS_YLABELS: dict[str, str] = {
+    "cell": "Energy (eV/cell)",
+    "formula_unit": "Energy (eV/f.u.)",
+    "atom": "Energy (eV/atom)",
+}
+
+
+def _format_eos_rmse(rmse: float) -> str:
+    """Formats Birch-Murnaghan RMSE concisely in eV."""
+    if rmse == 0.0 or rmse >= 1e-2:
+        return f"{rmse:.3f} eV"
+    if rmse >= 1e-3:
+        return f"{rmse:.4f} eV"
+    return f"{rmse:.2e} eV"
+
+
 def plot_eos(
     volumes: Sequence[float] | np.ndarray,
     energies: Sequence[float] | np.ndarray,
@@ -257,8 +274,10 @@ def plot_eos(
     palette: str | Sequence[str] = "okabe_ito",
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
+    energy_basis: str = "cell",
 ) -> maxes.Axes:
     """Plots energy vs volume with an optional 3rd-order Birch-Murnaghan fit."""
+    canon_basis = wulff.normalize_eos_basis(energy_basis)
     vs = np.asarray(volumes, dtype=np.float64)
     es = np.asarray(energies, dtype=np.float64)
     if vs.ndim != 1 or es.ndim != 1 or vs.shape != es.shape or vs.size == 0:
@@ -286,9 +305,20 @@ def plot_eos(
             label="DFT Points",
         )
         if fit_birch_murnaghan and len(vs) >= 4:
-            popt = _fit_birch_murnaghan(vs, es)
+            fit_res = wulff.fit_birch_murnaghan(
+                vs,
+                es,
+                energy_basis=canon_basis,
+                allow_extrapolation=True,
+            )
             v_fine = np.linspace(float(np.min(vs)), float(np.max(vs)), 160)
-            e_fine = _birch_murnaghan(v_fine, *popt)
+            e_fine = wulff.birch_murnaghan_energy(
+                v_fine,
+                fit_res.e0,
+                fit_res.v0,
+                fit_res.b0_ev_a3,
+                fit_res.b0_prime,
+            )
             ax.plot(
                 v_fine,
                 e_fine,
@@ -297,20 +327,25 @@ def plot_eos(
                 zorder=3,
                 label="Birch-Murnaghan",
             )
-            b0_gpa = float(popt[2]) * _EV_PER_A3_TO_GPA
+            b0_line = (
+                f"B0 = {fit_res.b0_gpa:.1f} GPa \u00b1 {fit_res.b0_gpa_err:.1f}"
+                if fit_res.b0_gpa_err is not None
+                else f"B0 = {fit_res.b0_gpa:.1f} GPa"
+            )
             summary = (
-                f"V0 = {popt[1]:.2f} A^3\n"
-                f"B0 = {b0_gpa:.1f} GPa\n"
-                f"B0' = {popt[3]:.2f}"
+                f"V0 = {fit_res.v0:.2f} A^3\n"
+                f"{b0_line}\n"
+                f"B0' = {fit_res.b0_prime:.2f}\n"
+                f"RMSE = {_format_eos_rmse(fit_res.rmse_ev)}"
             )
             box_txt = ax.text(
                 0.50,
-                0.56,
+                0.57,
                 summary,
                 transform=ax.transAxes,
                 ha="center",
                 va="center",
-                fontsize=9.0,
+                fontsize=8.6,
                 color=preset_obj.ink_color,
                 bbox={
                     "boxstyle": "round,pad=0.3",
@@ -328,7 +363,7 @@ def plot_eos(
             float(np.max(es)) + 0.38 * e_span,
         )
         ax.set_xlabel("Cell Volume ($\\mathrm{\\AA}^3$)")
-        ax.set_ylabel("Total Energy (eV)")
+        ax.set_ylabel(_EOS_YLABELS[canon_basis])
         ax.legend(loc="upper center", ncol=2, frameon=True, fontsize=8.5)
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
