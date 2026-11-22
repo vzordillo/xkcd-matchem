@@ -15,4 +15,5 @@ wheels/
 .coverage
 htmlcov/
 book/_build/
+paper/
 .DS_Store
