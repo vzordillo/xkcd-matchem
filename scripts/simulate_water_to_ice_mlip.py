@@ -1,21 +1,15 @@
-# Copyright 2026 xkcd-matchem contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 r"""Reproducible MACE-MPA-0 direct-coexistence water-to-ice Ih MD script.
 
 Requires optional external MLIP tooling (not needed to use ``xkcd-matchem``):
 ``ase``, ``torch`` (CUDA recommended), and ``mace-torch`` with the cached
 ``medium-mpa-0`` foundation model.
+
+Protocol:
+  1. Relax proton-disordered Bernal-Fowler hexagonal Ice Ih (32 H2O, 96 atoms).
+  2. Fix the bottom 16 H2O seed layer and melt the top 16 H2O at 550 K.
+  3. Release all constraints for unconstrained MACE-MPA-0 crystallization MD
+     at 330 K, smooth cooling ramp down to 1 K, and final 0 K BFGS energy
+     minimization (fmax <= 0.02 eV/A).
 
 Usage::
 
@@ -194,7 +188,6 @@ def _scramble_mobile_waters(
         o_pos = pos[o_i].copy()
         v1 = _minimum_image_vec(pos[o_i + 1] - o_pos, cell_diag)
         v2 = _minimum_image_vec(pos[o_i + 2] - o_pos, cell_diag)
-        # Random SO(3) rotation via QR decomposition
         q_mat, r_mat = np.linalg.qr(rng.normal(size=(3, 3)))
         rot = q_mat @ np.diag(np.sign(np.diag(r_mat)))
         if np.linalg.det(rot) < 0.0:
@@ -237,10 +230,19 @@ def _write_extxyz_frame(
         )
 
 
-def _wrap_molecules_intact(atoms) -> None:
-    """Wraps water molecules by oxygen CoM so covalent O-H bonds stay whole."""
-    pos = atoms.get_positions()
+def _anchor_and_wrap_intact(
+    atoms,
+    seed_o_indices: np.ndarray,
+    ref_seed_o: np.ndarray,
+) -> None:
+    """Removes rigid PBC CoM drift and wraps water molecules intact."""
+    pos = atoms.get_positions().copy()
     cell_diag = np.diag(np.asarray(atoms.get_cell(), dtype=np.float64))
+    drift = np.mean(
+        _minimum_image_vec(pos[seed_o_indices] - ref_seed_o, cell_diag),
+        axis=0,
+    )
+    pos -= drift
     for idx in range(0, len(atoms), 3):
         o_pos = pos[idx]
         shift = np.floor(o_pos / cell_diag) * cell_diag
@@ -252,7 +254,7 @@ def _wrap_molecules_intact(atoms) -> None:
 
 
 def run_simulation(args: argparse.Namespace) -> None:
-    """Runs MACE-MPA-0 direct-coexistence water-to-ice Ih MD on GPU/CPU."""
+    """Runs MACE-MPA-0 water-to-ice Ih MD with cooling to stable 0 K ice."""
     ase_mod = importlib.import_module("ase")
     ase_constraints = importlib.import_module("ase.constraints")
     ase_md_lang = importlib.import_module("ase.md.langevin")
@@ -271,17 +273,19 @@ def run_simulation(args: argparse.Namespace) -> None:
     )
 
     # 1. Relax initial hexagonal Ice Ih crystal
-    opt = ase_opt.BFGS(atoms, logfile=None)
-    opt.run(fmax=0.05, steps=40)
+    ase_opt.BFGS(atoms, logfile=None).run(fmax=0.03, steps=50)
     o_idx = np.arange(0, len(atoms), 3)
     q_init = compute_tetrahedral_order_o(atoms.get_positions()[o_idx], cell)
-    print(f"Relaxed Ice Ih: N={len(atoms)} atoms, q_init={q_init:.4f}")
+    e_ideal = float(atoms.get_potential_energy())
+    print(f"Relaxed Ice Ih: N={len(atoms)}, E={e_ideal:.3f} eV, q={q_init:.4f}")
 
-    # 2. Prepare genuine liquid-ice interface (fix bottom 16 H2O seed layer)
+    # 2. Prepare liquid-ice coexistence (fix bottom 16 H2O seed layer)
     z_o = atoms.get_positions()[o_idx, 2]
     order_z = np.argsort(z_o)
     seed_mols = order_z[: len(o_idx) // 2]
     mobile_mols = order_z[len(o_idx) // 2 :]
+    seed_o_indices = 3 * seed_mols
+    ref_seed_o = atoms.get_positions()[seed_o_indices].copy()
     fixed_atoms = [int(3 * m + off) for m in seed_mols for off in (0, 1, 2)]
 
     rng = np.random.default_rng(args.seed + 1)
@@ -318,11 +322,19 @@ def run_simulation(args: argparse.Namespace) -> None:
     raw_frames: list[tuple[object, float, float, float, float, str]] = []
     step_fs = 0.75
 
-    def _record(step_num: int, stage: str) -> None:
+    def _record(
+        step_num: int,
+        stage: str,
+        override_temp: float | None = None,
+    ) -> None:
         snap = atoms.copy()
-        _wrap_molecules_intact(snap)
+        _anchor_and_wrap_intact(snap, seed_o_indices, ref_seed_o)
         e_ev = float(atoms.get_potential_energy())
-        t_k = float(atoms.get_temperature())
+        t_k = (
+            float(atoms.get_temperature())
+            if override_temp is None
+            else override_temp
+        )
         q_val = compute_tetrahedral_order_o(snap.get_positions()[o_idx], cell)
         raw_frames.append(
             (snap, step_num * step_fs / 1000.0, t_k, e_ev, q_val, stage)
@@ -337,13 +349,13 @@ def run_simulation(args: argparse.Namespace) -> None:
         rng=rng,
     )
 
-    total_steps = args.growth_steps + args.cool_steps
-    sample_every = max(1, total_steps // args.record_samples)
+    total_md_steps = args.growth_steps + args.anneal_steps + args.quench_steps
+    sample_every = max(1, total_md_steps // args.record_samples)
     for step in range(1, args.growth_steps + 1):
         dyn_grow.run(1)
         if step % sample_every == 0 or step == args.growth_steps:
             _record(step, "freezing")
-        if step % 1500 == 0:
+        if step % 2000 == 0:
             o_cur = atoms.get_positions()[o_idx]
             q_all_cur = compute_tetrahedral_order_o(o_cur, cell)
             q_mob_cur = compute_tetrahedral_order_o(o_cur, cell, mobile_mols)
@@ -355,21 +367,67 @@ def run_simulation(args: argparse.Namespace) -> None:
                 f"q_all={q_all_cur:.4f}, q_mob={q_mob_cur:.4f}"
             )
 
-    # 4. Gentle quench to settle hexagonal Ice Ih lattice
-    dyn_cool = ase_md_lang.Langevin(
+    # 4. Smooth linear annealing ramp from growth_temp down to 5 K
+    n_stages = 16
+    stage_steps = max(1, args.anneal_steps // n_stages)
+    ramp_temps = np.linspace(args.growth_temp, 5.0, n_stages)
+    cur_step = args.growth_steps
+    for s_idx, target_t in enumerate(ramp_temps):
+        dyn_ramp = ase_md_lang.Langevin(
+            atoms,
+            timestep=step_fs * ase_units.fs,
+            temperature_K=float(target_t),
+            friction=0.025 / ase_units.fs,
+            rng=rng,
+        )
+        for _ in range(stage_steps):
+            dyn_ramp.run(1)
+            cur_step += 1
+            if cur_step % sample_every == 0:
+                _record(cur_step, "annealing")
+        if (s_idx + 1) % 4 == 0:
+            o_cur = atoms.get_positions()[o_idx]
+            t_now = atoms.get_temperature()
+            print(
+                f"  anneal stage {s_idx + 1}/{n_stages} "
+                f"(target={target_t:.0f} K, T={t_now:.1f} K): "
+                f"E={atoms.get_potential_energy():.2f} eV, "
+                f"q_all={compute_tetrahedral_order_o(o_cur, cell):.4f}"
+            )
+
+    # 5. Deep cryo thermalization at 1 K before 0 K energy minimization
+    dyn_cryo = ase_md_lang.Langevin(
         atoms,
         timestep=step_fs * ase_units.fs,
-        temperature_K=args.final_temp,
-        friction=0.02 / ase_units.fs,
+        temperature_K=1.0,
+        friction=0.05 / ase_units.fs,
         rng=rng,
     )
-    for step in range(1, args.cool_steps + 1):
-        dyn_cool.run(1)
-        g_step = args.growth_steps + step
-        if g_step % sample_every == 0 or step == args.cool_steps:
-            _record(g_step, "ice_ih")
+    for _ in range(args.quench_steps):
+        dyn_cryo.run(1)
+        cur_step += 1
+        if cur_step % sample_every == 0:
+            _record(cur_step, "cryo_1K")
+    _record(cur_step, "cryo_1K")
 
+    # 6. Final 0 K MACE-MPA-0 BFGS relaxation to force convergence (0 K stable)
+    atoms.set_momenta(np.zeros((len(atoms), 3), dtype=np.float64))
+    opt_zero = ase_opt.BFGS(atoms, logfile=None)
+    opt_zero.run(fmax=args.fmax_0k, steps=args.opt_steps)
+    fmax_final = float(
+        np.max(np.linalg.norm(atoms.get_forces(), axis=1))
+    )
+    _record(cur_step + 400, "ice_0K", override_temp=0.0)
+    print(
+        f"0 K BFGS converged: E={atoms.get_potential_energy():.3f} eV "
+        f"(vs ideal Ice Ih {e_ideal:.3f} eV), "
+        f"fmax={fmax_final:.4f} eV/A, q={raw_frames[-1][4]:.4f}"
+    )
+
+    # Select evenly spaced frames guaranteeing the first and final 0 K frames
     pick = np.linspace(0, len(raw_frames) - 1, args.n_frames, dtype=int)
+    pick[0] = 0
+    pick[-1] = len(raw_frames) - 1
     out_path = pathlib.Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8") as handle:
@@ -378,13 +436,14 @@ def run_simulation(args: argparse.Namespace) -> None:
             _write_extxyz_frame(handle, snap, t_ps, t_k, e_ev, q_val, stage)
     print(
         f"Wrote {len(pick)} frames to {out_path} "
-        f"(q_all: {raw_frames[0][4]:.3f} -> {raw_frames[-1][4]:.3f}, "
+        f"(T: {raw_frames[0][2]:.1f} K -> {raw_frames[-1][2]:.1f} K, "
+        f"q: {raw_frames[0][4]:.3f} -> {raw_frames[-1][4]:.3f}, "
         f"size={out_path.stat().st_size / 1024:.1f} KB)"
     )
 
 
 def main() -> None:
-    """Parses CLI options and launches MACE-MPA-0 water-to-ice MD."""
+    """Parses CLI options and launches MACE-MPA-0 water-to-0K-ice MD."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output",
@@ -395,12 +454,14 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--melt-temp", type=float, default=550.0)
     parser.add_argument("--melt-steps", type=int, default=1500)
-    parser.add_argument("--growth-temp", type=float, default=340.0)
+    parser.add_argument("--growth-temp", type=float, default=330.0)
     parser.add_argument("--growth-steps", type=int, default=12000)
-    parser.add_argument("--final-temp", type=float, default=240.0)
-    parser.add_argument("--cool-steps", type=int, default=3000)
-    parser.add_argument("--record-samples", type=int, default=120)
-    parser.add_argument("--n-frames", type=int, default=24)
+    parser.add_argument("--anneal-steps", type=int, default=8000)
+    parser.add_argument("--quench-steps", type=int, default=1500)
+    parser.add_argument("--fmax-0k", type=float, default=0.02)
+    parser.add_argument("--opt-steps", type=int, default=200)
+    parser.add_argument("--record-samples", type=int, default=140)
+    parser.add_argument("--n-frames", type=int, default=28)
     run_simulation(parser.parse_args())
 
 

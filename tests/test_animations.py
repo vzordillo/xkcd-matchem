@@ -169,18 +169,19 @@ def test_water_to_ice_hbonds_and_tetrahedral_order(
 ) -> None:
     """Verifies MLIP water_to_ice.xyz metadata, H-bonds, q(t), and rendering."""
     traj = xm.load_trajectory("water_to_ice.xyz")
-    assert len(traj) == 24
+    assert len(traj) == 28
     assert traj.times is not None
-    assert len(traj.times) == 24
+    assert len(traj.times) == 28
     assert traj.temperatures is not None
-    assert len(traj.temperatures) == 24
+    assert len(traj.temperatures) == 28
+    assert float(traj.temperatures[-1]) == 0.0
     assert traj.energies is not None
-    assert len(traj.energies) == 24
+    assert len(traj.energies) == 28
 
     q_vals = traj.tetrahedral_order("O")
-    assert q_vals.shape == (24,)
+    assert q_vals.shape == (28,)
     assert float(q_vals[-1]) > float(q_vals[0])
-    assert 0.85 <= float(q_vals[-1]) <= 1.0
+    assert 0.95 <= float(q_vals[-1]) <= 1.0
 
     hb_start = xm.infer_hbonds(traj[0])
     hb_end = xm.infer_hbonds(traj[-1])
@@ -206,7 +207,7 @@ def test_water_to_ice_hbonds_and_tetrahedral_order(
         "water_to_ice.xyz",
         tmp_path / "water_ice_hb.gif",
         fps=6,
-        stride=8,
+        stride=10,
         show_cell="clean",
         show_hbonds=True,
         dpi=72,

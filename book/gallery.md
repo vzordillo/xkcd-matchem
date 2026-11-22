@@ -13,7 +13,7 @@ Looping GIFs are rendered with `xm.animate_trajectory()`, `xm.animate_orbit()`, 
 
 ### MLIP Water → Ice I<sub>h</sub> Crystallization MD
 
-Direct-coexistence freezing of 32 H₂O molecules simulated locally with the **MACE-MPA-0** foundation potential (`scripts/simulate_water_to_ice_mlip.py`, bundled as `water_to_ice.xyz`), rendered with dynamic dashed hydrogen bonds (`show_hbonds=True`), live Errington–Debenedetti tetrahedral order $q(t)$, and exothermic potential energy $\Delta E(t)$ — see [Tutorial 15: Animated GIFs](tutorials/15_animations_md_orbits_and_isosurfaces.ipynb):
+Direct-coexistence freezing of 32 H₂O molecules simulated locally with the **MACE-MPA-0** foundation potential (`scripts/simulate_water_to_ice_mlip.py`, bundled as `water_to_ice.xyz`), cooled and annealed down to a stable **0 K** hexagonal Ice I<sub>h</sub> crystal (`q = 0.98`, `fmax = 0.02 eV/Å`), rendered with dynamic dashed hydrogen bonds (`show_hbonds=True`), live Errington–Debenedetti tetrahedral order $q(t)$, and exothermic potential energy $\Delta E(t)$ — see [Tutorial 15: Animated GIFs](tutorials/15_animations_md_orbits_and_isosurfaces.ipynb):
 
 ![MACE-MPA-0 water to ice Ih MD crystallization animation](_static/gallery/water_to_ice_md.gif)
 
