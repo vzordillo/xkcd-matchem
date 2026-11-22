@@ -30,21 +30,44 @@ __XM_FONT_CSS__
   --ui-accent: #1d4ed8;
 }
 * { box-sizing: border-box; }
-body {
+html, body {
   margin: 0;
+  padding: 0;
+  height: 100%;
   font-family: "__XM_FONT_FAMILY__", system-ui, -apple-system, sans-serif;
   background: var(--ui-bg);
   color: var(--ui-ink);
+  overflow-x: hidden;
 }
 .xm-shell {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 305px;
+  grid-template-columns: minmax(0, 1fr) 310px;
   gap: 12px;
   padding: 12px;
-  min-height: 640px;
+  height: 100vh;
+  min-height: 500px;
 }
-@media (max-width: 900px) {
-  .xm-shell { grid-template-columns: 1fr; }
+.xm-shell.sidebar-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+.xm-shell.sidebar-collapsed .xm-panel {
+  display: none;
+}
+.xm-drawer-backdrop {
+  display: none;
+}
+.xm-drawer-header {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ui-border);
+}
+.xm-drawer-title {
+  font-size: 1.04rem;
+  font-weight: 700;
 }
 .xm-stage-card {
   background: var(--ui-card);
@@ -54,7 +77,9 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  min-height: 540px;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
 }
 .xm-topbar {
   display: flex;
@@ -65,6 +90,12 @@ body {
   padding: 8px 12px;
   border-bottom: 1px solid var(--ui-border);
   background: #fbfcfe;
+}
+.xm-topbar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 .xm-title-block {
   display: flex;
@@ -207,14 +238,24 @@ body {
   color: #ffffff;
   border-color: #1d4ed8;
 }
+.xm-sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 700;
+}
 .xm-canvas-wrap {
   position: relative;
   flex: 1;
-  min-height: 440px;
+  min-height: 240px;
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   align-items: stretch;
 }
 canvas#xm-canvas {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   display: block;
@@ -222,10 +263,40 @@ canvas#xm-canvas {
   touch-action: none;
 }
 canvas#xm-canvas:active { cursor: grabbing; }
+.xm-lod-badge {
+  position: absolute;
+  left: 10px;
+  top: 8px;
+  font-size: 0.80rem;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #1e3a8a;
+  border: 1px solid rgba(29, 78, 216, 0.22);
+  pointer-events: none;
+  z-index: 4;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.xm-lod-badge.active-lod {
+  background: rgba(29, 78, 216, 0.92);
+  color: #ffffff;
+  border-color: rgba(29, 78, 216, 0.95);
+}
+.xm-lod-badge.dark {
+  background: rgba(24, 26, 31, 0.88);
+  color: #93c5fd;
+  border-color: rgba(147, 197, 253, 0.28);
+}
+.xm-lod-badge.dark.active-lod {
+  background: rgba(37, 99, 235, 0.92);
+  color: #ffffff;
+}
 .xm-hint {
   position: absolute;
   right: 10px;
   bottom: 8px;
+  max-width: calc(100% - 20px);
   font-size: 0.84rem;
   padding: 3px 9px;
   border-radius: 7px;
@@ -233,6 +304,9 @@ canvas#xm-canvas:active { cursor: grabbing; }
   color: #374151;
   border: 1px solid rgba(22, 24, 29, 0.08);
   pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .xm-hint.dark {
@@ -264,7 +338,9 @@ canvas#xm-canvas:active { cursor: grabbing; }
   flex-direction: column;
   gap: 11px;
   overflow-y: auto;
-  max-height: 760px;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
 }
 .xm-checks {
   display: grid;
@@ -278,6 +354,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
   align-items: center;
   gap: 5px;
   cursor: pointer;
+  min-width: 0;
 }
 .xm-group {
   border-bottom: 1px dashed #e2e6ef;
@@ -291,9 +368,10 @@ canvas#xm-canvas:active { cursor: grabbing; }
 }
 .xm-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px 8px;
   margin-bottom: 5px;
   font-size: 0.94rem;
 }
@@ -305,11 +383,16 @@ canvas#xm-canvas:active { cursor: grabbing; }
   border: 1px solid var(--ui-border);
   border-radius: 6px;
   background: #ffffff;
+  max-width: 170px;
 }
-.xm-row input[type="range"] { flex: 1; max-width: 155px; }
+.xm-row input[type="range"] {
+  flex: 1;
+  min-width: 96px;
+  max-width: 150px;
+}
 .xm-supercell {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 .xm-supercell label {
@@ -322,7 +405,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
   padding: 3px 6px;
 }
 .xm-supercell input {
-  width: 42px;
+  width: 38px;
   border: none;
   font-family: inherit;
   font-size: 0.95rem;
@@ -360,12 +443,73 @@ canvas#xm-canvas:active { cursor: grabbing; }
   border: 1px solid var(--ui-border);
   background: #f8fafc;
   resize: vertical;
-  min-height: 76px;
+  min-height: 82px;
+}
+@media (max-width: 780px) {
+  .xm-shell {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 8px;
+    gap: 8px;
+    height: 100vh;
+    min-height: 460px;
+  }
+  .xm-stage-card {
+    height: 100%;
+    min-height: 0;
+  }
+  .xm-canvas-wrap {
+    min-height: 220px;
+  }
+  .xm-drawer-header {
+    display: flex;
+  }
+  .xm-drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.30);
+    z-index: 30;
+    opacity: 1;
+    visibility: visible;
+  }
+  .xm-shell.xm-ready .xm-drawer-backdrop {
+    transition: opacity 0.18s ease, visibility 0.18s ease;
+  }
+  .xm-shell.sidebar-collapsed .xm-drawer-backdrop {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .xm-panel,
+  .xm-shell.sidebar-collapsed .xm-panel {
+    display: flex;
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    bottom: 8px;
+    height: auto;
+    width: min(320px, calc(100vw - 16px));
+    max-height: none;
+    z-index: 40;
+    box-shadow: -6px 0 24px rgba(15, 23, 42, 0.20);
+    transform: translateX(0);
+    opacity: 1;
+    visibility: visible;
+  }
+  .xm-shell.xm-ready .xm-panel {
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.18s ease, visibility 0.18s ease;
+  }
+  .xm-shell.sidebar-collapsed .xm-panel {
+    transform: translateX(calc(100% + 20px));
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
 }
 </style>
 </head>
 <body>
-<div class="xm-shell">
+<div class="xm-shell" id="xm-shell">
   <div class="xm-stage-card">
     <div class="xm-topbar">
       <div class="xm-title-block">
@@ -376,19 +520,29 @@ canvas#xm-canvas:active { cursor: grabbing; }
         <div class="xm-subtitle" id="xm-struct-meta">Interactive structure sandbox</div>
         <div class="xm-desc" id="xm-struct-desc" style="display:none;"></div>
       </div>
-      <div class="xm-preset-row" id="xm-view-buttons">
-        <button class="xm-btn" type="button" data-view="isometric">Iso</button>
-        <button class="xm-btn" type="button" data-view="perspective">Persp</button>
-        <button class="xm-btn" type="button" data-view="front">Front</button>
-        <button class="xm-btn" type="button" data-view="side">Side</button>
-        <button class="xm-btn" type="button" data-view="top">Top</button>
-        <button class="xm-btn" type="button" data-view="a">a</button>
-        <button class="xm-btn" type="button" data-view="b">b</button>
-        <button class="xm-btn" type="button" data-view="c">c</button>
-        <button class="xm-btn" type="button" data-view="a*">a*</button>
-        <button class="xm-btn" type="button" data-view="b*">b*</button>
-        <button class="xm-btn" type="button" data-view="c*">c*</button>
-        <button class="xm-btn" type="button" id="xm-reset-view" title="Reset camera (R)">Reset</button>
+      <div class="xm-topbar-controls">
+        <div class="xm-preset-row" id="xm-view-buttons">
+          <button class="xm-btn" type="button" data-view="isometric">Iso</button>
+          <button class="xm-btn" type="button" data-view="perspective">Persp</button>
+          <button class="xm-btn" type="button" data-view="front">Front</button>
+          <button class="xm-btn" type="button" data-view="side">Side</button>
+          <button class="xm-btn" type="button" data-view="top">Top</button>
+          <button class="xm-btn" type="button" data-view="a">a</button>
+          <button class="xm-btn" type="button" data-view="b">b</button>
+          <button class="xm-btn" type="button" data-view="c">c</button>
+          <button class="xm-btn" type="button" data-view="a*">a*</button>
+          <button class="xm-btn" type="button" data-view="b*">b*</button>
+          <button class="xm-btn" type="button" data-view="c*">c*</button>
+          <button class="xm-btn" type="button" id="xm-reset-view" title="Reset camera (R)">Reset</button>
+        </div>
+        <button
+          class="xm-btn xm-sidebar-toggle"
+          type="button"
+          id="xm-sidebar-toggle"
+          aria-controls="xm-sidebar"
+          aria-expanded="true"
+          title="Toggle studio controls drawer"
+        >Controls</button>
       </div>
     </div>
     <div class="xm-scene-bar" id="xm-scene-bar" role="region" aria-label="Quick Scene Switcher" style="display:none;">
@@ -408,23 +562,31 @@ canvas#xm-canvas:active { cursor: grabbing; }
         <button class="xm-scene-chip xm-iso-chip" type="button" data-iso-shade="outline" aria-pressed="false">Outline</button>
       </div>
     </div>
-    <div class="xm-canvas-wrap">
+    <div class="xm-canvas-wrap" id="xm-canvas-wrap">
       <canvas id="xm-canvas"></canvas>
+      <div class="xm-lod-badge" id="xm-lod-badge" style="display:none;" aria-live="polite"></div>
       <div class="xm-hint" id="xm-camera-readout">
         Drag: orbit | Shift+Drag: roll | Wheel: zoom | R: reset
       </div>
     </div>
     <div class="xm-actions">
-      <button class="xm-btn" id="xm-copy-py">Copy Python</button>
-      <button class="xm-btn" id="xm-dl-png">Download PNG</button>
-      <button class="xm-btn" id="xm-dl-svg">Download SVG</button>
+      <button class="xm-btn" type="button" id="xm-copy-py">Copy Python</button>
+      <button class="xm-btn" type="button" id="xm-dl-png">Download PNG</button>
+      <button class="xm-btn" type="button" id="xm-dl-svg">Download SVG</button>
       <label class="xm-btn" for="xm-file-input">Open Structure File</label>
       <input id="xm-file-input" type="file" accept=".xyz,.poscar,.vasp,.cif,.pdb,.sdf,.mol" style="display:none" />
       <span class="xm-status" id="xm-status"></span>
     </div>
   </div>
 
-  <div class="xm-panel">
+  <div class="xm-drawer-backdrop" id="xm-drawer-backdrop" aria-hidden="true"></div>
+
+  <div class="xm-panel" id="xm-sidebar" role="region" aria-label="Studio Controls">
+    <div class="xm-drawer-header">
+      <span class="xm-drawer-title">Studio Controls</span>
+      <button class="xm-btn" type="button" id="xm-sidebar-close" aria-label="Close controls drawer">Done</button>
+    </div>
+
     <div class="xm-group" id="xm-sample-group" style="display:none;">
       <div class="xm-group-title">Bundled Samples</div>
       <div class="xm-row">
@@ -436,7 +598,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     <div class="xm-group" id="xm-traj-group" style="display:none;">
       <div class="xm-group-title">Trajectory Playback</div>
       <div class="xm-row">
-        <button class="xm-btn" id="xm-traj-play">Play</button>
+        <button class="xm-btn" type="button" id="xm-traj-play">Play</button>
         <input id="xm-traj-slider" type="range" min="0" max="0" step="1" value="0" />
         <select id="xm-traj-fps" style="width:74px;">
           <option value="4">4 fps</option>
@@ -451,6 +613,20 @@ canvas#xm-canvas:active { cursor: grabbing; }
 
     <div class="xm-group">
       <div class="xm-group-title">Appearance</div>
+      <div class="xm-row">
+        <label for="xm-preset">Theme Preset</label>
+        <select id="xm-preset">
+          <option value="classic">classic</option>
+          <option value="notebook">notebook</option>
+          <option value="poster">poster</option>
+          <option value="minimal">minimal</option>
+          <option value="dark_chalk">dark_chalk</option>
+          <option value="blueprint">blueprint</option>
+          <option value="talk_16x9">talk_16x9</option>
+          <option value="talk_dark">talk_dark</option>
+          <option value="graphical_abstract">graphical_abstract</option>
+        </select>
+      </div>
       <div class="xm-row">
         <label for="xm-style">Style</label>
         <select id="xm-style">
@@ -471,11 +647,11 @@ canvas#xm-canvas:active { cursor: grabbing; }
       </div>
       <div class="xm-row">
         <label>Background</label>
-        <div style="display:flex;gap:4px;align-items:center;">
-          <button class="xm-btn" data-bg="#FFFFFF" title="Pure white">White</button>
-          <button class="xm-btn" data-bg="#FAF6EE" title="Warm paper">Paper</button>
-          <button class="xm-btn" data-bg="#181A1F" title="Chalkboard">Chalk</button>
-          <input type="color" id="xm-bg-color" value="#ffffff" />
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+          <button class="xm-btn" type="button" data-bg="#FFFFFF" title="Pure white">White</button>
+          <button class="xm-btn" type="button" data-bg="#FAF6EE" title="Warm paper">Paper</button>
+          <button class="xm-btn" type="button" data-bg="#181A1F" title="Chalkboard">Chalk</button>
+          <input type="color" id="xm-bg-color" value="#faf6ee" aria-label="Canvas background color" />
         </div>
       </div>
       <div class="xm-row">
@@ -497,12 +673,19 @@ canvas#xm-canvas:active { cursor: grabbing; }
       </div>
       <div class="xm-checks">
         <label><input type="checkbox" id="xm-show-bonds" checked /> Bonds</label>
+        <label><input type="checkbox" id="xm-show-hbonds" /> H-Bonds</label>
+        <label><input type="checkbox" id="xm-show-labels" /> Labels</label>
         <label><input type="checkbox" id="xm-boundary-atoms" checked /> Boundary</label>
         <label><input type="checkbox" id="xm-center-cell" /> Center</label>
         <label><input type="checkbox" id="xm-legend" checked /> Legend</label>
         <label><input type="checkbox" id="xm-show-vectors" checked /> Vectors</label>
         <label><input type="checkbox" id="xm-show-iso" checked /> Isosurface</label>
+        <label id="xm-full-detail-wrap" title="Keep full xkcd stroke detail while dragging large systems"><input type="checkbox" id="xm-full-detail" /> Always full detail</label>
       </div>
+    </div>
+
+    <div class="xm-group" id="xm-iso-group" style="display:none;">
+      <div class="xm-group-title">3D Isosurface</div>
       <div class="xm-row">
         <label for="xm-iso-shade">Iso Shading</label>
         <select id="xm-iso-shade">
@@ -515,6 +698,26 @@ canvas#xm-canvas:active { cursor: grabbing; }
           <option value="solid">Smooth Blending</option>
           <option value="outline">Outline Only</option>
         </select>
+      </div>
+      <div class="xm-row" id="xm-iso-level-row">
+        <label for="xm-iso-level">Isovalue</label>
+        <input id="xm-iso-level" type="range" min="0.01" max="0.5" step="0.005" value="0.10" />
+        <span id="xm-iso-level-val">0.100</span>
+      </div>
+      <div class="xm-row">
+        <label for="xm-iso-alpha">Opacity</label>
+        <input id="xm-iso-alpha" type="range" min="0.08" max="0.80" step="0.02" value="0.28" />
+        <span id="xm-iso-alpha-val">0.28</span>
+      </div>
+      <div class="xm-row">
+        <label>Lobe Colors</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <label class="xm-swatch" title="Positive lobe color"><input type="color" id="xm-iso-pos-color" value="#0072b2" /><span>+</span></label>
+          <label class="xm-swatch" title="Negative lobe color"><input type="color" id="xm-iso-neg-color" value="#d55e00" /><span>&minus;</span></label>
+        </div>
+      </div>
+      <div class="xm-checks">
+        <label><input type="checkbox" id="xm-iso-atoms" checked /> Show Atoms</label>
       </div>
     </div>
 
@@ -536,9 +739,14 @@ canvas#xm-canvas:active { cursor: grabbing; }
         <span id="xm-scale-val">1.00</span>
       </div>
       <div class="xm-row">
+        <label for="xm-bond-scale">Bond Scale</label>
+        <input id="xm-bond-scale" type="range" min="0.7" max="1.7" step="0.05" value="1.20" />
+        <span id="xm-bond-scale-val">1.20</span>
+      </div>
+      <div class="xm-row">
         <label for="xm-wiggle">xkcd Wiggle</label>
-        <input id="xm-wiggle" type="range" min="0" max="2.5" step="0.1" value="0.9" />
-        <span id="xm-wiggle-val">0.9</span>
+        <input id="xm-wiggle" type="range" min="0" max="2.5" step="0.05" value="1.0" />
+        <span id="xm-wiggle-val">1.00</span>
       </div>
     </div>
 
@@ -568,6 +776,45 @@ canvas#xm-canvas:active { cursor: grabbing; }
   const PAYLOAD = __XM_PAYLOAD__;
   const ELEM_TABLE = PAYLOAD.elements_table || {};
   const PALETTES = PAYLOAD.palettes || {};
+  const PRESETS_TABLE = PAYLOAD.presets_table || {
+    classic: { bg: "#FFFFFF", wiggle: 1.0 },
+    notebook: { bg: "#FFFFFF", wiggle: 0.85 },
+    poster: { bg: "#FFFFFF", wiggle: 0.8 },
+    minimal: { bg: "#FFFFFF", wiggle: 0.45 },
+    dark_chalk: { bg: "#181A1F", wiggle: 1.05 },
+    blueprint: { bg: "#102A43", wiggle: 0.85 },
+    talk_16x9: { bg: "#FFFFFF", wiggle: 0.85 },
+    talk_dark: { bg: "#181A1F", wiggle: 0.95 },
+    graphical_abstract: { bg: "#FFFFFF", wiggle: 0.75 },
+  };
+
+  const NARROW_BREAKPOINT = 780;
+  const LARGE_SYSTEM_THRESHOLD = 400;
+  const LOD_SETTLE_MS = 120;
+  const DEFAULT_BOND_SCALE = 1.20;
+  const DEFAULT_ISO_ALPHA = 0.28;
+  const DEFAULT_ISO_POS_COLOR = "#0072B2";
+  const DEFAULT_ISO_NEG_COLOR = "#D55E00";
+
+  const KIND_BOND = 0;
+  const KIND_HALF_A = 1;
+  const KIND_HALF_B = 2;
+  const KIND_ATOM = 3;
+  const KIND_CELL_EDGE = 4;
+  const KIND_EXTRA = 5;
+
+  const KUHN_TETS = [
+    [0, 5, 1, 6],
+    [0, 1, 2, 6],
+    [0, 2, 3, 6],
+    [0, 3, 7, 6],
+    [0, 7, 4, 6],
+    [0, 4, 5, 6],
+  ];
+  const CUBE_OFFS = [
+    [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+    [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+  ];
 
   const samples = PAYLOAD.samples && PAYLOAD.samples.length
     ? PAYLOAD.samples
@@ -575,36 +822,205 @@ canvas#xm-canvas:active { cursor: grabbing; }
   let currentSample = samples[0];
   let baseData = cloneStruct(currentSample);
 
+  const initialPreset = currentSample.preset || "classic";
+  const initialPresetCfg = PRESETS_TABLE[initialPreset] || PRESETS_TABLE.classic;
+  const initialIsoColors = (currentSample.iso_colors && currentSample.iso_colors.length >= 2)
+    ? currentSample.iso_colors
+    : [DEFAULT_ISO_POS_COLOR, DEFAULT_ISO_NEG_COLOR];
+
   const state = {
     azimuth: (currentSample.camera && currentSample.camera.azimuth) ?? -118,
     elevation: (currentSample.camera && currentSample.camera.elevation) ?? 24,
     roll: (currentSample.camera && currentSample.camera.roll) ?? 0,
     perspective: (currentSample.camera && currentSample.camera.perspective) ?? 0,
     zoom: (currentSample.camera && currentSample.camera.zoom) ?? 1.0,
+    preset: initialPreset,
     style: currentSample.style || "ball_and_stick",
     palette: currentSample.palette_name || "xkcd",
     customColors: Object.assign({}, currentSample.custom_colors || {}),
-    background: currentSample.background || "#FFFFFF",
+    background: (currentSample.background || initialPresetCfg.bg || "#FAF6EE").toUpperCase(),
     cellMode: resolveInitialCellMode(currentSample.show_cell),
-    axesMode: resolveInitialAxesMode(currentSample.show_cell),
-    showBonds: true,
+    axesMode: resolveInitialAxesMode(currentSample.show_cell, currentSample.crystal_axes),
+    showBonds: currentSample.show_bonds !== undefined ? Boolean(currentSample.show_bonds) : true,
+    showHbonds: Boolean(currentSample.show_hbonds),
+    showLabels: Boolean(currentSample.show_labels),
     boundaryAtoms: true,
     centerInCell: false,
     showLegend: true,
     showVectors: true,
     showIso: true,
+    showIsoAtoms: true,
     isoShade: currentSample.iso_shade || "solid",
+    isoLevel: currentSample.iso_level ?? null,
+    isoAlpha: currentSample.iso_alpha ?? DEFAULT_ISO_ALPHA,
+    isoPosColor: String(initialIsoColors[0] || DEFAULT_ISO_POS_COLOR).toUpperCase(),
+    isoNegColor: String(initialIsoColors[1] || DEFAULT_ISO_NEG_COLOR).toUpperCase(),
+    alwaysFullDetail: false,
     frameIdx: 0,
     playing: false,
     fps: 8,
     scale: currentSample.scale || 1.0,
-    wiggle: 0.9,
+    bondScale: currentSample.bond_scale || DEFAULT_BOND_SCALE,
+    wiggle: initialPresetCfg.wiggle ?? 1.0,
     supercell: [1, 1, 1],
   };
-  let playTimer = null;
 
+  let playTimer = null;
+  let isDragging = false;
+  let isWheelInteracting = false;
+  let lodSettleTimer = null;
+  let rafPending = false;
+  let resizeRaf = 0;
+
+  let cachedScene = null;
+  let sceneDirty = true;
+
+  // Preallocated TypedArray hot-loop buffers for 1,000-5,000+ atom smooth orbit
+  let atomCap = 0;
+  let projX = new Float32Array(0);
+  let projY = new Float32Array(0);
+  let projZ = new Float32Array(0);
+  let screenX = new Float32Array(0);
+  let screenY = new Float32Array(0);
+  let atomRadBuf = new Float32Array(0);
+
+  let itemCap = 0;
+  let itemDepth = new Float32Array(0);
+  let itemCode = new Int32Array(0);
+
+  let stubCap = 0;
+  let stubAX = new Float32Array(0);
+  let stubAY = new Float32Array(0);
+  let stubBX = new Float32Array(0);
+  let stubBY = new Float32Array(0);
+
+  const shellEl = document.getElementById("xm-shell");
+  const sidebarEl = document.getElementById("xm-sidebar");
+  const sidebarToggleBtn = document.getElementById("xm-sidebar-toggle");
+  const sidebarCloseBtn = document.getElementById("xm-sidebar-close");
+  const backdropEl = document.getElementById("xm-drawer-backdrop");
+  const canvasWrap = document.getElementById("xm-canvas-wrap");
   const canvas = document.getElementById("xm-canvas");
   const ctx = canvas.getContext("2d");
+
+  let sidebarOpen = window.innerWidth > NARROW_BREAKPOINT;
+
+  function ensureAtomBuffers(n) {
+    if (n <= atomCap) return;
+    atomCap = Math.max(n, Math.ceil(atomCap * 1.5), 256);
+    projX = new Float32Array(atomCap);
+    projY = new Float32Array(atomCap);
+    projZ = new Float32Array(atomCap);
+    screenX = new Float32Array(atomCap);
+    screenY = new Float32Array(atomCap);
+    atomRadBuf = new Float32Array(atomCap);
+  }
+
+  function ensureItemBuffers(n) {
+    if (n <= itemCap) return;
+    itemCap = Math.max(n, Math.ceil(itemCap * 1.5), 512);
+    itemDepth = new Float32Array(itemCap);
+    itemCode = new Int32Array(itemCap);
+  }
+
+  function ensureStubBuffers(n) {
+    if (n <= stubCap) return;
+    stubCap = Math.max(n, Math.ceil(stubCap * 1.5), 128);
+    stubAX = new Float32Array(stubCap);
+    stubAY = new Float32Array(stubCap);
+    stubBX = new Float32Array(stubCap);
+    stubBY = new Float32Array(stubCap);
+  }
+
+  function sortDepthQueue(depths, codes, count) {
+    if (count <= 1) return;
+    const stackLo = new Int32Array(64);
+    const stackHi = new Int32Array(64);
+    let sp = 0;
+    stackLo[0] = 0;
+    stackHi[0] = count - 1;
+    while (sp >= 0) {
+      let lo = stackLo[sp];
+      let hi = stackHi[sp--];
+      while (hi - lo > 16) {
+        const mid = (lo + hi) >> 1;
+        if (depths[mid] < depths[lo]) {
+          const td = depths[lo]; depths[lo] = depths[mid]; depths[mid] = td;
+          const tc = codes[lo]; codes[lo] = codes[mid]; codes[mid] = tc;
+        }
+        if (depths[hi] < depths[lo]) {
+          const td = depths[lo]; depths[lo] = depths[hi]; depths[hi] = td;
+          const tc = codes[lo]; codes[lo] = codes[hi]; codes[hi] = tc;
+        }
+        if (depths[hi] < depths[mid]) {
+          const td = depths[mid]; depths[mid] = depths[hi]; depths[hi] = td;
+          const tc = codes[mid]; codes[mid] = codes[hi]; codes[hi] = tc;
+        }
+        const pivotD = depths[mid];
+        let i = lo;
+        let j = hi;
+        while (i <= j) {
+          while (depths[i] < pivotD) i++;
+          while (depths[j] > pivotD) j--;
+          if (i <= j) {
+            const td = depths[i]; depths[i] = depths[j]; depths[j] = td;
+            const tc = codes[i]; codes[i] = codes[j]; codes[j] = tc;
+            i++;
+            j--;
+          }
+        }
+        if (j - lo < hi - i) {
+          if (i < hi) { stackLo[++sp] = i; stackHi[sp] = hi; }
+          hi = j;
+        } else {
+          if (lo < j) { stackLo[++sp] = lo; stackHi[sp] = j; }
+          lo = i;
+        }
+      }
+      for (let i = lo + 1; i <= hi; i++) {
+        const kd = depths[i];
+        const kc = codes[i];
+        let j = i - 1;
+        while (j >= lo && depths[j] > kd) {
+          depths[j + 1] = depths[j];
+          codes[j + 1] = codes[j];
+          j--;
+        }
+        depths[j + 1] = kd;
+        codes[j + 1] = kc;
+      }
+    }
+  }
+
+  function invalidateScene() {
+    sceneDirty = true;
+  }
+
+  function scheduleResizeRedraw() {
+    if (resizeRaf) cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(() => {
+      resizeRaf = 0;
+      renderFrame();
+    });
+  }
+
+  function scheduleInteractiveRender() {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      renderFrame();
+    });
+  }
+
+  function setSidebarOpen(open) {
+    sidebarOpen = Boolean(open);
+    shellEl.classList.toggle("sidebar-collapsed", !sidebarOpen);
+    sidebarToggleBtn.setAttribute("aria-expanded", sidebarOpen ? "true" : "false");
+    sidebarToggleBtn.classList.toggle("active", sidebarOpen);
+    sidebarEl.setAttribute("aria-hidden", sidebarOpen ? "false" : "true");
+    scheduleResizeRedraw();
+  }
 
   function resolveInitialCellMode(val) {
     if (val === false || val === "off" || val === "none") return "off";
@@ -612,10 +1028,18 @@ canvas#xm-canvas:active { cursor: grabbing; }
     return "box";
   }
 
-  function resolveInitialAxesMode(val) {
-    if (val === false || val === "off" || val === "none" || val === "clean") return "off";
-    if (val === "tripod" || val === "origin") return "origin";
-    return "corner";
+  function resolveInitialAxesMode(showCellVal, explicitAxes) {
+    if (explicitAxes !== undefined && explicitAxes !== null) {
+      if (explicitAxes === false || explicitAxes === "off" || explicitAxes === "none") return "off";
+      if (explicitAxes === "origin" || explicitAxes === "tripod") return "origin";
+      if (explicitAxes === "edges") return "edges";
+      return "corner";
+    }
+    if (showCellVal === false || showCellVal === "off" || showCellVal === "none" || showCellVal === "clean") {
+      return "off";
+    }
+    if (showCellVal === "tripod" || showCellVal === "origin") return "origin";
+    return "edges";
   }
 
   function cloneStruct(src) {
@@ -656,7 +1080,6 @@ canvas#xm-canvas:active { cursor: grabbing; }
   }
 
   function matVec3T(m, v) {
-    // v @ inv(m) or row vec * m
     return [
       v[0] * m[0][0] + v[1] * m[1][0] + v[2] * m[2][0],
       v[0] * m[0][1] + v[1] * m[1][1] + v[2] * m[2][1],
@@ -665,12 +1088,16 @@ canvas#xm-canvas:active { cursor: grabbing; }
   }
 
   function isDarkBg(hex) {
-    const c = hex.replace("#", "");
+    const c = String(hex || "").replace("#", "");
     if (c.length !== 6) return false;
     const r = parseInt(c.slice(0, 2), 16) / 255;
     const g = parseInt(c.slice(2, 4), 16) / 255;
     const b = parseInt(c.slice(4, 6), 16) / 255;
     return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.42;
+  }
+
+  function contrastLabelColor(hex) {
+    return isDarkBg(hex) ? "#FFFFFF" : "#111111";
   }
 
   function elementColor(sym) {
@@ -691,10 +1118,341 @@ canvas#xm-canvas:active { cursor: grabbing; }
     return Math.max(0.24, Math.min(0.58, 0.18 + 0.27 * rec.cov)) * sc;
   }
 
+  function extractIsoMeshJS(gridObj, level, colorHex, signVal) {
+    const [nx, ny, nz] = gridObj.shape;
+    const data = gridObj.data;
+    const orig = gridObj.origin;
+    const vv = gridObj.voxel_vectors;
+    const outSign = level >= 0 ? 1 : -1;
+    const edgeVertIdx = new Map();
+    const vertices = [];
+    const faces = [];
+    const normals = [];
+    const nTot = nx * ny * nz;
+
+    const flatToWorld = (fIdx) => {
+      const ix = Math.floor(fIdx / (ny * nz));
+      const rem = fIdx % (ny * nz);
+      const iy = Math.floor(rem / nz);
+      const iz = rem % nz;
+      return [
+        orig[0] + ix * vv[0][0] + iy * vv[1][0] + iz * vv[2][0],
+        orig[1] + ix * vv[0][1] + iy * vv[1][1] + iz * vv[2][1],
+        orig[2] + ix * vv[0][2] + iy * vv[1][2] + iz * vv[2][2],
+      ];
+    };
+
+    const getEdgeVert = (fa, fb) => {
+      const u = fa < fb ? fa : fb;
+      const v = fa < fb ? fb : fa;
+      const key = u * nTot + v;
+      const hit = edgeVertIdx.get(key);
+      if (hit !== undefined) return hit;
+      const vu = data[u], vvVal = data[v];
+      const dv = vvVal - vu;
+      const alpha = Math.max(0, Math.min(1, (level - vu) / (Math.abs(dv) < 1e-15 ? 1e-15 : dv)));
+      const pu = flatToWorld(u);
+      const pv = flatToWorld(v);
+      const idx = vertices.length;
+      vertices.push([
+        pu[0] + alpha * (pv[0] - pu[0]),
+        pu[1] + alpha * (pv[1] - pu[1]),
+        pu[2] + alpha * (pv[2] - pu[2]),
+      ]);
+      edgeVertIdx.set(key, idx);
+      return idx;
+    };
+
+    const emitTri = (i0, i1, i2, dirVec) => {
+      const a = vertices[i0], b = vertices[i1], c = vertices[i2];
+      let cr = cross3([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
+      let f1 = i1, f2 = i2;
+      if (dot3(cr, dirVec) < 0) {
+        f1 = i2; f2 = i1;
+        cr = [-cr[0], -cr[1], -cr[2]];
+      }
+      const len = norm3(cr);
+      if (len <= 1e-12) return;
+      faces.push([i0, f1, f2]);
+      normals.push([cr[0] / len, cr[1] / len, cr[2] / len]);
+    };
+
+    const cFlat = new Int32Array(8);
+    const cVal = new Float64Array(8);
+    for (let ix = 0; ix < nx - 1; ix++) {
+      for (let iy = 0; iy < ny - 1; iy++) {
+        for (let iz = 0; iz < nz - 1; iz++) {
+          let nIn = 0;
+          for (let c = 0; c < 8; c++) {
+            const off = CUBE_OFFS[c];
+            const fi = (ix + off[0]) * ny * nz + (iy + off[1]) * nz + (iz + off[2]);
+            cFlat[c] = fi;
+            cVal[c] = data[fi];
+            if (cVal[c] >= level) nIn++;
+          }
+          if (nIn === 0 || nIn === 8) continue;
+          for (let t = 0; t < 6; t++) {
+            const tet = KUHN_TETS[t];
+            const inList = [];
+            const outList = [];
+            for (let k = 0; k < 4; k++) {
+              const ci = tet[k];
+              if (cVal[ci] >= level) inList.push(cFlat[ci]);
+              else outList.push(cFlat[ci]);
+            }
+            if (inList.length === 0 || inList.length === 4) continue;
+            if (inList.length === 1 || inList.length === 3) {
+              const loneIn = inList.length === 1;
+              const u = loneIn ? inList[0] : outList[0];
+              const rest = loneIn ? outList : inList;
+              const pu = flatToWorld(u);
+              const pr0 = flatToWorld(rest[0]), pr1 = flatToWorld(rest[1]), pr2 = flatToWorld(rest[2]);
+              const rMean = [(pr0[0] + pr1[0] + pr2[0]) / 3, (pr0[1] + pr1[1] + pr2[1]) / 3, (pr0[2] + pr1[2] + pr2[2]) / 3];
+              const dir = loneIn
+                ? [(rMean[0] - pu[0]) * outSign, (rMean[1] - pu[1]) * outSign, (rMean[2] - pu[2]) * outSign]
+                : [(pu[0] - rMean[0]) * outSign, (pu[1] - rMean[1]) * outSign, (pu[2] - rMean[2]) * outSign];
+              emitTri(getEdgeVert(u, rest[0]), getEdgeVert(u, rest[1]), getEdgeVert(u, rest[2]), dir);
+            } else {
+              const ia = inList[0], ib = inList[1], oc = outList[0], od = outList[1];
+              const pia = flatToWorld(ia), pib = flatToWorld(ib), poc = flatToWorld(oc), pod = flatToWorld(od);
+              const dir = [
+                (0.5 * (poc[0] + pod[0]) - 0.5 * (pia[0] + pib[0])) * outSign,
+                (0.5 * (poc[1] + pod[1]) - 0.5 * (pia[1] + pib[1])) * outSign,
+                (0.5 * (poc[2] + pod[2]) - 0.5 * (pia[2] + pib[2])) * outSign,
+              ];
+              const eAC = getEdgeVert(ia, oc), eAD = getEdgeVert(ia, od);
+              const eBC = getEdgeVert(ib, oc), eBD = getEdgeVert(ib, od);
+              emitTri(eAC, eAD, eBD, dir);
+              emitTri(eAC, eBD, eBC, dir);
+            }
+          }
+        }
+      }
+    }
+    return { color: colorHex, sign: signVal, vertices, faces, normals };
+  }
+
+  function resolveActiveIsosurfaces() {
+    if (!baseData.isosurfaces || !baseData.isosurfaces.length) return [];
+    const baseLvl = baseData.iso_level ?? null;
+    const grid = baseData.iso_grid;
+    if (grid && state.isoLevel !== null && baseLvl !== null && Math.abs(state.isoLevel - baseLvl) > 1e-4) {
+      const lvl = Math.max(1e-4, Math.abs(state.isoLevel));
+      const out = [];
+      const mPos = extractIsoMeshJS(grid, lvl, state.isoPosColor, 1);
+      if (mPos.faces.length) out.push(mPos);
+      if (baseData.iso_symmetric) {
+        const mNeg = extractIsoMeshJS(grid, -lvl, state.isoNegColor, -1);
+        if (mNeg.faces.length) out.push(mNeg);
+      }
+      return out;
+    }
+    return baseData.isosurfaces.map((iso, idx) => {
+      const isNeg = iso.sign !== undefined ? iso.sign < 0 : idx > 0;
+      return Object.assign({}, iso, {
+        color: isNeg ? state.isoNegColor : state.isoPosColor,
+      });
+    });
+  }
+
+  // O(N) spatial-hash-grid covalent bond inference supporting 5,000+ atoms
+  function inferBondsJS(symbols, positions, cell, pbc, bondScaleVal) {
+    const n = symbols.length;
+    const bonds = [];
+    if (n < 2 || n > 12000) return bonds;
+    const sc = bondScaleVal || state.bondScale || DEFAULT_BOND_SCALE;
+    const maxDist = 3.6;
+    const minDist = 0.4;
+    const inv = cell ? inv3x3(cell) : null;
+    const usePbc = Boolean(cell && inv && pbc && (pbc[0] || pbc[1] || pbc[2]));
+
+    const radii = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      radii[i] = (ELEM_TABLE[symbols[i]] || { cov: 0.77 }).cov;
+    }
+
+    if (!usePbc) {
+      const h = maxDist;
+      const buckets = new Map();
+      for (let i = 0; i < n; i++) {
+        const p = positions[i];
+        const gx = Math.floor(p[0] / h);
+        const gy = Math.floor(p[1] / h);
+        const gz = Math.floor(p[2] / h);
+        const key = `${gx},${gy},${gz}`;
+        let list = buckets.get(key);
+        if (!list) { list = []; buckets.set(key, list); }
+        list.push(i);
+      }
+      for (let i = 0; i < n; i++) {
+        const pi = positions[i];
+        const ri = radii[i];
+        const gx = Math.floor(pi[0] / h);
+        const gy = Math.floor(pi[1] / h);
+        const gz = Math.floor(pi[2] / h);
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dz = -1; dz <= 1; dz++) {
+              const list = buckets.get(`${gx + dx},${gy + dy},${gz + dz}`);
+              if (!list) continue;
+              for (let m = 0; m < list.length; m++) {
+                const j = list[m];
+                if (j <= i) continue;
+                const cutoff = Math.min(maxDist, sc * (ri + radii[j]));
+                const vx = positions[j][0] - pi[0];
+                const vy = positions[j][1] - pi[1];
+                const vz = positions[j][2] - pi[2];
+                const d2 = vx * vx + vy * vy + vz * vz;
+                if (d2 >= minDist * minDist && d2 <= cutoff * cutoff) {
+                  bonds.push([i, j, 1.0, [0, 0, 0]]);
+                }
+              }
+            }
+          }
+        }
+      }
+      return bonds;
+    }
+
+    // Periodic cell: wrap onto [0, 1) and bucket shifted ghost sites within maxDist
+    const rx = pbc[0] ? [-1, 0, 1] : [0];
+    const ry = pbc[1] ? [-1, 0, 1] : [0];
+    const rz = pbc[2] ? [-1, 0, 1] : [0];
+    const h = maxDist;
+    const buckets = new Map();
+    const wrapped = new Array(n);
+    const wrapShift = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const f = matVec3T(inv, positions[i]);
+      const ws = [0, 0, 0];
+      const fw = [f[0], f[1], f[2]];
+      for (let ax = 0; ax < 3; ax++) {
+        if (pbc[ax]) {
+          let w = ((f[ax] % 1) + 1) % 1;
+          if (w < 1e-12 || 1 - w < 1e-12) w = 0;
+          ws[ax] = Math.round(f[ax] - w);
+          fw[ax] = w;
+        }
+      }
+      wrapShift[i] = ws;
+      wrapped[i] = matVec3T(cell, fw);
+    }
+    for (const sx of rx) {
+      for (const sy of ry) {
+        for (const sz of rz) {
+          const sv = [
+            sx * cell[0][0] + sy * cell[1][0] + sz * cell[2][0],
+            sx * cell[0][1] + sy * cell[1][1] + sz * cell[2][1],
+            sx * cell[0][2] + sy * cell[1][2] + sz * cell[2][2],
+          ];
+          for (let j = 0; j < n; j++) {
+            const px = wrapped[j][0] + sv[0];
+            const py = wrapped[j][1] + sv[1];
+            const pz = wrapped[j][2] + sv[2];
+            const key = `${Math.floor(px / h)},${Math.floor(py / h)},${Math.floor(pz / h)}`;
+            let list = buckets.get(key);
+            if (!list) { list = []; buckets.set(key, list); }
+            list.push({ j, px, py, pz, sx, sy, sz });
+          }
+        }
+      }
+    }
+    const seen = new Set();
+    for (let i = 0; i < n; i++) {
+      const pi = wrapped[i];
+      const ri = radii[i];
+      const gx = Math.floor(pi[0] / h);
+      const gy = Math.floor(pi[1] / h);
+      const gz = Math.floor(pi[2] / h);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dz = -1; dz <= 1; dz++) {
+            const list = buckets.get(`${gx + dx},${gy + dy},${gz + dz}`);
+            if (!list) continue;
+            for (let m = 0; m < list.length; m++) {
+              const rec = list[m];
+              const j = rec.j;
+              const nsx = rec.sx + wrapShift[i][0] - wrapShift[j][0];
+              const nsy = rec.sy + wrapShift[i][1] - wrapShift[j][1];
+              const nsz = rec.sz + wrapShift[i][2] - wrapShift[j][2];
+              if (i === j && nsx === 0 && nsy === 0 && nsz === 0) continue;
+              const cutoff = Math.min(maxDist, sc * (ri + radii[j]));
+              const vx = rec.px - pi[0], vy = rec.py - pi[1], vz = rec.pz - pi[2];
+              const d2 = vx * vx + vy * vy + vz * vz;
+              if (d2 < minDist * minDist || d2 > cutoff * cutoff) continue;
+              let ci = i, cj = j, csx = nsx, csy = nsy, csz = nsz;
+              if (i > j || (i === j && (nsx < 0 || (nsx === 0 && (nsy < 0 || (nsy === 0 && nsz < 0)))))) {
+                ci = j; cj = i; csx = -nsx; csy = -nsy; csz = -nsz;
+              }
+              const uKey = `${ci}:${cj}:${csx},${csy},${csz}`;
+              if (!seen.has(uKey)) {
+                seen.add(uKey);
+                bonds.push([ci, cj, 1.0, [csx, csy, csz]]);
+              }
+            }
+          }
+        }
+      }
+    }
+    return bonds;
+  }
+
+  function inferHBondsJS(symbols, positions) {
+    const n = symbols.length;
+    if (n < 3 || n > 4000) return [];
+    const electroneg = new Set(["O", "N", "F"]);
+    const h = 2.4;
+    const buckets = new Map();
+    for (let i = 0; i < n; i++) {
+      if (symbols[i] !== "H" && !electroneg.has(symbols[i])) continue;
+      const p = positions[i];
+      const key = `${Math.floor(p[0] / h)},${Math.floor(p[1] / h)},${Math.floor(p[2] / h)}`;
+      let list = buckets.get(key);
+      if (!list) { list = []; buckets.set(key, list); }
+      list.push(i);
+    }
+    const hbonds = [];
+    const cosLim = Math.cos((135 * Math.PI) / 180);
+    for (let hi = 0; hi < n; hi++) {
+      if (symbols[hi] !== "H") continue;
+      const ph = positions[hi];
+      const gx = Math.floor(ph[0] / h), gy = Math.floor(ph[1] / h), gz = Math.floor(ph[2] / h);
+      const near = [];
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dz = -1; dz <= 1; dz++) {
+            const list = buckets.get(`${gx + dx},${gy + dy},${gz + dz}`);
+            if (!list) continue;
+            for (const j of list) {
+              if (j === hi || !electroneg.has(symbols[j])) continue;
+              const vx = positions[j][0] - ph[0], vy = positions[j][1] - ph[1], vz = positions[j][2] - ph[2];
+              const d = Math.hypot(vx, vy, vz);
+              if (d > 0.45 && d <= 2.35) near.push({ j, d, vx, vy, vz });
+            }
+          }
+        }
+      }
+      let donor = null;
+      for (const cand of near) {
+        if (cand.d <= 1.25 && (!donor || cand.d < donor.d)) donor = cand;
+      }
+      if (!donor) continue;
+      for (const acc of near) {
+        if (acc.j === donor.j || acc.d <= 1.25) continue;
+        const dDA = Math.hypot(acc.vx - donor.vx, acc.vy - donor.vy, acc.vz - donor.vz);
+        if (dDA > 3.35) continue;
+        const cosAng = (donor.vx * acc.vx + donor.vy * acc.vy + donor.vz * acc.vz) / Math.max(donor.d * acc.d, 1e-12);
+        if (cosAng <= cosLim) hbonds.push([hi, acc.j]);
+      }
+    }
+    return hbonds;
+  }
+
   function buildActiveSceneData() {
+    if (!sceneDirty && cachedScene) return cachedScene;
     const hasCell = Boolean(baseData.cell);
     const [na, nb, nc] = hasCell ? state.supercell : [1, 1, 1];
-    let cell = hasCell
+    const cell = hasCell
       ? [
           [baseData.cell[0][0] * na, baseData.cell[0][1] * na, baseData.cell[0][2] * na],
           [baseData.cell[1][0] * nb, baseData.cell[1][1] * nb, baseData.cell[1][2] * nb],
@@ -759,7 +1517,6 @@ canvas#xm-canvas:active { cursor: grabbing; }
       }
     }
 
-    // Replicate boundary atoms on closed [0, 1]^3 cell faces/edges/corners.
     let addedBoundary = false;
     if (hasCell && state.boundaryAtoms && state.style !== "polyhedra") {
       const invCell = inv3x3(cell);
@@ -798,15 +1555,22 @@ canvas#xm-canvas:active { cursor: grabbing; }
       }
     }
 
-    // Recompute or reuse bonds cleanly
+    const customBondCut = Math.abs(state.bondScale - (baseData.bond_scale || DEFAULT_BOND_SCALE)) > 1e-3;
     let bonds = [];
     if (addedBoundary) {
-      bonds = inferBondsJS(symbols, positions, null, [false, false, false]);
-    } else if (!state.centerInCell && na === 1 && nb === 1 && nc === 1 && baseData.bonds && baseData.bonds.length) {
+      bonds = inferBondsJS(symbols, positions, null, [false, false, false], state.bondScale);
+    } else if (
+      !customBondCut &&
+      !state.centerInCell &&
+      na === 1 && nb === 1 && nc === 1 &&
+      baseData.bonds && baseData.bonds.length
+    ) {
       bonds = baseData.bonds;
     } else {
-      bonds = inferBondsJS(symbols, positions, cell, baseData.pbc);
+      bonds = inferBondsJS(symbols, positions, cell, baseData.pbc, state.bondScale);
     }
+
+    const hbonds = state.showHbonds ? inferHBondsJS(symbols, positions) : [];
 
     let polyhedra = [];
     if (na === 1 && nb === 1 && nc === 1 && baseData.polyhedra) {
@@ -815,61 +1579,60 @@ canvas#xm-canvas:active { cursor: grabbing; }
     const vectors = (na === 1 && nb === 1 && nc === 1 && !addedBoundary && baseData.vectors)
       ? baseData.vectors : null;
     const isosurfaces = (na === 1 && nb === 1 && nc === 1 && baseData.isosurfaces)
-      ? baseData.isosurfaces : [];
-    return { symbols, positions, cell, pbc: baseData.pbc, bonds, polyhedra, vectors, isosurfaces };
-  }
+      ? resolveActiveIsosurfaces() : [];
 
-  function inferBondsJS(symbols, positions, cell, pbc) {
-    const n = symbols.length;
-    const bonds = [];
-    const maxAtomsForAuto = 220;
-    if (n > maxAtomsForAuto) return bonds;
-    const inv = cell ? inv3x3(cell) : null;
-    const shifts = [];
-    const rx = cell && pbc[0] ? [-1, 0, 1] : [0];
-    const ry = cell && pbc[1] ? [-1, 0, 1] : [0];
-    const rz = cell && pbc[2] ? [-1, 0, 1] : [0];
-    for (const sx of rx) {
-      for (const sy of ry) {
-        for (const sz of rz) shifts.push([sx, sy, sz]);
-      }
+    const nAtoms = symbols.length;
+    const posFlat = new Float32Array(nAtoms * 3);
+    const counts = {};
+    const uniqueSyms = [];
+    for (let i = 0; i < nAtoms; i++) {
+      posFlat[3 * i] = positions[i][0];
+      posFlat[3 * i + 1] = positions[i][1];
+      posFlat[3 * i + 2] = positions[i][2];
+      const s = symbols[i];
+      if (!counts[s]) uniqueSyms.push(s);
+      counts[s] = (counts[s] || 0) + 1;
     }
-    for (let i = 0; i < n; i++) {
-      const ri = (ELEM_TABLE[symbols[i]] || { cov: 0.77 }).cov;
-      for (let j = i + 1; j < n; j++) {
-        const rj = (ELEM_TABLE[symbols[j]] || { cov: 0.77 }).cov;
-        const cutoff = 1.2 * (ri + rj);
-        const dx0 = positions[j][0] - positions[i][0];
-        const dy0 = positions[j][1] - positions[i][1];
-        const dz0 = positions[j][2] - positions[i][2];
-        if (!cell || !inv) {
-          const d = Math.hypot(dx0, dy0, dz0);
-          if (d > 0.35 && d <= cutoff) bonds.push([i, j, 1.0, [0, 0, 0]]);
-          continue;
-        }
-        const df = matVec3T(inv, [dx0, dy0, dz0]);
-        const baseShift = df.map((val, ax) => (pbc[ax] ? -Math.round(val) : 0));
-        let bestD = Infinity;
-        let bestShift = [0, 0, 0];
-        for (const sh of shifts) {
-          const candSh = [
-            baseShift[0] + sh[0],
-            baseShift[1] + sh[1],
-            baseShift[2] + sh[2],
-          ];
-          const dv = matVec3T(cell, candSh);
-          const d = Math.hypot(dx0 + dv[0], dy0 + dv[1], dz0 + dv[2]);
-          if (d < bestD) {
-            bestD = d;
-            bestShift = candSh;
-          }
-        }
-        if (bestD > 0.35 && bestD <= cutoff) {
-          bonds.push([i, j, 1.0, bestShift]);
-        }
-      }
+    const formula = Object.keys(counts)
+      .sort()
+      .map((s) => (counts[s] > 1 ? `${s}${counts[s]}` : s))
+      .join("");
+
+    const nBonds = bonds.length;
+    const bondI = new Int32Array(nBonds);
+    const bondJ = new Int32Array(nBonds);
+    const bondOrd = new Float32Array(nBonds);
+    const bondSh = new Int8Array(nBonds * 3);
+    for (let b = 0; b < nBonds; b++) {
+      const row = bonds[b];
+      bondI[b] = row[0];
+      bondJ[b] = row[1];
+      bondOrd[b] = row[2];
+      bondSh[3 * b] = row[3][0];
+      bondSh[3 * b + 1] = row[3][1];
+      bondSh[3 * b + 2] = row[3][2];
     }
-    return bonds;
+
+    cachedScene = {
+      symbols,
+      uniqueSyms,
+      formula,
+      positions,
+      posFlat,
+      cell,
+      pbc: baseData.pbc,
+      bonds,
+      bondI,
+      bondJ,
+      bondOrd,
+      bondSh,
+      hbonds,
+      polyhedra,
+      vectors,
+      isosurfaces,
+    };
+    sceneDirty = false;
+    return cachedScene;
   }
 
   function rotationBasis() {
@@ -910,25 +1673,82 @@ canvas#xm-canvas:active { cursor: grabbing; }
   function computeSceneSpan(positions, cell, pivot, basis) {
     const [right, up, forward] = basis;
     let span = 1.0;
-    const scan = (p) => {
-      const d = [p[0] - pivot[0], p[1] - pivot[1], p[2] - pivot[2]];
-      span = Math.max(span, Math.abs(dot3(d, right)), Math.abs(dot3(d, up)), Math.abs(dot3(d, forward)));
-    };
-    for (const p of positions) scan(p);
+    const r0 = right[0], r1 = right[1], r2 = right[2];
+    const u0 = up[0], u1 = up[1], u2 = up[2];
+    const f0 = forward[0], f1 = forward[1], f2 = forward[2];
+    const px = pivot[0], py = pivot[1], pz = pivot[2];
+    for (let i = 0; i < positions.length; i++) {
+      const p = positions[i];
+      const dx = p[0] - px, dy = p[1] - py, dz = p[2] - pz;
+      const ax = Math.abs(dx * r0 + dy * r1 + dz * r2);
+      const ay = Math.abs(dx * u0 + dy * u1 + dz * u2);
+      const az = Math.abs(dx * f0 + dy * f1 + dz * f2);
+      if (ax > span) span = ax;
+      if (ay > span) span = ay;
+      if (az > span) span = az;
+    }
     if (cell) {
       for (let i = 0; i < 2; i++) {
         for (let j = 0; j < 2; j++) {
           for (let k = 0; k < 2; k++) {
-            scan([
-              i * cell[0][0] + j * cell[1][0] + k * cell[2][0],
-              i * cell[0][1] + j * cell[1][1] + k * cell[2][1],
-              i * cell[0][2] + j * cell[1][2] + k * cell[2][2],
-            ]);
+            const dx = i * cell[0][0] + j * cell[1][0] + k * cell[2][0] - px;
+            const dy = i * cell[0][1] + j * cell[1][1] + k * cell[2][1] - py;
+            const dz = i * cell[0][2] + j * cell[1][2] + k * cell[2][2] - pz;
+            const ax = Math.abs(dx * r0 + dy * r1 + dz * r2);
+            const ay = Math.abs(dx * u0 + dy * u1 + dz * u2);
+            const az = Math.abs(dx * f0 + dy * f1 + dz * f2);
+            if (ax > span) span = ax;
+            if (ay > span) span = ay;
+            if (az > span) span = az;
           }
         }
       }
     }
     return span;
+  }
+
+  function projectFlatIntoBuffers(posFlat, nAtoms, pivot, basis, refSpan) {
+    ensureAtomBuffers(nAtoms);
+    const [right, up, forward] = basis;
+    const r0 = right[0], r1 = right[1], r2 = right[2];
+    const u0 = up[0], u1 = up[1], u2 = up[2];
+    const f0 = forward[0], f1 = forward[1], f2 = forward[2];
+    const px = pivot[0], py = pivot[1], pz = pivot[2];
+    const span = refSpan && refSpan > 1.0 ? refSpan : 1.0;
+    const persp = state.perspective;
+    const zoom = state.zoom;
+    const perspFactor = (persp * 0.15) / span;
+    for (let i = 0; i < nAtoms; i++) {
+      const dx = posFlat[3 * i] - px;
+      const dy = posFlat[3 * i + 1] - py;
+      const dz = posFlat[3 * i + 2] - pz;
+      let x = (dx * r0 + dy * r1 + dz * r2) * zoom;
+      let y = (dx * u0 + dy * u1 + dz * u2) * zoom;
+      const z = dx * f0 + dy * f1 + dz * f2;
+      if (persp > 0) {
+        const denom = Math.max(1 - z * perspFactor, 0.25);
+        x /= denom;
+        y /= denom;
+      }
+      projX[i] = x;
+      projY[i] = y;
+      projZ[i] = z;
+    }
+  }
+
+  function projectPoint3(pt, pivot, basis, refSpan) {
+    const [right, up, forward] = basis;
+    const dx = pt[0] - pivot[0], dy = pt[1] - pivot[1], dz = pt[2] - pivot[2];
+    let x = (dx * right[0] + dy * right[1] + dz * right[2]) * state.zoom;
+    let y = (dx * up[0] + dy * up[1] + dz * up[2]) * state.zoom;
+    const z = dx * forward[0] + dy * forward[1] + dz * forward[2];
+    const span = refSpan && refSpan > 1.0 ? refSpan : 1.0;
+    if (state.perspective > 0) {
+      const denom = Math.max(1 - state.perspective * (z / span) * 0.15, 0.25);
+      x /= denom;
+      y /= denom;
+    }
+    return [x, y, z];
   }
 
   function projectList(pts, pivot, basis, refSpan) {
@@ -1024,21 +1844,17 @@ canvas#xm-canvas:active { cursor: grabbing; }
     return { uAxW, uMerW, uMer2W };
   }
 
-  function _triDepthAndSide(vA, vB, vC, positions, proj) {
-    const md = (vA[2] + vB[2] + vC[2]) / 3;
-    if (!proj || !proj.length) return { md, behind: false };
-    const mx = (vA[0] + vB[0] + vC[0]) / 3;
-    const my = (vA[1] + vB[1] + vC[1]) / 3;
+  function _nearestAtomDepth(mx, my, nAtoms) {
     let bestD = Infinity, az = 0;
-    for (let i = 0; i < proj.length; i++) {
-      const dx = proj[i][0] - mx, dy = proj[i][1] - my;
+    for (let i = 0; i < nAtoms; i++) {
+      const dx = projX[i] - mx, dy = projY[i] - my;
       const d = dx * dx + dy * dy;
-      if (d < bestD) { bestD = d; az = proj[i][2]; }
+      if (d < bestD) { bestD = d; az = projZ[i]; }
     }
-    return { md, behind: md < az - 0.03 };
+    return az;
   }
 
-  function sliceIsoMesh3D(iso, frontFlags, tones, toneMax, pivot, basis, sceneSpan, toScreen, axisW, spacingW, offFrac, proj) {
+  function sliceIsoMesh3D(iso, frontFlags, tones, toneMax, pivot, basis, sceneSpan, toScreen, axisW, spacingW, offFrac, nAtoms) {
     const sVerts = iso.vertices.map((v) => dot3(v, axisW));
     let sMin = Infinity, sMax = -Infinity;
     for (const s of sVerts) { if (s < sMin) sMin = s; if (s > sMax) sMax = s; }
@@ -1063,16 +1879,9 @@ canvas#xm-canvas:active { cursor: grabbing; }
           const hp = projectList(hits, pivot, basis, sceneSpan);
           const seg = [toScreen(hp[0]), toScreen(hp[1])];
           const midZ = 0.5 * (hp[0][2] + hp[1][2]);
-          let behind = false;
-          if (proj && proj.length) {
-            const mx = 0.5 * (hp[0][0] + hp[1][0]), my = 0.5 * (hp[0][1] + hp[1][1]);
-            let bestD = Infinity, az = 0;
-            for (const ap of proj) {
-              const d = (ap[0] - mx) ** 2 + (ap[1] - my) ** 2;
-              if (d < bestD) { bestD = d; az = ap[2]; }
-            }
-            behind = midZ < az - 0.03;
-          }
+          const behind = nAtoms > 0
+            ? midZ < _nearestAtomDepth(0.5 * (hp[0][0] + hp[1][0]), 0.5 * (hp[0][1] + hp[1][1]), nAtoms) - 0.03
+            : false;
           if (behind) backSegs.push(seg);
           else frontSegs.push(seg);
         }
@@ -1081,7 +1890,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     return { backSegs, frontSegs };
   }
 
-  function sampleIsoSurfaceMarks(iso, frontFlags, tones, nRots, vProj, proj, toScreen, shade) {
+  function sampleIsoSurfaceMarks(iso, frontFlags, tones, nRots, vProj, nAtoms, toScreen, shade) {
     const backPts = [], frontPts = [];
     if (!iso.faces.length || (shade !== "stipple" && shade !== "scumble")) {
       return { backPts, frontPts };
@@ -1096,7 +1905,9 @@ canvas#xm-canvas:active { cursor: grabbing; }
       const sh = (maxT - tone) / maxT;
       const nzF = Math.max(0.05, nRots[fIdx] ? nRots[fIdx][2] : 0.5);
       const uThr = (k * 0.7548776662 + 0.29) % 1.0;
-      const keepP = shade === "stipple" ? Math.pow(nzF, 0.28) * 0.94 * Math.pow(sh, 1.65) : Math.pow(nzF, 0.30) * (0.24 + 0.72 * sh);
+      const keepP = shade === "stipple"
+        ? Math.pow(nzF, 0.28) * 0.94 * Math.pow(sh, 1.65)
+        : Math.pow(nzF, 0.30) * (0.24 + 0.72 * sh);
       if (uThr > keepP) continue;
       const [f0, f1, f2] = iso.faces[fIdx];
       let r1 = (k * 0.5698402909 + 0.41) % 1.0;
@@ -1106,15 +1917,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
       const px = w0 * vProj[f0][0] + w1 * vProj[f1][0] + w2 * vProj[f2][0];
       const py = w0 * vProj[f0][1] + w1 * vProj[f1][1] + w2 * vProj[f2][1];
       const pz = w0 * vProj[f0][2] + w1 * vProj[f1][2] + w2 * vProj[f2][2];
-      let behind = false;
-      if (proj && proj.length) {
-        let bestD = Infinity, az = 0;
-        for (const ap of proj) {
-          const d = (ap[0] - px) ** 2 + (ap[1] - py) ** 2;
-          if (d < bestD) { bestD = d; az = ap[2]; }
-        }
-        behind = pz < az - 0.03;
-      }
+      const behind = nAtoms > 0 ? pz < _nearestAtomDepth(px, py, nAtoms) - 0.03 : false;
       const scPt = toScreen([px, py, pz]);
       const uS = (k * 0.3027756377 + 0.07) % 1.0;
       const rec = {
@@ -1130,7 +1933,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     return { backPts, frontPts };
   }
 
-  function collectIsoLobeArt(iso, pivot, basis, sceneSpan, toScreen, proj, positions) {
+  function collectIsoLobeArt(iso, pivot, basis, sceneSpan, toScreen, nAtoms, positions, fastMode) {
     const lDir = [-0.52, 0.58, 0.63];
     const lNorm = Math.hypot(...lDir) || 1;
     const lu = [lDir[0] / lNorm, lDir[1] / lNorm, lDir[2] / lNorm];
@@ -1142,7 +1945,6 @@ canvas#xm-canvas:active { cursor: grabbing; }
     const tonesArr = new Array(iso.faces.length).fill(1.0);
     const nRotsArr = new Array(iso.faces.length).fill(null);
     const triItems = [];
-    const frontFaces = [];
 
     const makeBucket = () => ({
       frontPolys: [], shadowPolys: [], corePolys: [], rimSegs: [],
@@ -1165,7 +1967,6 @@ canvas#xm-canvas:active { cursor: grabbing; }
       if (nRot[2] < -0.02) continue;
       frontFlags[fIdx] = true;
       nRotsArr[fIdx] = nRot;
-      frontFaces.push(fIdx);
       const rawNl = dot3(nRot, lu);
       const nd = Math.max(0, Math.min(1, (rawNl + 0.12) / 1.12));
       const nh = Math.max(0, dot3(nRot, hu));
@@ -1175,12 +1976,23 @@ canvas#xm-canvas:active { cursor: grabbing; }
       const rimBounce = 0.24 * Math.pow(1 - nzF, 2.1) * Math.max(0, -rawNl);
       const tone = Math.max(0, Math.min(1, 0.08 + 0.78 * nd + 0.24 * spec + rimBounce - coreDip));
       tonesArr[fIdx] = tone;
-      const sideInfo = _triDepthAndSide(pA, pB, pC, positions, proj);
-      const md = sideInfo.md - 0.12;
-      triItems.push({ depth: md, kind: "iso_tri", pts: [pA, pB, pC], col: iso.color, shade: Math.min(1.35, 0.36 + 0.64 * nd + 0.42 * spec + 0.22 * rimBounce - 0.12 * coreDip), nz: nRot[2] });
+      const rawMd = (pA[2] + pB[2] + pC[2]) / 3;
+      const behind = (!fastMode && nAtoms > 0)
+        ? rawMd < _nearestAtomDepth((pA[0] + pB[0] + pC[0]) / 3, (pA[1] + pB[1] + pC[1]) / 3, nAtoms) - 0.03
+        : false;
+      const md = rawMd - 0.12;
+      triItems.push({
+        depth: md,
+        kind: "iso_tri",
+        pts: [pA, pB, pC],
+        col: iso.color,
+        shade: Math.min(1.35, 0.36 + 0.64 * nd + 0.42 * spec + 0.22 * rimBounce - 0.12 * coreDip),
+        nz: nRot[2],
+      });
+      if (fastMode) continue;
 
       const sp = [toScreen(pA), toScreen(pB), toScreen(pC)];
-      const bk = sideInfo.behind ? backB : frontB;
+      const bk = behind ? backB : frontB;
       for (const pt of sp) {
         if (pt[0] < bk.minX) bk.minX = pt[0];
         if (pt[1] < bk.minY) bk.minY = pt[1];
@@ -1192,6 +2004,8 @@ canvas#xm-canvas:active { cursor: grabbing; }
       if (tone < 0.34) bk.corePolys.push(sp);
       bk.dSum += md; bk.dCnt += 1;
     }
+
+    if (fastMode) return { triItems, artItems: [] };
 
     const edgeMap = new Map();
     for (let fIdx = 0; fIdx < iso.faces.length; fIdx++) {
@@ -1210,16 +2024,9 @@ canvas#xm-canvas:active { cursor: grabbing; }
         const pu = vProj[rec.u], pv = vProj[rec.v];
         if (pu && pv) {
           const midZ = 0.5 * (pu[2] + pv[2]);
-          let behind = false;
-          if (proj && proj.length) {
-            const mx = 0.5 * (pu[0] + pv[0]), my = 0.5 * (pu[1] + pv[1]);
-            let bestD = Infinity, az = 0;
-            for (const ap of proj) {
-              const d = (ap[0] - mx) ** 2 + (ap[1] - my) ** 2;
-              if (d < bestD) { bestD = d; az = ap[2]; }
-            }
-            behind = midZ < az - 0.03;
-          }
+          const behind = nAtoms > 0
+            ? midZ < _nearestAtomDepth(0.5 * (pu[0] + pv[0]), 0.5 * (pu[1] + pv[1]), nAtoms) - 0.03
+            : false;
           (behind ? backB : frontB).rimSegs.push([toScreen(pu), toScreen(pv)]);
         }
       }
@@ -1228,8 +2035,8 @@ canvas#xm-canvas:active { cursor: grabbing; }
     const axesW = computeLobeAxesWorld(iso.vertices, positions);
     const spW = Math.max(sceneSpan * 0.065, 0.14);
     if (state.isoShade === "contour" || state.isoShade === "cross_contour") {
-      const lat1 = sliceIsoMesh3D(iso, frontFlags, tonesArr, 0.68, pivot, basis, sceneSpan, toScreen, axesW.uAxW, spW * 1.15, 0.0, proj);
-      const lat2 = sliceIsoMesh3D(iso, frontFlags, tonesArr, 0.36, pivot, basis, sceneSpan, toScreen, axesW.uAxW, spW, 0.5, proj);
+      const lat1 = sliceIsoMesh3D(iso, frontFlags, tonesArr, 0.68, pivot, basis, sceneSpan, toScreen, axesW.uAxW, spW * 1.15, 0.0, nAtoms);
+      const lat2 = sliceIsoMesh3D(iso, frontFlags, tonesArr, 0.36, pivot, basis, sceneSpan, toScreen, axesW.uAxW, spW, 0.5, nAtoms);
       backB.contourSegs.push(...lat1.backSegs, ...lat2.backSegs);
       frontB.contourSegs.push(...lat1.frontSegs, ...lat2.frontSegs);
       if (state.isoShade === "cross_contour") {
@@ -1238,12 +2045,12 @@ canvas#xm-canvas:active { cursor: grabbing; }
           0.80 * axesW.uMerW[1] + 0.60 * axesW.uMer2W[1],
           0.80 * axesW.uMerW[2] + 0.60 * axesW.uMer2W[2],
         ];
-        const mer = sliceIsoMesh3D(iso, frontFlags, tonesArr, 0.50, pivot, basis, sceneSpan, toScreen, merW, spW * 1.08, 0.0, proj);
+        const mer = sliceIsoMesh3D(iso, frontFlags, tonesArr, 0.50, pivot, basis, sceneSpan, toScreen, merW, spW * 1.08, 0.0, nAtoms);
         backB.contourSegs.push(...mer.backSegs);
         frontB.contourSegs.push(...mer.frontSegs);
       }
     }
-    const surfMarks = sampleIsoSurfaceMarks(iso, frontFlags, tonesArr, nRotsArr, vProj, proj, toScreen, state.isoShade);
+    const surfMarks = sampleIsoSurfaceMarks(iso, frontFlags, tonesArr, nRotsArr, vProj, nAtoms, toScreen, state.isoShade);
     if (state.isoShade === "stipple") {
       backB.stipplePts = surfMarks.backPts;
       frontB.stipplePts = surfMarks.frontPts;
@@ -1333,22 +2140,23 @@ canvas#xm-canvas:active { cursor: grabbing; }
 
   function drawIsoArtCanvas(item) {
     const shade = state.isoShade;
-    const ink = shadeHexRgba(item.col, 0.40, 0.80);
+    const alphaScale = Math.max(0.2, Math.min(2.8, state.isoAlpha / DEFAULT_ISO_ALPHA));
+    const ink = shadeHexRgba(item.col, Math.min(0.88, 0.40 * alphaScale), 0.80);
     if (item.frontPolys.length) {
       const [bx0, by0, bx1, by1] = item.bbox;
       const gcx = 0.5 * (bx0 + bx1), gcy = 0.5 * (by0 + by1);
       const gRad = Math.max(0.55 * Math.hypot(bx1 - bx0, by1 - by0), 4);
       tracePolyBatch(item.frontPolys);
       if (shade === "outline") {
-        ctx.fillStyle = shadeHexRgba(item.col, 0.05, 1.12);
+        ctx.fillStyle = shadeHexRgba(item.col, Math.min(0.45, 0.05 * alphaScale), 1.12);
       } else {
         const grad = ctx.createRadialGradient(
           gcx - 0.30 * gRad, gcy - 0.30 * gRad, gRad * 0.05, gcx, gcy, gRad
         );
         grad.addColorStop(0.0, "rgba(255,255,255,0.44)");
-        grad.addColorStop(0.32, hexToRgba(item.col, 0.08));
-        grad.addColorStop(0.75, shadeHexRgba(item.col, 0.28, 0.72));
-        grad.addColorStop(1.0, hexToRgba(item.col, 0.14));
+        grad.addColorStop(0.32, hexToRgba(item.col, Math.min(0.65, 0.08 * alphaScale)));
+        grad.addColorStop(0.75, shadeHexRgba(item.col, Math.min(0.85, 0.28 * alphaScale), 0.72));
+        grad.addColorStop(1.0, hexToRgba(item.col, Math.min(0.70, 0.14 * alphaScale)));
         ctx.fillStyle = grad;
       }
       ctx.fill();
@@ -1365,7 +2173,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
       });
     } else if (shade === "stipple" && item.stipplePts.length) {
       for (const d of item.stipplePts) {
-        ctx.fillStyle = shadeHexRgba(item.col, d.aa, 0.72);
+        ctx.fillStyle = shadeHexRgba(item.col, Math.min(0.92, d.aa * alphaScale), 0.72);
         ctx.beginPath();
         ctx.arc(d.pt[0], d.pt[1], d.r, 0, Math.PI * 2);
         ctx.fill();
@@ -1376,7 +2184,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
       ctx.save();
       tracePolyBatch(item.frontPolys);
       ctx.clip();
-      ctx.strokeStyle = shadeHexRgba(item.col, 0.42, 0.74);
+      ctx.strokeStyle = shadeHexRgba(item.col, Math.min(0.88, 0.42 * alphaScale), 0.74);
       ctx.lineWidth = 0.58;
       for (const sItem of item.scumblePts) {
         const th0 = _isoHash(sItem.seed * 5 + 3) * Math.PI * 2;
@@ -1412,11 +2220,15 @@ canvas#xm-canvas:active { cursor: grabbing; }
 
   function renderFrame() {
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    const width = Math.max(rect.width, 320);
-    const height = Math.max(rect.height, 360);
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
+    const rect = canvasWrap.getBoundingClientRect();
+    const width = Math.max(rect.width, 240);
+    const height = Math.max(rect.height, 300);
+    const targetW = Math.round(width * dpr);
+    const targetH = Math.round(height * dpr);
+    if (canvas.width !== targetW || canvas.height !== targetH) {
+      canvas.width = targetW;
+      canvas.height = targetH;
+    }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const dark = isDarkBg(state.background);
@@ -1425,8 +2237,17 @@ canvas#xm-canvas:active { cursor: grabbing; }
     ctx.fillRect(0, 0, width, height);
 
     const scene = buildActiveSceneData();
-    const { symbols, positions, cell, bonds, polyhedra, vectors, isosurfaces } = scene;
-    if (!positions.length) return;
+    const {
+      symbols, uniqueSyms, formula, positions, posFlat, cell,
+      bonds, bondI, bondJ, bondOrd, bondSh, hbonds, polyhedra, vectors, isosurfaces,
+    } = scene;
+    const nAtoms = symbols.length;
+    if (!nAtoms) return;
+
+    const isLargeSystem = Boolean(
+      (currentSample.perf && currentSample.perf.largeSystem) || nAtoms >= LARGE_SYSTEM_THRESHOLD
+    );
+    const lodActive = (isDragging || isWheelInteracting) && nAtoms >= LARGE_SYSTEM_THRESHOLD && !state.alwaysFullDetail;
 
     const pivot = [0, 0, 0];
     if (cell && state.cellMode !== "off") {
@@ -1434,25 +2255,38 @@ canvas#xm-canvas:active { cursor: grabbing; }
       pivot[1] = 0.5 * (cell[0][1] + cell[1][1] + cell[2][1]);
       pivot[2] = 0.5 * (cell[0][2] + cell[1][2] + cell[2][2]);
     } else {
-      for (const p of positions) {
-        pivot[0] += p[0]; pivot[1] += p[1]; pivot[2] += p[2];
+      for (let i = 0; i < nAtoms; i++) {
+        pivot[0] += posFlat[3 * i];
+        pivot[1] += posFlat[3 * i + 1];
+        pivot[2] += posFlat[3 * i + 2];
       }
-      pivot[0] /= positions.length;
-      pivot[1] /= positions.length;
-      pivot[2] /= positions.length;
+      pivot[0] /= nAtoms;
+      pivot[1] /= nAtoms;
+      pivot[2] /= nAtoms;
     }
 
     const basis = rotationBasis();
     const sceneSpan = computeSceneSpan(positions, cell, pivot, basis);
-    const proj = projectList(positions, pivot, basis, sceneSpan);
+    projectFlatIntoBuffers(posFlat, nAtoms, pivot, basis, sceneSpan);
+
+    const symColorMap = {};
+    const symRadMap = {};
+    for (let k = 0; k < uniqueSyms.length; k++) {
+      const s = uniqueSyms[k];
+      symColorMap[s] = elementColor(s);
+      symRadMap[s] = visualRadius(s);
+    }
 
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (let i = 0; i < proj.length; i++) {
-      const r = visualRadius(symbols[i]);
-      minX = Math.min(minX, proj[i][0] - r * 1.4);
-      maxX = Math.max(maxX, proj[i][0] + r * 1.4);
-      minY = Math.min(minY, proj[i][1] - r * 1.4);
-      maxY = Math.max(maxY, proj[i][1] + r * 1.4);
+    for (let i = 0; i < nAtoms; i++) {
+      const r = symRadMap[symbols[i]];
+      atomRadBuf[i] = r;
+      const x = projX[i], y = projY[i];
+      const padR = r * 1.4;
+      if (x - padR < minX) minX = x - padR;
+      if (x + padR > maxX) maxX = x + padR;
+      if (y - padR < minY) minY = y - padR;
+      if (y + padR > maxY) maxY = y + padR;
     }
 
     let cellCorners = null;
@@ -1471,16 +2305,29 @@ canvas#xm-canvas:active { cursor: grabbing; }
       }
       cellCorners = projectList(rawC, pivot, basis, sceneSpan);
       for (const c of cellCorners) {
-        minX = Math.min(minX, c[0] - 0.6);
-        maxX = Math.max(maxX, c[0] + 0.6);
-        minY = Math.min(minY, c[1] - 0.6);
-        maxY = Math.max(maxY, c[1] + 0.6);
+        if (c[0] - 0.6 < minX) minX = c[0] - 0.6;
+        if (c[0] + 0.6 > maxX) maxX = c[0] + 0.6;
+        if (c[1] - 0.6 < minY) minY = c[1] - 0.6;
+        if (c[1] + 0.6 > maxY) maxY = c[1] + 0.6;
+      }
+    }
+
+    if (state.showIso && isosurfaces && isosurfaces.length) {
+      for (const iso of isosurfaces) {
+        const step = Math.max(1, Math.floor(iso.vertices.length / 64));
+        for (let vi = 0; vi < iso.vertices.length; vi += step) {
+          const vp = projectPoint3(iso.vertices[vi], pivot, basis, sceneSpan);
+          if (vp[0] - 0.5 < minX) minX = vp[0] - 0.5;
+          if (vp[0] + 0.5 > maxX) maxX = vp[0] + 0.5;
+          if (vp[1] - 0.5 < minY) minY = vp[1] - 0.5;
+          if (vp[1] + 0.5 > maxY) maxY = vp[1] + 0.5;
+        }
       }
     }
 
     const legendPad = state.showLegend ? 38 : 14;
-    const availW = width - 48;
-    const availH = height - 40 - legendPad;
+    const availW = Math.max(width - 44, 120);
+    const availH = Math.max(height - 36 - legendPad, 120);
     const spanX = Math.max(maxX - minX, 2.0);
     const spanY = Math.max(maxY - minY, 2.0);
     const pxPerA = Math.min(availW / spanX, availH / spanY);
@@ -1492,8 +2339,11 @@ canvas#xm-canvas:active { cursor: grabbing; }
       cx + (xy[0] - midX) * pxPerA,
       cy - (xy[1] - midY) * pxPerA,
     ];
+    for (let i = 0; i < nAtoms; i++) {
+      screenX[i] = cx + (projX[i] - midX) * pxPerA;
+      screenY[i] = cy - (projY[i] - midY) * pxPerA;
+    }
 
-    // Unit-cell base plane and back dashed edges
     const cellEdgesIdx = [
       [0, 1], [0, 2], [0, 4], [1, 3], [1, 5], [2, 3],
       [2, 6], [3, 7], [4, 5], [4, 6], [5, 7], [6, 7],
@@ -1504,7 +2354,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
         if (cellCorners[i][2] < cellCorners[backCornerIdx][2]) backCornerIdx = i;
       }
       if (state.cellMode === "box") {
-        const baseIdx = [0, 4, 6, 2]; // (0,0,0), (1,0,0), (1,1,0), (0,1,0)
+        const baseIdx = [0, 4, 6, 2];
         ctx.beginPath();
         baseIdx.forEach((ci, idx) => {
           const p = toScreen(cellCorners[ci]);
@@ -1524,152 +2374,282 @@ canvas#xm-canvas:active { cursor: grabbing; }
           dark ? "rgba(156,163,175,0.68)" : "rgba(110,118,129,0.62)",
           1.15,
           true,
-          state.wiggle * 0.45,
+          lodActive ? 0 : state.wiggle * 0.45,
           eIdx + 1
         );
       }
     }
 
-    // Painter's queue
-    const items = [];
-    for (let idx = 0; idx < bonds.length; idx++) {
-      const [i, j, order, shift] = bonds[idx];
-      if (i >= proj.length || j >= proj.length) continue;
-      const isInternal = shift[0] === 0 && shift[1] === 0 && shift[2] === 0;
-      if (isInternal || !cell) {
-        const iBack = proj[i][2] <= proj[j][2] ? i : j;
-        const iFront = iBack === i ? j : i;
-        const dz = proj[iFront][2] - proj[iBack][2];
-        const bondDepth = dz < 0.25
-          ? proj[iBack][2] - 0.04
-          : 0.5 * (proj[iBack][2] + proj[iFront][2]) - 0.02;
-        items.push({
-          depth: bondDepth,
-          kind: "bond",
-          p0: proj[iBack],
-          p1: proj[iFront],
-          c0: elementColor(symbols[iBack]),
-          c1: elementColor(symbols[iFront]),
-          order,
-          seed: idx + 1,
-        });
-      } else {
-        const sv = [
-          shift[0] * cell[0][0] + shift[1] * cell[1][0] + shift[2] * cell[2][0],
-          shift[0] * cell[0][1] + shift[1] * cell[1][1] + shift[2] * cell[2][1],
-          shift[0] * cell[0][2] + shift[1] * cell[1][2] + shift[2] * cell[2][2],
-        ];
-        const pi = positions[i], pj = positions[j];
-        const stubA = [pi[0] + 0.42 * (pj[0] + sv[0] - pi[0]), pi[1] + 0.42 * (pj[1] + sv[1] - pi[1]), pi[2] + 0.42 * (pj[2] + sv[2] - pi[2])];
-        const stubB = [pj[0] + 0.42 * (pi[0] - sv[0] - pj[0]), pj[1] + 0.42 * (pi[1] - sv[1] - pj[1]), pj[2] + 0.42 * (pi[2] - sv[2] - pj[2])];
-        const sProj = projectList([stubA, stubB], pivot, basis, sceneSpan);
-        items.push({ depth: proj[i][2] - 0.06, kind: "half", p0: proj[i], p1: sProj[0], col: elementColor(symbols[i]), order, seed: idx + 1 });
-        items.push({ depth: proj[j][2] - 0.06, kind: "half", p0: proj[j], p1: sProj[1], col: elementColor(symbols[j]), order, seed: idx + 100 });
-      }
-    }
+    const hasIsoNow = Boolean(isosurfaces && isosurfaces.length && state.showIso);
+    const drawAtomsNow = !hasIsoNow || state.showIsoAtoms;
+    const drawBondsNow = drawAtomsNow && state.showBonds && state.style !== "spacefill" && state.style !== "polyhedra";
 
+    // Rare auxiliary items (isosurface facets, polyhedra, vectors, H-bonds)
+    const extraItems = [];
     if (state.style === "polyhedra" && polyhedra && polyhedra.length) {
       for (const poly of polyhedra) {
         const vProj = projectList(poly.vertices, pivot, basis, sceneSpan);
-        const col = elementColor(poly.center_symbol);
+        const col = symColorMap[poly.center_symbol] || elementColor(poly.center_symbol);
         for (const [f0, f1, f2] of poly.faces) {
           const md = (vProj[f0][2] + vProj[f1][2] + vProj[f2][2]) / 3 - 0.03;
-          const shade = polyShadeFactor(
-            poly.vertices[f0],
-            poly.vertices[f1],
-            poly.vertices[f2],
-            basis
-          );
-          items.push({ depth: md, kind: "tri", pts: [vProj[f0], vProj[f1], vProj[f2]], col, shade });
+          const shade = polyShadeFactor(poly.vertices[f0], poly.vertices[f1], poly.vertices[f2], basis);
+          extraItems.push({ depth: md, kind: "tri", pts: [vProj[f0], vProj[f1], vProj[f2]], col, shade });
         }
       }
     }
-
-    if (state.showIso && isosurfaces && isosurfaces.length) {
+    if (hasIsoNow) {
       for (const iso of isosurfaces) {
-        const res = collectIsoLobeArt(iso, pivot, basis, sceneSpan, toScreen, proj, positions);
-        if (state.isoShade === "solid") {
-          for (const it of res.triItems) items.push(it);
+        const res = collectIsoLobeArt(iso, pivot, basis, sceneSpan, toScreen, drawAtomsNow ? nAtoms : 0, positions, lodActive);
+        if (lodActive || state.isoShade === "solid") {
+          for (const it of res.triItems) extraItems.push(it);
         } else {
-          for (const it of res.artItems) items.push(it);
+          for (const it of res.artItems) extraItems.push(it);
         }
       }
     }
-
-    if (state.showVectors && vectors && vectors.length === positions.length) {
+    if (!lodActive && drawAtomsNow && hbonds && hbonds.length) {
+      const hbCol = dark ? "#56B4E9" : "#0072B2";
+      for (const [hi, ai] of hbonds) {
+        if (hi < nAtoms && ai < nAtoms) {
+          extraItems.push({
+            depth: 0.5 * (projZ[hi] + projZ[ai]) - 0.05,
+            kind: "hbond",
+            hi,
+            ai,
+            col: hbCol,
+          });
+        }
+      }
+    }
+    if (state.showVectors && vectors && vectors.length === nAtoms) {
       const tipPts = positions.map((p, i) => [p[0] + vectors[i][0], p[1] + vectors[i][1], p[2] + vectors[i][2]]);
       const tipProj = projectList(tipPts, pivot, basis, sceneSpan);
-      for (let i = 0; i < proj.length; i++) {
+      for (let i = 0; i < nAtoms; i++) {
         if (norm3(vectors[i]) < 1e-6) continue;
-        const dAvg = 0.5 * (proj[i][2] + tipProj[i][2]) + 0.05;
-        items.push({ depth: dAvg, kind: "vec", p0: proj[i], p1: tipProj[i], col: "#D55E00" });
+        const dAvg = 0.5 * (projZ[i] + tipProj[i][2]) + 0.05;
+        extraItems.push({ depth: dAvg, kind: "vec", i, p1: tipProj[i], col: "#D55E00" });
       }
     }
 
-    for (let i = 0; i < proj.length; i++) {
-      items.push({ depth: proj[i][2], kind: "atom", p: proj[i], sym: symbols[i], idx: i });
+    const nBonds = bonds.length;
+    ensureStubBuffers(nBonds);
+    ensureItemBuffers((drawAtomsNow ? nAtoms : 0) + (drawBondsNow ? nBonds * 2 : 0) + extraItems.length + 16);
+    let qCount = 0;
+
+    if (drawBondsNow) {
+      for (let b = 0; b < nBonds; b++) {
+        const i = bondI[b];
+        const j = bondJ[b];
+        if (i >= nAtoms || j >= nAtoms) continue;
+        const sx = bondSh[3 * b], sy = bondSh[3 * b + 1], sz = bondSh[3 * b + 2];
+        if ((sx === 0 && sy === 0 && sz === 0) || !cell) {
+          const zi = projZ[i], zj = projZ[j];
+          const zBack = zi <= zj ? zi : zj;
+          const zFront = zi <= zj ? zj : zi;
+          itemDepth[qCount] = (zFront - zBack) < 0.25 ? zBack - 0.04 : 0.5 * (zBack + zFront) - 0.02;
+          itemCode[qCount] = (b << 3) | KIND_BOND;
+          qCount++;
+        } else {
+          const sv0 = sx * cell[0][0] + sy * cell[1][0] + sz * cell[2][0];
+          const sv1 = sx * cell[0][1] + sy * cell[1][1] + sz * cell[2][1];
+          const sv2 = sx * cell[0][2] + sy * cell[1][2] + sz * cell[2][2];
+          const pi0 = posFlat[3 * i], pi1 = posFlat[3 * i + 1], pi2 = posFlat[3 * i + 2];
+          const pj0 = posFlat[3 * j], pj1 = posFlat[3 * j + 1], pj2 = posFlat[3 * j + 2];
+          const pA = projectPoint3(
+            [pi0 + 0.42 * (pj0 + sv0 - pi0), pi1 + 0.42 * (pj1 + sv1 - pi1), pi2 + 0.42 * (pj2 + sv2 - pi2)],
+            pivot, basis, sceneSpan
+          );
+          const pB = projectPoint3(
+            [pj0 + 0.42 * (pi0 - sv0 - pj0), pj1 + 0.42 * (pi1 - sv1 - pj1), pj2 + 0.42 * (pi2 - sv2 - pj2)],
+            pivot, basis, sceneSpan
+          );
+          stubAX[b] = cx + (pA[0] - midX) * pxPerA;
+          stubAY[b] = cy - (pA[1] - midY) * pxPerA;
+          stubBX[b] = cx + (pB[0] - midX) * pxPerA;
+          stubBY[b] = cy - (pB[1] - midY) * pxPerA;
+          itemDepth[qCount] = projZ[i] - 0.06;
+          itemCode[qCount] = (b << 3) | KIND_HALF_A;
+          qCount++;
+          itemDepth[qCount] = projZ[j] - 0.06;
+          itemCode[qCount] = (b << 3) | KIND_HALF_B;
+          qCount++;
+        }
+      }
     }
+
+    if (drawAtomsNow) {
+      for (let i = 0; i < nAtoms; i++) {
+        itemDepth[qCount] = projZ[i];
+        itemCode[qCount] = (i << 3) | KIND_ATOM;
+        qCount++;
+      }
+    }
+
     if (cellCorners) {
       for (let eIdx = 0; eIdx < cellEdgesIdx.length; eIdx++) {
         const [u, v] = cellEdgesIdx[eIdx];
         if (u === backCornerIdx || v === backCornerIdx) continue;
-        const d = 0.5 * (cellCorners[u][2] + cellCorners[v][2]) - 0.05;
-        items.push({ depth: d, kind: "cell_edge", u, v, seed: eIdx + 20 });
+        itemDepth[qCount] = 0.5 * (cellCorners[u][2] + cellCorners[v][2]) - 0.05;
+        itemCode[qCount] = (eIdx << 3) | KIND_CELL_EDGE;
+        qCount++;
       }
     }
-    items.sort((a, b) => a.depth - b.depth);
 
-    const stickHalfPx = Math.max(2.0, Math.min(6.0, 0.095 * pxPerA));
-    const outlineW = Math.max(1.1, Math.min(2.4, 0.042 * pxPerA));
+    for (let xIdx = 0; xIdx < extraItems.length; xIdx++) {
+      itemDepth[qCount] = extraItems[xIdx].depth;
+      itemCode[qCount] = (xIdx << 3) | KIND_EXTRA;
+      qCount++;
+    }
 
-    for (const item of items) {
-      if (item.kind === "iso_art") {
-        drawIsoArtCanvas(item);
-      } else if (item.kind === "iso_tri") {
-        const s = item.pts.map(toScreen);
-        ctx.beginPath();
-        ctx.moveTo(s[0][0], s[0][1]);
-        ctx.lineTo(s[1][0], s[1][1]);
-        ctx.lineTo(s[2][0], s[2][1]);
-        ctx.closePath();
-        const fAlpha = state.isoShade === "solid" ? 0.24 : 0.12;
-        ctx.fillStyle = shadeHexRgba(item.col, fAlpha, item.shade);
-        ctx.fill();
-        if (state.isoShade === "solid") {
-          const isRim = item.nz < 0.26;
-          ctx.strokeStyle = shadeHexRgba(item.col, isRim ? 0.42 : 0.10, item.shade * 0.9);
-          ctx.lineWidth = isRim ? 0.9 : 0.25;
+    sortDepthQueue(itemDepth, itemCode, qCount);
+
+    const stickHalfPx = Math.max(1.8, Math.min(6.2, 0.095 * pxPerA));
+    const outlineW = Math.max(0.95, Math.min(2.4, 0.042 * pxPerA));
+    const lodBondCol = dark ? "rgba(214,220,232,0.78)" : "rgba(45,55,72,0.78)";
+    const fastBondW = Math.max(1.2, Math.min(3.6, stickHalfPx * 1.15));
+    const alphaScale = Math.max(0.2, Math.min(2.8, state.isoAlpha / DEFAULT_ISO_ALPHA));
+    const skipHeavyGradients = nAtoms >= 1200;
+
+    for (let rank = 0; rank < qCount; rank++) {
+      const code = itemCode[rank];
+      const kind = code & 7;
+      const idx = code >>> 3;
+
+      if (kind === KIND_ATOM) {
+        const sym = symbols[idx];
+        const fillCol = symColorMap[sym];
+        const radPx = Math.max(1.4, atomRadBuf[idx] * pxPerA);
+        const sx = screenX[idx], sy = screenY[idx];
+        if (lodActive) {
+          drawAtomFast(sx, sy, radPx, fillCol, ink, outlineW);
+        } else {
+          const labelTxt = state.showLabels ? sym : null;
+          drawAtom(sx, sy, radPx, fillCol, ink, outlineW, idx + 1, labelTxt, skipHeavyGradients);
+        }
+      } else if (kind === KIND_BOND) {
+        const i = bondI[idx], j = bondJ[idx];
+        const iBack = projZ[i] <= projZ[j] ? i : j;
+        const iFront = iBack === i ? j : i;
+        if (lodActive) {
+          ctx.beginPath();
+          ctx.moveTo(screenX[iBack], screenY[iBack]);
+          ctx.lineTo(screenX[iFront], screenY[iFront]);
+          ctx.strokeStyle = lodBondCol;
+          ctx.lineWidth = fastBondW;
+          ctx.stroke();
+        } else {
+          drawTwoToneBond(
+            [screenX[iBack], screenY[iBack]],
+            [screenX[iFront], screenY[iFront]],
+            symColorMap[symbols[iBack]],
+            symColorMap[symbols[iFront]],
+            ink,
+            stickHalfPx,
+            bondOrd[idx],
+            idx + 1
+          );
+        }
+      } else if (kind === KIND_HALF_A) {
+        const i = bondI[idx];
+        if (lodActive) {
+          ctx.beginPath();
+          ctx.moveTo(screenX[i], screenY[i]);
+          ctx.lineTo(stubAX[idx], stubAY[idx]);
+          ctx.strokeStyle = lodBondCol;
+          ctx.lineWidth = fastBondW;
+          ctx.stroke();
+        } else {
+          drawHalfBond(
+            [screenX[i], screenY[i]],
+            [stubAX[idx], stubAY[idx]],
+            symColorMap[symbols[i]],
+            ink,
+            stickHalfPx,
+            bondOrd[idx],
+            idx + 1
+          );
+        }
+      } else if (kind === KIND_HALF_B) {
+        const j = bondJ[idx];
+        if (lodActive) {
+          ctx.beginPath();
+          ctx.moveTo(screenX[j], screenY[j]);
+          ctx.lineTo(stubBX[idx], stubBY[idx]);
+          ctx.strokeStyle = lodBondCol;
+          ctx.lineWidth = fastBondW;
+          ctx.stroke();
+        } else {
+          drawHalfBond(
+            [screenX[j], screenY[j]],
+            [stubBX[idx], stubBY[idx]],
+            symColorMap[symbols[j]],
+            ink,
+            stickHalfPx,
+            bondOrd[idx],
+            idx + 100
+          );
+        }
+      } else if (kind === KIND_CELL_EDGE) {
+        const [u, v] = cellEdgesIdx[idx];
+        drawStrokeWiggle(
+          toScreen(cellCorners[u]),
+          toScreen(cellCorners[v]),
+          ink,
+          1.75,
+          false,
+          lodActive ? 0 : state.wiggle * 0.55,
+          idx + 20
+        );
+      } else {
+        const item = extraItems[idx];
+        if (item.kind === "iso_art") {
+          drawIsoArtCanvas(item);
+        } else if (item.kind === "iso_tri") {
+          const s = item.pts.map(toScreen);
+          ctx.beginPath();
+          ctx.moveTo(s[0][0], s[0][1]);
+          ctx.lineTo(s[1][0], s[1][1]);
+          ctx.lineTo(s[2][0], s[2][1]);
+          ctx.closePath();
+          const baseAl = (lodActive || state.isoShade === "solid") ? 0.24 : 0.12;
+          ctx.fillStyle = shadeHexRgba(item.col, Math.min(0.85, baseAl * alphaScale), item.shade);
+          ctx.fill();
+          if (!lodActive && state.isoShade === "solid") {
+            const isRim = item.nz < 0.26;
+            ctx.strokeStyle = shadeHexRgba(item.col, isRim ? 0.42 : 0.10, item.shade * 0.9);
+            ctx.lineWidth = isRim ? 0.9 : 0.25;
+            ctx.stroke();
+          }
+        } else if (item.kind === "hbond") {
+          ctx.save();
+          ctx.beginPath();
+          ctx.setLineDash([5, 4]);
+          ctx.moveTo(screenX[item.hi], screenY[item.hi]);
+          ctx.lineTo(screenX[item.ai], screenY[item.ai]);
+          ctx.strokeStyle = item.col;
+          ctx.lineWidth = 1.45;
+          ctx.lineCap = "round";
+          ctx.stroke();
+          ctx.restore();
+        } else if (item.kind === "vec") {
+          drawVectorArrowCanvas([screenX[item.i], screenY[item.i]], toScreen(item.p1), item.col, ink);
+        } else if (item.kind === "tri") {
+          const s = item.pts.map(toScreen);
+          ctx.beginPath();
+          ctx.moveTo(s[0][0], s[0][1]);
+          ctx.lineTo(s[1][0], s[1][1]);
+          ctx.lineTo(s[2][0], s[2][1]);
+          ctx.closePath();
+          ctx.fillStyle = shadeHexRgba(item.col, 0.44, item.shade || 0.92);
+          ctx.fill();
+          ctx.strokeStyle = ink;
+          ctx.lineWidth = 1.05;
+          ctx.lineJoin = "round";
           ctx.stroke();
         }
-      } else if (item.kind === "vec") {
-        drawVectorArrowCanvas(toScreen(item.p0), toScreen(item.p1), item.col, ink);
-      } else if (item.kind === "tri") {
-        const s = item.pts.map(toScreen);
-        ctx.beginPath();
-        ctx.moveTo(s[0][0], s[0][1]);
-        ctx.lineTo(s[1][0], s[1][1]);
-        ctx.lineTo(s[2][0], s[2][1]);
-        ctx.closePath();
-        ctx.fillStyle = shadeHexRgba(item.col, 0.44, item.shade || 0.92);
-        ctx.fill();
-        ctx.strokeStyle = ink;
-        ctx.lineWidth = 1.05;
-        ctx.lineJoin = "round";
-        ctx.stroke();
-      } else if (item.kind === "bond") {
-        if (!state.showBonds || state.style === "spacefill" || state.style === "polyhedra") continue;
-        drawTwoToneBond(toScreen(item.p0), toScreen(item.p1), item.c0, item.c1, ink, stickHalfPx, item.order, item.seed);
-      } else if (item.kind === "half") {
-        if (!state.showBonds || state.style === "spacefill" || state.style === "polyhedra") continue;
-        drawHalfBond(toScreen(item.p0), toScreen(item.p1), item.col, ink, stickHalfPx, item.order, item.seed);
-      } else if (item.kind === "cell_edge") {
-        drawStrokeWiggle(toScreen(cellCorners[item.u]), toScreen(cellCorners[item.v]), ink, 1.75, false, state.wiggle * 0.55, item.seed);
-      } else {
-        drawAtom(toScreen(item.p), visualRadius(item.sym) * pxPerA, elementColor(item.sym), ink, outlineW, item.idx + 1);
       }
     }
 
-    // Outside a, b, c edge labels
     if (cellCorners && state.axesMode === "edges") {
       const axes = [
         [cellCorners[0], cellCorners[4], "a"],
@@ -1693,9 +2673,31 @@ canvas#xm-canvas:active { cursor: grabbing; }
     }
 
     if (state.showLegend) {
-      drawInlineLegend(symbols, width, height - 18, ink);
+      drawInlineLegend(uniqueSyms, width, height - 18, ink);
     }
-    updateMetaUI(symbols, cell);
+    updateLodBadge(isLargeSystem, lodActive, nAtoms, nBonds, dark);
+    updateMetaUI(uniqueSyms, formula, nAtoms, cell, lodActive);
+  }
+
+  function updateLodBadge(isLargeSystem, lodActive, nAtoms, nBonds, dark) {
+    const badge = document.getElementById("xm-lod-badge");
+    if (!badge) return;
+    if (!isLargeSystem) {
+      badge.style.display = "none";
+      return;
+    }
+    badge.style.display = "inline-flex";
+    badge.classList.toggle("dark", dark);
+    badge.classList.toggle("active-lod", lodActive);
+    const atomStr = nAtoms.toLocaleString();
+    const bondStr = nBonds.toLocaleString();
+    if (state.alwaysFullDetail) {
+      badge.textContent = `Full detail · ${atomStr} atoms · ${bondStr} bonds`;
+    } else if (lodActive) {
+      badge.textContent = `Fast-drag LOD · ${atomStr} atoms`;
+    } else {
+      badge.textContent = `Auto LOD · ${atomStr} atoms · ${bondStr} bonds`;
+    }
   }
 
   function drawCrystalAxesCanvas(cell, basis, width, height, bottomPad, ink, originPt) {
@@ -1849,20 +2851,41 @@ canvas#xm-canvas:active { cursor: grabbing; }
     }
   }
 
-  function drawAtom(center, radius, fillCol, ink, outlineW, seed) {
-    const [cx, cy] = center;
-    const steps = 28;
+  function drawAtomFast(cx, cy, radius, fillCol, ink, outlineW) {
     ctx.beginPath();
-    for (let k = 0; k <= steps; k++) {
-      const th = (2 * Math.PI * k) / steps;
-      const wr = radius + state.wiggle * 0.65 * Math.sin(3 * th + seed * 1.7);
-      const px = cx + wr * Math.cos(th);
-      const py = cy + wr * Math.sin(th);
-      if (k === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = fillCol;
+    ctx.fill();
+    if (radius >= 2.2) {
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = Math.min(outlineW, 1.4);
+      ctx.stroke();
     }
-    ctx.closePath();
-    if (radius >= 4.0) {
+    if (radius >= 5.0 && state.style !== "stick") {
+      ctx.beginPath();
+      ctx.arc(cx - radius * 0.34, cy - radius * 0.34, Math.max(1.3, radius * 0.15), 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,0.88)";
+      ctx.fill();
+    }
+  }
+
+  function drawAtom(cx, cy, radius, fillCol, ink, outlineW, seed, labelTxt, skipGradient) {
+    ctx.beginPath();
+    if (state.wiggle <= 0.02 || radius < 3.0) {
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    } else {
+      const steps = 24;
+      for (let k = 0; k <= steps; k++) {
+        const th = (2 * Math.PI * k) / steps;
+        const wr = radius + state.wiggle * 0.62 * Math.sin(3 * th + seed * 1.7);
+        const px = cx + wr * Math.cos(th);
+        const py = cy + wr * Math.sin(th);
+        if (k === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    }
+    if (!skipGradient && radius >= 4.0) {
       const grad = ctx.createRadialGradient(
         cx - radius * 0.32,
         cy - radius * 0.34,
@@ -1883,22 +2906,30 @@ canvas#xm-canvas:active { cursor: grabbing; }
     ctx.lineWidth = outlineW;
     ctx.stroke();
 
-    // Pure white specular dot
-    ctx.beginPath();
-    ctx.arc(cx - radius * 0.34, cy - radius * 0.34, Math.max(1.5, radius * 0.16), 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255,255,255,0.92)";
-    ctx.fill();
+    if (state.style !== "stick" && radius >= 3.2) {
+      ctx.beginPath();
+      ctx.arc(cx - radius * 0.34, cy - radius * 0.34, Math.max(1.4, radius * 0.16), 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
+      ctx.fill();
+    }
+
+    if (labelTxt && radius >= 5.5) {
+      const fSize = Math.max(10, Math.min(16, Math.round(radius * 0.92)));
+      ctx.font = `bold ${fSize}px "__XM_FONT_FAMILY__", sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = contrastLabelColor(fillCol);
+      ctx.fillText(labelTxt, cx, cy + 0.5);
+    }
   }
 
-  function drawInlineLegend(symbols, width, y, ink) {
-    const seen = [];
-    for (const s of symbols) if (!seen.includes(s)) seen.push(s);
-    const step = Math.min(72, Math.max(46, (width - 40) / Math.max(seen.length, 1)));
-    const startX = width * 0.5 - ((seen.length - 1) * step) * 0.5;
+  function drawInlineLegend(uniqueSyms, width, y, ink) {
+    const step = Math.min(72, Math.max(46, (width - 40) / Math.max(uniqueSyms.length, 1)));
+    const startX = width * 0.5 - ((uniqueSyms.length - 1) * step) * 0.5;
     ctx.font = '15px "__XM_FONT_FAMILY__", sans-serif';
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
-    seen.forEach((sym, i) => {
+    uniqueSyms.forEach((sym, i) => {
       const x = startX + i * step;
       ctx.beginPath();
       ctx.arc(x - 10, y, 7, 0, Math.PI * 2);
@@ -1913,7 +2944,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
   }
 
   function hexToRgba(hex, alpha) {
-    const c = hex.replace("#", "");
+    const c = String(hex || "").replace("#", "");
     if (c.length !== 6) return `rgba(180,180,220,${alpha})`;
     const r = parseInt(c.slice(0, 2), 16);
     const g = parseInt(c.slice(2, 4), 16);
@@ -1922,7 +2953,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
   }
 
   function shadeHexRgba(hex, alpha, factor) {
-    const c = hex.replace("#", "");
+    const c = String(hex || "").replace("#", "");
     if (c.length !== 6) return `rgba(0,114,178,${alpha})`;
     const clamp = (v) => Math.max(0, Math.min(255, Math.round(v * factor)));
     const r = clamp(parseInt(c.slice(0, 2), 16));
@@ -1962,16 +2993,14 @@ canvas#xm-canvas:active { cursor: grabbing; }
     ctx.restore();
   }
 
-  function syncSwatches(symbols) {
+  function syncSwatches(uniqueSyms) {
     const wrap = document.getElementById("xm-swatches");
-    const unique = [];
-    for (const s of symbols) if (!unique.includes(s)) unique.push(s);
     const prevKey = wrap.dataset.syms || "";
-    const key = unique.join(",") + "|" + state.palette;
+    const key = uniqueSyms.join(",") + "|" + state.palette;
     if (prevKey === key) return;
     wrap.dataset.syms = key;
     wrap.innerHTML = "";
-    unique.forEach((sym) => {
+    uniqueSyms.forEach((sym) => {
       const pill = document.createElement("label");
       pill.className = "xm-swatch";
       const inp = document.createElement("input");
@@ -1989,54 +3018,218 @@ canvas#xm-canvas:active { cursor: grabbing; }
     });
   }
 
-  function buildPythonSnippet() {
-    const sampleName = currentSample.source_sample || currentSample.name || "structure.cif";
-    const palExpr = Object.keys(state.customColors).length
-      ? JSON.stringify(buildEffectiveColorDict())
-      : JSON.stringify(state.palette);
-    const [na, nb, nc] = state.supercell;
-    const centerLine = (baseData.cell && state.centerInCell)
-      ? "atoms = atoms.center_in_cell()\n" : "";
-    const repeatLine = (na > 1 || nb > 1 || nc > 1)
-      ? `atoms = atoms.repeat((${na}, ${nb}, ${nc}))\n` : "";
-    const hasIso = Boolean(baseData.isosurfaces && baseData.isosurfaces.length);
-    const fn = hasIso
-      ? "plot_isosurface"
-      : baseData.cell
-      ? "plot_crystal"
-      : "plot_molecule";
-    let extra = "";
-    if (hasIso) {
-      extra += `, shade=${JSON.stringify(state.isoShade)}`;
-    } else if (baseData.cell) {
-      if (state.cellMode === "off") extra += ", show_cell=False";
-      else if (state.cellMode === "wireframe") extra += ', show_cell="wireframe"';
-      if (state.axesMode !== "edges") extra += `, crystal_axes=${JSON.stringify(state.axesMode)}`;
-      if (!state.boundaryAtoms) extra += ", boundary_atoms=False";
+  function _formatPyCall(prefix, callee, args, indent) {
+    const ind = indent || "";
+    const single = `${ind}${prefix}${callee}(${args.join(", ")})`;
+    if (single.length <= 78 && args.every((a) => !a.includes("\n"))) {
+      return single;
     }
-    if (!hasIso && !state.showBonds) extra += ", show_bonds=False";
-    const plotCall = hasIso
-      ? `xm.plot_isosurface(atoms, camera=cam${extra})`
-      : `xm.${fn}(atoms, style=${JSON.stringify(state.style)}, palette=${palExpr}, camera=cam${extra})`;
-    const bgNorm = state.background.toUpperCase();
-    const callBlock = bgNorm !== "#FFFFFF"
-      ? `with xm.xkcd_style("classic", background=${JSON.stringify(bgNorm)}):\n    ax = ${plotCall}`
-      : `ax = ${plotCall}`;
-    return (
-      `import xkcd_matchem as xm\n\n` +
-      `atoms = xm.load(${JSON.stringify(sampleName)})\n` +
-      centerLine +
-      repeatLine +
-      `cam = xm.Camera(azimuth=${state.azimuth.toFixed(1)}, elevation=${state.elevation.toFixed(1)}, ` +
-      `roll=${state.roll.toFixed(1)}, perspective=${state.perspective.toFixed(2)}, zoom=${state.zoom.toFixed(2)})\n` +
-      callBlock
-    );
+    const inner = `${ind}    `;
+    return `${ind}${prefix}${callee}(\n${args.map((a) => `${inner}${a}`).join(",\n")},\n${ind})`;
   }
 
-  function buildEffectiveColorDict() {
-    const out = {};
-    for (const s of baseData.symbols) out[s] = elementColor(s);
-    return out;
+  function buildEffectivePaletteExpr() {
+    if (!Object.keys(state.customColors).length) {
+      return JSON.stringify(state.palette);
+    }
+    const seen = [];
+    for (const s of baseData.symbols) if (!seen.includes(s)) seen.push(s);
+    const items = seen.map((s) => `${JSON.stringify(s)}: ${JSON.stringify(elementColor(s))}`);
+    const inline = `{${items.join(", ")}}`;
+    if (inline.length <= 52) return inline;
+    return `{\n        ${items.join(",\n        ")},\n    }`;
+  }
+
+  function buildPythonSnippet() {
+    const sampleName = currentSample.source_sample || currentSample.name || "structure.cif";
+    const palExpr = buildEffectivePaletteExpr();
+    const presetCfg = PRESETS_TABLE[state.preset] || PRESETS_TABLE.classic;
+    const presetBg = (presetCfg.bg || "#FAF6EE").toUpperCase();
+    const presetWiggle = presetCfg.wiggle ?? 1.0;
+    const bgNorm = state.background.toUpperCase();
+
+    const hasFrames = Boolean(currentSample.frames && currentSample.frames.length > 1);
+    const hasIsoData = Boolean(baseData.isosurfaces && baseData.isosurfaces.length);
+    const hasIso = hasIsoData && state.showIso;
+    const isPeriodic = Boolean(baseData.cell);
+    const [na, nb, nc] = state.supercell;
+    const hasSc = na > 1 || nb > 1 || nc > 1;
+    const customAtomScale = Math.abs(state.scale - 1.0) > 1e-3;
+    const customBondScale = Math.abs(state.bondScale - DEFAULT_BOND_SCALE) > 1e-3;
+
+    const needsStyleCtx =
+      bgNorm !== presetBg ||
+      Math.abs(state.wiggle - presetWiggle) > 0.01 ||
+      (!hasIso && customAtomScale);
+    const indent = needsStyleCtx ? "    " : "";
+
+    const prepLines = [];
+    let plotBlock = "";
+
+    if (hasIso) {
+      const isoSrc = currentSample.iso_source || sampleName;
+      prepLines.push(`grid = xm.load(${JSON.stringify(isoSrc)})`);
+      const args = ["grid"];
+      if (state.isoLevel !== null && Number.isFinite(state.isoLevel)) {
+        args.push(`level=${Number(state.isoLevel.toPrecision(4))}`);
+      }
+      if (baseData.iso_symmetric !== undefined && baseData.iso_symmetric !== null) {
+        args.push(`symmetric=${baseData.iso_symmetric ? "True" : "False"}`);
+      }
+      args.push("camera=cam");
+      if (
+        state.isoPosColor.toUpperCase() !== DEFAULT_ISO_POS_COLOR ||
+        state.isoNegColor.toUpperCase() !== DEFAULT_ISO_NEG_COLOR
+      ) {
+        args.push(`colors=(${JSON.stringify(state.isoPosColor)}, ${JSON.stringify(state.isoNegColor)})`);
+      }
+      if (Math.abs(state.isoAlpha - DEFAULT_ISO_ALPHA) > 1e-3) {
+        args.push(`alpha=${state.isoAlpha.toFixed(2)}`);
+      }
+      args.push(`shade=${JSON.stringify(state.isoShade)}`);
+      if (!state.showIsoAtoms) args.push("show_atoms=False");
+      if (Object.keys(state.customColors).length || state.palette !== "xkcd") {
+        args.push(`palette=${palExpr}`);
+      }
+      if (state.preset !== "classic") {
+        args.push(`preset=${JSON.stringify(state.preset)}`);
+      }
+      plotBlock = _formatPyCall("ax = ", "xm.plot_isosurface", args, indent);
+    } else {
+      if (hasFrames) {
+        prepLines.push(`traj = xm.load_trajectory(${JSON.stringify(sampleName)})`);
+        prepLines.push(`atoms = traj[${state.frameIdx}]`);
+      } else {
+        prepLines.push(`atoms = xm.load(${JSON.stringify(sampleName)})`);
+      }
+
+      const cellArg = state.cellMode === "off"
+        ? "False"
+        : state.cellMode === "wireframe"
+        ? '"wireframe"'
+        : null;
+      const axesArg = state.axesMode === "edges"
+        ? null
+        : state.axesMode === "off"
+        ? "False"
+        : JSON.stringify(state.axesMode);
+      const vecSrc = currentSample.vector_source || null;
+      const vecScale = currentSample.vector_scale ?? 1.0;
+      const pspec = currentSample.polyhedra_spec || null;
+
+      if (customAtomScale) {
+        if (isPeriodic) {
+          prepLines.push("atoms = atoms.wrap_positions()");
+          if (state.centerInCell) prepLines.push("atoms = atoms.center_in_cell()");
+          if (hasSc) prepLines.push(`atoms = atoms.repeat((${na}, ${nb}, ${nc}))`);
+          if (state.boundaryAtoms && state.style !== "polyhedra") {
+            prepLines.push("atoms = atoms.with_boundary_atoms()");
+          }
+        }
+        const args = ["atoms", "camera=cam", `style=${JSON.stringify(state.style)}`, `palette=${palExpr}`];
+        if (isPeriodic) {
+          if (cellArg !== null) args.push(`show_cell=${cellArg}`);
+          if (axesArg !== null) args.push(`crystal_axes=${axesArg}`);
+        } else {
+          args.push("show_cell=False");
+        }
+        if (state.showLabels) args.push("show_labels=True");
+        if (!state.showBonds) args.push("show_bonds=False");
+        args.push(`radius_scale=${state.scale.toFixed(2)}`);
+        if (customBondScale) args.push(`bond_scale=${state.bondScale.toFixed(2)}`);
+        if (state.style === "polyhedra" && pspec && pspec.length === 2) {
+          const lig = pspec[1] === null ? "None" : JSON.stringify(pspec[1]);
+          args.push(`polyhedra=(${JSON.stringify(pspec[0])}, ${lig})`);
+        }
+        if (state.showVectors && vecSrc) {
+          args.push(`vectors=${JSON.stringify(vecSrc)}`);
+          if (Math.abs(vecScale - 1.0) > 1e-3) args.push(`vector_scale=${vecScale.toFixed(2)}`);
+        }
+        if (state.showHbonds) args.push("show_hbonds=True");
+        plotBlock = _formatPyCall("ax = ", "xm.render_structure_3d", args, indent);
+      } else {
+        if (customBondScale) {
+          prepLines.push(
+            `atoms.bonds = xm.infer_bonds(atoms, scale=${state.bondScale.toFixed(2)}, use_pbc=${isPeriodic ? "True" : "False"})`
+          );
+        }
+        const useCoord =
+          isPeriodic &&
+          state.style === "polyhedra" &&
+          pspec &&
+          pspec.length === 2 &&
+          !state.showLabels &&
+          !state.showHbonds &&
+          !state.centerInCell &&
+          !(state.showVectors && vecSrc);
+
+        if (useCoord) {
+          const args = ["atoms", JSON.stringify(pspec[0])];
+          if (pspec[1] !== null && pspec[1] !== undefined) args.push(JSON.stringify(pspec[1]));
+          if (hasSc) args.push(`supercell=(${na}, ${nb}, ${nc})`);
+          args.push("camera=cam", `palette=${palExpr}`);
+          if (state.preset !== "classic") args.push(`preset=${JSON.stringify(state.preset)}`);
+          if (cellArg !== null) args.push(`show_cell=${cellArg}`);
+          if (axesArg !== null) args.push(`crystal_axes=${axesArg}`);
+          if (state.showBonds) args.push("show_bonds=True");
+          plotBlock = _formatPyCall("ax = ", "xm.plot_coordination", args, indent);
+        } else {
+          const fn = isPeriodic ? "xm.plot_crystal" : "xm.plot_molecule";
+          const args = ["atoms"];
+          if (isPeriodic && hasSc) args.push(`supercell=(${na}, ${nb}, ${nc})`);
+          args.push(`style=${JSON.stringify(state.style)}`, "camera=cam", `palette=${palExpr}`);
+          if (isPeriodic) {
+            if (cellArg !== null) args.push(`show_cell=${cellArg}`);
+            if (axesArg !== null) args.push(`crystal_axes=${axesArg}`);
+          }
+          if (state.showLabels) args.push("show_labels=True");
+          if (!state.showLegend) args.push("show_legend=False");
+          if (isPeriodic && state.centerInCell) args.push("center_in_cell=True");
+          if (state.preset !== "classic") args.push(`preset=${JSON.stringify(state.preset)}`);
+          if (!state.showBonds) args.push("show_bonds=False");
+          if (isPeriodic && !state.boundaryAtoms) args.push("boundary_atoms=False");
+          if (state.showVectors && vecSrc) {
+            args.push(`vectors=${JSON.stringify(vecSrc)}`);
+            if (Math.abs(vecScale - 1.0) > 1e-3) args.push(`vector_scale=${vecScale.toFixed(2)}`);
+          }
+          if (state.showHbonds) args.push("show_hbonds=True");
+          plotBlock = _formatPyCall("ax = ", fn, args, indent);
+        }
+      }
+    }
+
+    const camCall = _formatPyCall("cam = ", "xm.Camera", [
+      `azimuth=${state.azimuth.toFixed(1)}`,
+      `elevation=${state.elevation.toFixed(1)}`,
+      `roll=${state.roll.toFixed(1)}`,
+      `perspective=${state.perspective.toFixed(2)}`,
+      `zoom=${state.zoom.toFixed(2)}`,
+    ], "");
+
+    const outLines = ["import xkcd_matchem as xm", "", ...prepLines, camCall];
+    if (needsStyleCtx) {
+      const ctxArgs = [JSON.stringify(state.preset)];
+      if (Math.abs(state.wiggle - presetWiggle) > 0.01) {
+        ctxArgs.push(`scale=${state.wiggle.toFixed(2)}`);
+      }
+      if (bgNorm !== presetBg) {
+        ctxArgs.push(`background=${JSON.stringify(bgNorm)}`);
+      }
+      outLines.push(`${_formatPyCall("with ", "xm.xkcd_style", ctxArgs, "")}:`);
+    }
+    outLines.push(plotBlock);
+
+    if (hasFrames && state.playing && !hasIso) {
+      const animArgs = ["traj", '"trajectory.gif"', `fps=${state.fps}`, "camera=cam", `palette=${palExpr}`];
+      if (state.preset !== "classic") animArgs.push(`preset=${JSON.stringify(state.preset)}`);
+      if (isPeriodic) {
+        if (state.cellMode === "off") animArgs.push("show_cell=False");
+        else if (state.cellMode === "wireframe") animArgs.push('show_cell="wireframe"');
+      }
+      if (state.showHbonds) animArgs.push("show_hbonds=True");
+      outLines.push(_formatPyCall("gif_path = ", "xm.animate_trajectory", animArgs, ""));
+    }
+    return outLines.join("\n") + "\n";
   }
 
   function syncBackgroundButtons() {
@@ -2053,7 +3246,11 @@ canvas#xm-canvas:active { cursor: grabbing; }
     if (sel) sel.value = state.isoShade;
     const hasIso = Boolean(baseData.isosurfaces && baseData.isosurfaces.length);
     const bar = document.getElementById("xm-iso-bar");
+    const grp = document.getElementById("xm-iso-group");
     if (bar) bar.style.display = hasIso ? "flex" : "none";
+    if (grp) grp.style.display = hasIso ? "block" : "none";
+    const lvlRow = document.getElementById("xm-iso-level-row");
+    if (lvlRow) lvlRow.style.display = (hasIso && baseData.iso_grid) ? "flex" : "none";
     document.querySelectorAll("#xm-iso-chips .xm-iso-chip").forEach((btn) => {
       const isAct = btn.dataset.isoShade === state.isoShade;
       btn.classList.toggle("active", isAct);
@@ -2061,10 +3258,11 @@ canvas#xm-canvas:active { cursor: grabbing; }
     });
   }
 
-  function updateMetaUI(symbols, cell) {
-    const counts = {};
-    for (const s of symbols) counts[s] = (counts[s] || 0) + 1;
-    const formula = Object.keys(counts).sort().map((s) => counts[s] > 1 ? `${s}${counts[s]}` : s).join("");
+  function updateMetaUI(uniqueSyms, formula, nAtoms, cell, lodActive) {
+    document.getElementById("xm-camera-readout").textContent =
+      `az=${state.azimuth.toFixed(1)} deg | el=${state.elevation.toFixed(1)} deg | zoom=${state.zoom.toFixed(2)} | R: reset`;
+    if (lodActive) return;
+
     document.getElementById("xm-struct-title").textContent = currentSample.name || formula || "xkcd-matchem";
     const catEl = document.getElementById("xm-struct-category");
     if (catEl) {
@@ -2079,7 +3277,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     }
     const metaParts = [
       formula,
-      `${symbols.length} atoms`,
+      `${nAtoms} atoms`,
       cell ? "Periodic" : "Molecule",
     ];
     if (baseData.isosurfaces && baseData.isosurfaces.length) {
@@ -2100,13 +3298,11 @@ canvas#xm-canvas:active { cursor: grabbing; }
         descEl.style.display = "none";
       }
     }
-    document.getElementById("xm-camera-readout").textContent =
-      `az=${state.azimuth.toFixed(1)} deg | el=${state.elevation.toFixed(1)} deg | zoom=${state.zoom.toFixed(2)} | R: reset`;
     document.getElementById("xm-supercell-group").style.display = cell ? "block" : "none";
     document.getElementById("xm-py-preview").value = buildPythonSnippet();
     syncBackgroundButtons();
     syncIsoShadeUI();
-    syncSwatches(symbols);
+    syncSwatches(uniqueSyms);
   }
 
   function applyViewPreset(name) {
@@ -2125,7 +3321,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
       state.azimuth = -90; state.elevation = 89.9; state.roll = 0;
     } else {
       const idx = { a: 0, b: 1, c: 2 }[name.replace("*", "")];
-      const cell = baseData.cell || [[1,0,0],[0,1,0],[0,0,1]];
+      const cell = baseData.cell || [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
       let vec = cell[idx];
       if (name.endsWith("*")) {
         const inv = inv3x3(cell);
@@ -2142,25 +3338,33 @@ canvas#xm-canvas:active { cursor: grabbing; }
   }
 
   function exportSVGString() {
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasWrap.getBoundingClientRect();
     const w = Math.max(Math.round(rect.width), 640);
     const h = Math.max(Math.round(rect.height), 480);
     const scene = buildActiveSceneData();
-    const { symbols, positions, cell, bonds, polyhedra, vectors, isosurfaces } = scene;
+    const { symbols, uniqueSyms, positions, posFlat, cell, bonds, hbonds, polyhedra, vectors, isosurfaces } = scene;
+    const nAtoms = symbols.length;
     const dark = isDarkBg(state.background);
     const ink = dark ? "#F5F5F0" : "#111111";
+    const escXml = (v) => String(v)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
     const pivot = [0, 0, 0];
     if (cell && state.cellMode !== "off") {
       for (let d = 0; d < 3; d++) pivot[d] = 0.5 * (cell[0][d] + cell[1][d] + cell[2][d]);
     } else {
       for (const p of positions) { pivot[0] += p[0]; pivot[1] += p[1]; pivot[2] += p[2]; }
-      pivot[0] /= Math.max(positions.length, 1);
-      pivot[1] /= Math.max(positions.length, 1);
-      pivot[2] /= Math.max(positions.length, 1);
+      pivot[0] /= Math.max(nAtoms, 1);
+      pivot[1] /= Math.max(nAtoms, 1);
+      pivot[2] /= Math.max(nAtoms, 1);
     }
     const basis = rotationBasis();
     const sceneSpan = computeSceneSpan(positions, cell, pivot, basis);
-    const proj = projectList(positions, pivot, basis, sceneSpan);
+    projectFlatIntoBuffers(posFlat, nAtoms, pivot, basis, sceneSpan);
+    const proj = positions.map((_, i) => [projX[i], projY[i], projZ[i]]);
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     proj.forEach((p, i) => {
       const r = visualRadius(symbols[i]);
@@ -2192,7 +3396,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     const midX = 0.5 * (minX + maxX), midY = 0.5 * (minY + maxY);
     const sc = (xy) => [w * 0.5 + (xy[0] - midX) * pxPerA, (h - legendPad) * 0.5 - (xy[1] - midY) * pxPerA];
     const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`];
-    parts.push(`<rect width="${w}" height="${h}" fill="${state.background}"/>`);
+    parts.push(`<rect width="${w}" height="${h}" fill="${escXml(state.background)}"/>`);
 
     const cellEdgesIdx = [
       [0, 1], [0, 2], [0, 4], [1, 3], [1, 5], [2, 3],
@@ -2216,9 +3420,13 @@ canvas#xm-canvas:active { cursor: grabbing; }
       }
     }
 
+    const hasIsoNow = Boolean(isosurfaces && isosurfaces.length && state.showIso);
+    const drawAtomsNow = !hasIsoNow || state.showIsoAtoms;
     const stickW = Math.max(2, Math.min(6, 0.095 * pxPerA)) * 2;
+    const alphaScale = Math.max(0.2, Math.min(2.8, state.isoAlpha / DEFAULT_ISO_ALPHA));
     const q = [];
-    if (state.showBonds && state.style !== "spacefill" && state.style !== "polyhedra") {
+
+    if (drawAtomsNow && state.showBonds && state.style !== "spacefill" && state.style !== "polyhedra") {
       bonds.forEach(([i, j, order, shift], idx) => {
         if (i >= proj.length || j >= proj.length) return;
         const isInternal = shift[0] === 0 && shift[1] === 0 && shift[2] === 0;
@@ -2244,25 +3452,26 @@ canvas#xm-canvas:active { cursor: grabbing; }
         }
       });
     }
+    if (drawAtomsNow && hbonds && hbonds.length) {
+      const hbCol = dark ? "#56B4E9" : "#0072B2";
+      for (const [hi, ai] of hbonds) {
+        q.push({ d: 0.5 * (proj[hi][2] + proj[ai][2]) - 0.05, t: "hbond", a: sc(proj[hi]), b: sc(proj[ai]), c: hbCol });
+      }
+    }
     if (state.style === "polyhedra" && polyhedra && polyhedra.length) {
       for (const poly of polyhedra) {
         const vProj = projectList(poly.vertices, pivot, basis, sceneSpan);
         const col = elementColor(poly.center_symbol);
         for (const [f0, f1, f2] of poly.faces) {
           const md = (vProj[f0][2] + vProj[f1][2] + vProj[f2][2]) / 3 - 0.03;
-          const sh = polyShadeFactor(
-            poly.vertices[f0],
-            poly.vertices[f1],
-            poly.vertices[f2],
-            basis
-          );
+          const sh = polyShadeFactor(poly.vertices[f0], poly.vertices[f1], poly.vertices[f2], basis);
           q.push({ d: md, t: "tri", pts: [sc(vProj[f0]), sc(vProj[f1]), sc(vProj[f2])], c: shadeHexRgba(col, 0.44, sh) });
         }
       }
     }
-    if (state.showIso && isosurfaces && isosurfaces.length) {
+    if (hasIsoNow) {
       for (const iso of isosurfaces) {
-        const res = collectIsoLobeArt(iso, pivot, basis, sceneSpan, sc, proj, positions);
+        const res = collectIsoLobeArt(iso, pivot, basis, sceneSpan, sc, drawAtomsNow ? nAtoms : 0, positions, false);
         if (state.isoShade === "solid") {
           for (const it of res.triItems) {
             q.push({ d: it.depth, t: "iso_tri", pts: [sc(it.pts[0]), sc(it.pts[1]), sc(it.pts[2])], c: it.col, rim: it.nz < 0.26 });
@@ -2274,14 +3483,16 @@ canvas#xm-canvas:active { cursor: grabbing; }
         }
       }
     }
-    if (state.showVectors && vectors && vectors.length === positions.length) {
+    if (state.showVectors && vectors && vectors.length === nAtoms) {
       const tipProj = projectList(positions.map((p, i) => [p[0] + vectors[i][0], p[1] + vectors[i][1], p[2] + vectors[i][2]]), pivot, basis, sceneSpan);
       for (let i = 0; i < proj.length; i++) {
         if (norm3(vectors[i]) < 1e-6) continue;
         q.push({ d: 0.5 * (proj[i][2] + tipProj[i][2]) + 0.05, t: "vec", a: sc(proj[i]), b: sc(tipProj[i]), c: "#D55E00" });
       }
     }
-    proj.forEach((p, i) => q.push({ d: p[2], t: "a", c: sc(p), r: visualRadius(symbols[i]) * pxPerA, fill: elementColor(symbols[i]) }));
+    if (drawAtomsNow) {
+      proj.forEach((p, i) => q.push({ d: p[2], t: "a", c: sc(p), r: visualRadius(symbols[i]) * pxPerA, fill: elementColor(symbols[i]), sym: symbols[i] }));
+    }
     if (cellCorners) {
       for (const [u, v] of cellEdgesIdx) {
         if (u === backCornerIdx || v === backCornerIdx) continue;
@@ -2297,16 +3508,17 @@ canvas#xm-canvas:active { cursor: grabbing; }
         const cid = `xm-iso-clip-${++isoClipCounter}`;
         if (art.frontPolys.length) {
           const dPath = art.frontPolys.map((p) => `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}L${p[1][0].toFixed(1)},${p[1][1].toFixed(1)}L${p[2][0].toFixed(1)},${p[2][1].toFixed(1)}Z`).join("");
-          parts.push(`<path d="${dPath}" fill="${art.col}" fill-opacity="${state.isoShade === "outline" ? "0.04" : "0.14"}"/>`);
+          const fOp = ((state.isoShade === "outline" ? 0.04 : 0.14) * alphaScale).toFixed(2);
+          parts.push(`<path d="${dPath}" fill="${escXml(art.col)}" fill-opacity="${fOp}"/>`);
         }
         if (state.isoShade === "stipple" && art.stipplePts.length) {
-          parts.push(`<g fill="${art.col}">`);
+          parts.push(`<g fill="${escXml(art.col)}">`);
           for (const d of art.stipplePts) {
-            parts.push(`<circle cx="${d.pt[0].toFixed(1)}" cy="${d.pt[1].toFixed(1)}" r="${d.r.toFixed(2)}" fill-opacity="${d.aa.toFixed(2)}"/>`);
+            parts.push(`<circle cx="${d.pt[0].toFixed(1)}" cy="${d.pt[1].toFixed(1)}" r="${d.r.toFixed(2)}" fill-opacity="${Math.min(0.92, d.aa * alphaScale).toFixed(2)}"/>`);
           }
           parts.push("</g>");
         } else if ((state.isoShade === "contour" || state.isoShade === "cross_contour") && art.contourSegs.length) {
-          parts.push(`<g fill="none" stroke="${art.col}" stroke-opacity="0.42" stroke-width="0.70" stroke-linecap="round">`);
+          parts.push(`<g fill="none" stroke="${escXml(art.col)}" stroke-opacity="0.42" stroke-width="0.70" stroke-linecap="round">`);
           for (const seg of art.contourSegs) {
             parts.push(`<line x1="${seg[0][0].toFixed(1)}" y1="${seg[0][1].toFixed(1)}" x2="${seg[1][0].toFixed(1)}" y2="${seg[1][1].toFixed(1)}"/>`);
           }
@@ -2316,7 +3528,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
           parts.push(`<defs><clipPath id="${cid}"><path d="${sPath}"/></clipPath></defs>`);
           const [bx0, by0, bx1, by1] = art.bbox;
           const bw = Math.max(bx1 - bx0, 1), bh = Math.max(by1 - by0, 1);
-          parts.push(`<g clip-path="url(#${cid})" fill="none" stroke="${art.col}" stroke-opacity="0.42" stroke-width="0.58" stroke-linecap="round">`);
+          parts.push(`<g clip-path="url(#${cid})" fill="none" stroke="${escXml(art.col)}" stroke-opacity="0.42" stroke-width="0.58" stroke-linecap="round">`);
           for (const sItem of art.scumblePts) {
             const th0 = _isoHash(sItem.seed * 5 + 3) * Math.PI * 2;
             const drift = 0.22 * Math.hypot(bw, bh);
@@ -2337,7 +3549,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
           parts.push(`<defs><clipPath id="${cid}"><path d="${sPath}"/></clipPath></defs>`);
           const [bx0, by0, bx1, by1] = art.bbox;
           const diag = Math.hypot(bx1 - bx0, by1 - by0);
-          parts.push(`<g clip-path="url(#${cid})" fill="none" stroke="${art.col}" stroke-opacity="0.38" stroke-width="0.68" stroke-linecap="round">`);
+          parts.push(`<g clip-path="url(#${cid})" fill="none" stroke="${escXml(art.col)}" stroke-opacity="0.38" stroke-width="0.68" stroke-linecap="round">`);
           for (let d = -diag; d <= diag; d += 9.0) {
             const qPts = wiggledSegment([bx0 + d, by1], [bx0 + d + diag * 0.84, by1 - diag], Math.max(state.wiggle * 0.5, 0.5), Math.abs(Math.round(d)));
             parts.push(`<polyline points="${_svgPolylinePoints(qPts)}"/>`);
@@ -2347,7 +3559,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
             const cidCore = `xm-iso-core-${++isoClipCounter}`;
             const cPath = art.corePolys.map((p) => `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}L${p[1][0].toFixed(1)},${p[1][1].toFixed(1)}L${p[2][0].toFixed(1)},${p[2][1].toFixed(1)}Z`).join("");
             parts.push(`<defs><clipPath id="${cidCore}"><path d="${cPath}"/></clipPath></defs>`);
-            parts.push(`<g clip-path="url(#${cidCore})" fill="none" stroke="${art.col}" stroke-opacity="0.42" stroke-width="0.70" stroke-linecap="round">`);
+            parts.push(`<g clip-path="url(#${cidCore})" fill="none" stroke="${escXml(art.col)}" stroke-opacity="0.42" stroke-width="0.70" stroke-linecap="round">`);
             for (let d = -diag; d <= diag; d += 9.0) {
               const qPts2 = wiggledSegment([bx0 + d, by0], [bx0 + d + diag * 0.90, by0 + diag], Math.max(state.wiggle * 0.5, 0.5), Math.abs(Math.round(d)) + 13);
               parts.push(`<polyline points="${_svgPolylinePoints(qPts2)}"/>`);
@@ -2363,20 +3575,23 @@ canvas#xm-canvas:active { cursor: grabbing; }
           const litV = (-0.67 * mx - 0.74 * my) / ml;
           const wRim = litV > 0.22 ? "1.05" : litV < -0.18 ? "1.85" : "1.42";
           const alRim = litV > 0.22 ? "0.40" : litV < -0.18 ? "0.78" : "0.58";
-          parts.push(`<line x1="${seg[0][0].toFixed(1)}" y1="${seg[0][1].toFixed(1)}" x2="${seg[1][0].toFixed(1)}" y2="${seg[1][1].toFixed(1)}" stroke="${art.col}" stroke-opacity="${alRim}" stroke-width="${wRim}" stroke-linecap="round"/>`);
+          parts.push(`<line x1="${seg[0][0].toFixed(1)}" y1="${seg[0][1].toFixed(1)}" x2="${seg[1][0].toFixed(1)}" y2="${seg[1][1].toFixed(1)}" stroke="${escXml(art.col)}" stroke-opacity="${alRim}" stroke-width="${wRim}" stroke-linecap="round"/>`);
         }
       } else if (it.t === "iso_tri") {
         const ptsStr = it.pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+        const fillOp = Math.min(0.85, (state.isoShade === "solid" ? 0.24 : 0.12) * alphaScale).toFixed(2);
         if (state.isoShade === "solid") {
           const sw = it.rim ? "0.8" : "0.2";
           const so = it.rim ? "0.42" : "0.10";
-          parts.push(`<polygon points="${ptsStr}" fill="${it.c}" fill-opacity="0.24" stroke="${it.c}" stroke-opacity="${so}" stroke-width="${sw}"/>`);
+          parts.push(`<polygon points="${ptsStr}" fill="${escXml(it.c)}" fill-opacity="${fillOp}" stroke="${escXml(it.c)}" stroke-opacity="${so}" stroke-width="${sw}"/>`);
         } else {
-          parts.push(`<polygon points="${ptsStr}" fill="${it.c}" fill-opacity="0.12" stroke="none"/>`);
+          parts.push(`<polygon points="${ptsStr}" fill="${escXml(it.c)}" fill-opacity="${fillOp}" stroke="none"/>`);
         }
+      } else if (it.t === "hbond") {
+        parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${escXml(it.c)}" stroke-width="1.45" stroke-dasharray="5,4" stroke-linecap="round"/>`);
       } else if (it.t === "vec") {
         parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${ink}" stroke-width="3.8" stroke-linecap="round"/>`);
-        parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${it.c}" stroke-width="2.0" stroke-linecap="round"/>`);
+        parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${escXml(it.c)}" stroke-width="2.0" stroke-linecap="round"/>`);
       } else if (it.t === "tri") {
         const ptsStr = it.pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
         parts.push(`<polygon points="${ptsStr}" fill="${it.c}" stroke="${ink}" stroke-width="1.05" stroke-linejoin="round"/>`);
@@ -2392,23 +3607,29 @@ canvas#xm-canvas:active { cursor: grabbing; }
           const bPts = wiggledSegment([it.a[0] + ox, it.a[1] + oy], [it.b[0] + ox, it.b[1] + oy], wAmp, it.seed || 1);
           parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts)}" stroke="${ink}" stroke-width="${ow.toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
           if (it.c0 === it.c1) {
-            parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts)}" stroke="${it.c0}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
+            parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts)}" stroke="${escXml(it.c0)}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
           } else {
             const nl = bPts.length - 1;
             const mi = Math.max(1, Math.min(nl - 1, Math.round(0.5 * nl)));
-            parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts.slice(0, Math.min(bPts.length, mi + 2)))}" stroke="${it.c0}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
-            parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts.slice(mi))}" stroke="${it.c1}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
+            parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts.slice(0, Math.min(bPts.length, mi + 2)))}" stroke="${escXml(it.c0)}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
+            parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts.slice(mi))}" stroke="${escXml(it.c1)}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
           }
         }
       } else if (it.t === "b") {
         const bPts = wiggledSegment(it.a, it.b, Math.max(state.wiggle * 0.42, 0.0), it.seed || 1);
         parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts)}" stroke="${ink}" stroke-width="${(stickW + 2.4).toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
-        parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts)}" stroke="${it.c}" stroke-width="${Math.max(1.5, stickW - 0.8).toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
+        parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts)}" stroke="${escXml(it.c)}" stroke-width="${Math.max(1.5, stickW - 0.8).toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
       } else if (it.t === "cell_edge") {
         parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${ink}" stroke-width="1.65" stroke-linecap="round"/>`);
       } else {
-        parts.push(`<circle cx="${it.c[0].toFixed(1)}" cy="${it.c[1].toFixed(1)}" r="${it.r.toFixed(1)}" fill="${it.fill}" stroke="${ink}" stroke-width="1.6"/>`);
-        parts.push(`<circle cx="${(it.c[0] - it.r * 0.34).toFixed(1)}" cy="${(it.c[1] - it.r * 0.34).toFixed(1)}" r="${Math.max(1.5, it.r * 0.16).toFixed(1)}" fill="#ffffff" fill-opacity="0.92"/>`);
+        parts.push(`<circle cx="${it.c[0].toFixed(1)}" cy="${it.c[1].toFixed(1)}" r="${it.r.toFixed(1)}" fill="${escXml(it.fill)}" stroke="${ink}" stroke-width="1.6"/>`);
+        if (state.style !== "stick" && it.r >= 3.2) {
+          parts.push(`<circle cx="${(it.c[0] - it.r * 0.34).toFixed(1)}" cy="${(it.c[1] - it.r * 0.34).toFixed(1)}" r="${Math.max(1.5, it.r * 0.16).toFixed(1)}" fill="#ffffff" fill-opacity="0.92"/>`);
+        }
+        if (state.showLabels && it.r >= 5.5) {
+          const fSize = Math.max(10, Math.min(16, Math.round(it.r * 0.92)));
+          parts.push(`<text x="${it.c[0].toFixed(1)}" y="${(it.c[1] + 0.5).toFixed(1)}" fill="${contrastLabelColor(it.fill)}" font-family="__XM_FONT_FAMILY__, sans-serif" font-size="${fSize}" font-weight="bold" text-anchor="middle" dominant-baseline="central">${escXml(it.sym)}</text>`);
+        }
       }
     }
     if (cellCorners && state.axesMode === "edges") {
@@ -2441,17 +3662,10 @@ canvas#xm-canvas:active { cursor: grabbing; }
       parts.push(`<circle cx="${ox.toFixed(1)}" cy="${oy.toFixed(1)}" r="3.2" fill="${ink}"/>`);
     }
     if (state.showLegend) {
-      const escXml = (v) => String(v)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
-      const seen = [];
-      for (const s of symbols) if (!seen.includes(s)) seen.push(s);
-      const step = Math.min(72, Math.max(46, (w - 40) / Math.max(seen.length, 1)));
-      const startX = w * 0.5 - ((seen.length - 1) * step) * 0.5;
+      const step = Math.min(72, Math.max(46, (w - 40) / Math.max(uniqueSyms.length, 1)));
+      const startX = w * 0.5 - ((uniqueSyms.length - 1) * step) * 0.5;
       const ly = h - 18;
-      seen.forEach((sym, i) => {
+      uniqueSyms.forEach((sym, i) => {
         const lx = startX + i * step;
         parts.push(`<circle cx="${(lx - 10).toFixed(1)}" cy="${ly.toFixed(1)}" r="7" fill="${escXml(elementColor(sym))}" stroke="${ink}" stroke-width="1.25"/>`);
         parts.push(`<text x="${(lx + 2).toFixed(1)}" y="${(ly + 1).toFixed(1)}" fill="${ink}" font-family="__XM_FONT_FAMILY__, sans-serif" font-size="15" dominant-baseline="central">${escXml(sym)}</text>`);
@@ -2517,7 +3731,16 @@ canvas#xm-canvas:active { cursor: grabbing; }
       }
     }
     if (!syms.length || !Number.isFinite(a)) throw new Error("Could not extract CIF unit cell and fractional sites.");
-    return { name, symbols: syms, positions: pos, cell, pbc: [true, true, true], bonds: [] };
+    return {
+      name,
+      source_sample: name,
+      symbols: syms,
+      positions: pos,
+      cell,
+      pbc: [true, true, true],
+      bonds: [],
+      perf: { atomCount: syms.length, largeSystem: syms.length >= LARGE_SYSTEM_THRESHOLD, autoLod: syms.length >= 500 },
+    };
   }
 
   function parseUploadedFile(name, text) {
@@ -2530,7 +3753,16 @@ canvas#xm-canvas:active { cursor: grabbing; }
         const p = lines[i].trim().split(/\s+/);
         if (p.length >= 4) { syms.push(p[0]); pos.push([+p[1], +p[2], +p[3]]); }
       }
-      return { name, symbols: syms, positions: pos, cell: null, pbc: [false, false, false], bonds: [] };
+      return {
+        name,
+        source_sample: name,
+        symbols: syms,
+        positions: pos,
+        cell: null,
+        pbc: [false, false, false],
+        bonds: [],
+        perf: { atomCount: syms.length, largeSystem: syms.length >= LARGE_SYSTEM_THRESHOLD, autoLod: syms.length >= 500 },
+      };
     }
     if (low.endsWith(".poscar") || low.endsWith(".vasp") || low === "poscar" || low === "contcar") {
       let scale = parseFloat(lines[1].trim());
@@ -2552,7 +3784,16 @@ canvas#xm-canvas:active { cursor: grabbing; }
           else pos.push(vals.map((v) => v * scale));
         }
       });
-      return { name, symbols: syms, positions: pos, cell: lat, pbc: [true, true, true], bonds: [] };
+      return {
+        name,
+        source_sample: name,
+        symbols: syms,
+        positions: pos,
+        cell: lat,
+        pbc: [true, true, true],
+        bonds: [],
+        perf: { atomCount: syms.length, largeSystem: syms.length >= LARGE_SYSTEM_THRESHOLD, autoLod: syms.length >= 500 },
+      };
     }
     if (low.endsWith(".sdf") || low.endsWith(".mol")) {
       const cLine = lines[3];
@@ -2568,7 +3809,16 @@ canvas#xm-canvas:active { cursor: grabbing; }
         const l = lines[4 + na + b];
         bonds.push([parseInt(l.slice(0, 3), 10) - 1, parseInt(l.slice(3, 6), 10) - 1, parseInt(l.slice(6, 9), 10) || 1, [0, 0, 0]]);
       }
-      return { name, symbols: syms, positions: pos, cell: null, pbc: [false, false, false], bonds };
+      return {
+        name,
+        source_sample: name,
+        symbols: syms,
+        positions: pos,
+        cell: null,
+        pbc: [false, false, false],
+        bonds,
+        perf: { atomCount: syms.length, largeSystem: syms.length >= LARGE_SYSTEM_THRESHOLD, autoLod: syms.length >= 500 },
+      };
     }
     if (low.endsWith(".pdb")) {
       const syms = [], pos = [];
@@ -2579,7 +3829,16 @@ canvas#xm-canvas:active { cursor: grabbing; }
           syms.push(el);
         }
       }
-      return { name, symbols: syms, positions: pos, cell: null, pbc: [false, false, false], bonds: [] };
+      return {
+        name,
+        source_sample: name,
+        symbols: syms,
+        positions: pos,
+        cell: null,
+        pbc: [false, false, false],
+        bonds: [],
+        perf: { atomCount: syms.length, largeSystem: syms.length >= LARGE_SYSTEM_THRESHOLD, autoLod: syms.length >= 500 },
+      };
     }
     if (low.endsWith(".cif")) {
       return parseCifUploaded(name, text);
@@ -2587,10 +3846,57 @@ canvas#xm-canvas:active { cursor: grabbing; }
     throw new Error("Supported browser formats: .xyz, .poscar/.vasp, .cif, .sdf/.mol, .pdb");
   }
 
-  // Event wiring
+  // Responsive sidebar drawer wiring
+  sidebarToggleBtn.addEventListener("click", () => {
+    setSidebarOpen(!sidebarOpen);
+  });
+  if (sidebarCloseBtn) {
+    sidebarCloseBtn.addEventListener("click", () => {
+      setSidebarOpen(false);
+    });
+  }
+  if (backdropEl) {
+    backdropEl.addEventListener("click", () => {
+      setSidebarOpen(false);
+    });
+  }
+  sidebarEl.addEventListener("transitionend", scheduleResizeRedraw);
+
+  // Pointer orbit & wheel zoom with automatic LOD settle
   let dragging = false, lastX = 0, lastY = 0;
+
+  function settleInteractiveLod() {
+    if (lodSettleTimer !== null) {
+      clearTimeout(lodSettleTimer);
+      lodSettleTimer = null;
+    }
+    if (!dragging && (isDragging || isWheelInteracting)) {
+      isDragging = false;
+      isWheelInteracting = false;
+      renderFrame();
+    }
+  }
+
+  function finishPointerDrag() {
+    if (!dragging && !isDragging) return;
+    dragging = false;
+    isDragging = false;
+    if (lodSettleTimer !== null) {
+      clearTimeout(lodSettleTimer);
+      lodSettleTimer = null;
+    }
+    renderFrame();
+  }
+
   canvas.addEventListener("pointerdown", (e) => {
-    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    dragging = true;
+    isDragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    if (lodSettleTimer !== null) {
+      clearTimeout(lodSettleTimer);
+      lodSettleTimer = null;
+    }
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener("pointermove", (e) => {
@@ -2602,23 +3908,45 @@ canvas#xm-canvas:active { cursor: grabbing; }
       state.azimuth -= dx * 0.55;
       state.elevation = Math.max(-89.9, Math.min(89.9, state.elevation + dy * 0.45));
     }
-    renderFrame();
+    scheduleInteractiveRender();
   });
-  canvas.addEventListener("pointerup", () => { dragging = false; });
+  canvas.addEventListener("pointerup", finishPointerDrag);
+  canvas.addEventListener("pointercancel", finishPointerDrag);
+  canvas.addEventListener("lostpointercapture", finishPointerDrag);
+
   canvas.addEventListener("wheel", (e) => {
     e.preventDefault();
+    isWheelInteracting = true;
     state.zoom = Math.max(0.4, Math.min(3.0, state.zoom * (e.deltaY < 0 ? 1.07 : 0.93)));
     document.getElementById("xm-zoom").value = state.zoom.toFixed(2);
     document.getElementById("xm-zoom-val").textContent = state.zoom.toFixed(2);
-    renderFrame();
+    scheduleInteractiveRender();
+    if (lodSettleTimer !== null) clearTimeout(lodSettleTimer);
+    lodSettleTimer = setTimeout(settleInteractiveLod, LOD_SETTLE_MS);
   }, { passive: false });
 
   document.querySelectorAll("#xm-view-buttons .xm-btn[data-view]").forEach((btn) => {
     btn.addEventListener("click", () => applyViewPreset(btn.dataset.view));
   });
+
+  document.getElementById("xm-preset").value = state.preset;
+  document.getElementById("xm-preset").addEventListener("change", (e) => {
+    state.preset = e.target.value;
+    const cfg = PRESETS_TABLE[state.preset] || PRESETS_TABLE.classic;
+    state.background = (cfg.bg || "#FAF6EE").toUpperCase();
+    state.wiggle = cfg.wiggle ?? 1.0;
+    document.getElementById("xm-bg-color").value = state.background;
+    document.getElementById("xm-wiggle").value = state.wiggle;
+    document.getElementById("xm-wiggle-val").textContent = state.wiggle.toFixed(2);
+    renderFrame();
+  });
+
   document.getElementById("xm-style").value = state.style;
   document.getElementById("xm-style").addEventListener("change", (e) => {
-    state.style = e.target.value; renderFrame();
+    const prevPoly = state.style === "polyhedra";
+    state.style = e.target.value;
+    if (prevPoly !== (state.style === "polyhedra")) invalidateScene();
+    renderFrame();
   });
   document.getElementById("xm-palette").value = state.palette;
   document.getElementById("xm-palette").addEventListener("change", (e) => {
@@ -2628,7 +3956,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
   });
   document.querySelectorAll("[data-bg]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      state.background = btn.dataset.bg;
+      state.background = btn.dataset.bg.toUpperCase();
       document.getElementById("xm-bg-color").value = state.background;
       renderFrame();
     });
@@ -2645,14 +3973,29 @@ canvas#xm-canvas:active { cursor: grabbing; }
   document.getElementById("xm-axes-mode").addEventListener("change", (e) => {
     state.axesMode = e.target.value; renderFrame();
   });
+  document.getElementById("xm-show-bonds").checked = state.showBonds;
   document.getElementById("xm-show-bonds").addEventListener("change", (e) => {
     state.showBonds = e.target.checked; renderFrame();
   });
+  document.getElementById("xm-show-hbonds").checked = state.showHbonds;
+  document.getElementById("xm-show-hbonds").addEventListener("change", (e) => {
+    state.showHbonds = e.target.checked;
+    invalidateScene();
+    renderFrame();
+  });
+  document.getElementById("xm-show-labels").checked = state.showLabels;
+  document.getElementById("xm-show-labels").addEventListener("change", (e) => {
+    state.showLabels = e.target.checked; renderFrame();
+  });
   document.getElementById("xm-boundary-atoms").addEventListener("change", (e) => {
-    state.boundaryAtoms = e.target.checked; renderFrame();
+    state.boundaryAtoms = e.target.checked;
+    invalidateScene();
+    renderFrame();
   });
   document.getElementById("xm-center-cell").addEventListener("change", (e) => {
-    state.centerInCell = e.target.checked; renderFrame();
+    state.centerInCell = e.target.checked;
+    invalidateScene();
+    renderFrame();
   });
   document.getElementById("xm-legend").addEventListener("change", (e) => {
     state.showLegend = e.target.checked; renderFrame();
@@ -2663,6 +4006,10 @@ canvas#xm-canvas:active { cursor: grabbing; }
   document.getElementById("xm-show-iso").addEventListener("change", (e) => {
     state.showIso = e.target.checked; renderFrame();
   });
+  document.getElementById("xm-full-detail").addEventListener("change", (e) => {
+    state.alwaysFullDetail = e.target.checked; renderFrame();
+  });
+
   document.getElementById("xm-iso-shade").value = state.isoShade;
   document.getElementById("xm-iso-shade").addEventListener("change", (e) => {
     state.isoShade = e.target.value;
@@ -2679,6 +4026,31 @@ canvas#xm-canvas:active { cursor: grabbing; }
       syncIsoShadeUI();
       renderFrame();
     });
+  });
+  document.getElementById("xm-iso-level").addEventListener("input", (e) => {
+    state.isoLevel = parseFloat(e.target.value);
+    document.getElementById("xm-iso-level-val").textContent = state.isoLevel.toFixed(3);
+    invalidateScene();
+    renderFrame();
+  });
+  document.getElementById("xm-iso-alpha").addEventListener("input", (e) => {
+    state.isoAlpha = parseFloat(e.target.value);
+    document.getElementById("xm-iso-alpha-val").textContent = state.isoAlpha.toFixed(2);
+    renderFrame();
+  });
+  document.getElementById("xm-iso-pos-color").addEventListener("input", (e) => {
+    state.isoPosColor = e.target.value.toUpperCase();
+    invalidateScene();
+    renderFrame();
+  });
+  document.getElementById("xm-iso-neg-color").addEventListener("input", (e) => {
+    state.isoNegColor = e.target.value.toUpperCase();
+    invalidateScene();
+    renderFrame();
+  });
+  document.getElementById("xm-iso-atoms").addEventListener("change", (e) => {
+    state.showIsoAtoms = e.target.checked;
+    renderFrame();
   });
 
   function stopPlayback() {
@@ -2704,6 +4076,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     document.getElementById("xm-traj-slider").value = String(fIdx);
     const eStr = fr.energy !== undefined ? ` | E=${Number(fr.energy).toFixed(3)} eV` : "";
     document.getElementById("xm-traj-readout").textContent = `Frame ${fIdx + 1} / ${n}${eStr}`;
+    invalidateScene();
     renderFrame();
   }
 
@@ -2719,6 +4092,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
       applyTrajectoryFrame(0);
     } else {
       grp.style.display = "none";
+      state.frameIdx = 0;
     }
   }
 
@@ -2729,9 +4103,14 @@ canvas#xm-canvas:active { cursor: grabbing; }
   document.getElementById("xm-traj-play").addEventListener("click", () => {
     const frames = currentSample.frames;
     if (!frames || frames.length <= 1) return;
-    if (state.playing) { stopPlayback(); return; }
+    if (state.playing) {
+      stopPlayback();
+      document.getElementById("xm-py-preview").value = buildPythonSnippet();
+      return;
+    }
     state.playing = true;
     document.getElementById("xm-traj-play").textContent = "Pause";
+    document.getElementById("xm-py-preview").value = buildPythonSnippet();
     playTimer = setInterval(() => {
       applyTrajectoryFrame(state.frameIdx + 1);
     }, Math.max(40, Math.round(1000 / Math.max(state.fps, 1))));
@@ -2741,6 +4120,8 @@ canvas#xm-canvas:active { cursor: grabbing; }
     if (state.playing) {
       stopPlayback();
       document.getElementById("xm-traj-play").click();
+    } else {
+      document.getElementById("xm-py-preview").value = buildPythonSnippet();
     }
   });
   document.getElementById("xm-persp").addEventListener("input", (e) => {
@@ -2758,24 +4139,52 @@ canvas#xm-canvas:active { cursor: grabbing; }
     document.getElementById("xm-scale-val").textContent = state.scale.toFixed(2);
     renderFrame();
   });
+  document.getElementById("xm-bond-scale").addEventListener("input", (e) => {
+    state.bondScale = parseFloat(e.target.value);
+    document.getElementById("xm-bond-scale-val").textContent = state.bondScale.toFixed(2);
+    invalidateScene();
+    renderFrame();
+  });
   document.getElementById("xm-wiggle").addEventListener("input", (e) => {
     state.wiggle = parseFloat(e.target.value);
-    document.getElementById("xm-wiggle-val").textContent = state.wiggle.toFixed(1);
+    document.getElementById("xm-wiggle-val").textContent = state.wiggle.toFixed(2);
     renderFrame();
   });
   ["xm-na", "xm-nb", "xm-nc"].forEach((id, idx) => {
     document.getElementById(id).addEventListener("change", (e) => {
       state.supercell[idx] = Math.max(1, Math.min(3, parseInt(e.target.value, 10) || 1));
+      invalidateScene();
       renderFrame();
     });
   });
 
+  function syncIsoInputs() {
+    const isoMax = Math.max(baseData.iso_max || 0.5, 0.05);
+    const lvlSlider = document.getElementById("xm-iso-level");
+    lvlSlider.min = (Math.max(0.005, isoMax * 0.04)).toFixed(4);
+    lvlSlider.max = (isoMax * 0.92).toFixed(4);
+    lvlSlider.step = (Math.max(0.001, isoMax * 0.015)).toFixed(4);
+    if (state.isoLevel !== null && Number.isFinite(state.isoLevel)) {
+      lvlSlider.value = String(state.isoLevel);
+      document.getElementById("xm-iso-level-val").textContent = state.isoLevel.toFixed(3);
+    }
+    document.getElementById("xm-iso-alpha").value = String(state.isoAlpha);
+    document.getElementById("xm-iso-alpha-val").textContent = state.isoAlpha.toFixed(2);
+    document.getElementById("xm-iso-pos-color").value = state.isoPosColor;
+    document.getElementById("xm-iso-neg-color").value = state.isoNegColor;
+    document.getElementById("xm-iso-atoms").checked = state.showIsoAtoms;
+  }
+
   function syncControlInputs() {
+    document.getElementById("xm-preset").value = state.preset;
     document.getElementById("xm-style").value = state.style;
     document.getElementById("xm-palette").value = state.palette;
     document.getElementById("xm-bg-color").value = state.background;
     document.getElementById("xm-cell-mode").value = state.cellMode;
     document.getElementById("xm-axes-mode").value = state.axesMode;
+    document.getElementById("xm-show-bonds").checked = state.showBonds;
+    document.getElementById("xm-show-hbonds").checked = state.showHbonds;
+    document.getElementById("xm-show-labels").checked = state.showLabels;
     document.getElementById("xm-show-iso").checked = state.showIso;
     document.getElementById("xm-persp").value = state.perspective;
     document.getElementById("xm-persp-val").textContent = state.perspective.toFixed(2);
@@ -2783,9 +4192,14 @@ canvas#xm-canvas:active { cursor: grabbing; }
     document.getElementById("xm-zoom-val").textContent = state.zoom.toFixed(2);
     document.getElementById("xm-scale").value = state.scale;
     document.getElementById("xm-scale-val").textContent = state.scale.toFixed(2);
+    document.getElementById("xm-bond-scale").value = state.bondScale;
+    document.getElementById("xm-bond-scale-val").textContent = state.bondScale.toFixed(2);
+    document.getElementById("xm-wiggle").value = state.wiggle;
+    document.getElementById("xm-wiggle-val").textContent = state.wiggle.toFixed(2);
     document.getElementById("xm-na").value = state.supercell[0];
     document.getElementById("xm-nb").value = state.supercell[1];
     document.getElementById("xm-nc").value = state.supercell[2];
+    syncIsoInputs();
     syncBackgroundButtons();
     syncIsoShadeUI();
   }
@@ -2801,23 +4215,39 @@ canvas#xm-canvas:active { cursor: grabbing; }
     state.zoom = cam.zoom ?? 1.0;
     state.supercell = [1, 1, 1];
     state.customColors = Object.assign({}, smp.custom_colors || {});
+    if (smp.preset && PRESETS_TABLE[smp.preset]) {
+      state.preset = smp.preset;
+    }
+    if (smp.background) {
+      state.background = smp.background.toUpperCase();
+    }
     if (smp.style) {
       state.style = smp.style;
     } else if (isUpload && !smp.cell && state.style === "polyhedra") {
       state.style = "ball_and_stick";
     }
     if (smp.palette_name) state.palette = smp.palette_name;
+    state.scale = smp.scale || 1.0;
+    state.bondScale = smp.bond_scale || DEFAULT_BOND_SCALE;
     if (smp.show_cell !== undefined) {
       state.cellMode = resolveInitialCellMode(smp.show_cell);
-      state.axesMode = resolveInitialAxesMode(smp.show_cell);
+      state.axesMode = resolveInitialAxesMode(smp.show_cell, smp.crystal_axes);
     }
     if (smp.isosurfaces && smp.isosurfaces.length) {
       state.showIso = true;
+      state.isoLevel = smp.iso_level ?? null;
+      state.isoAlpha = smp.iso_alpha ?? DEFAULT_ISO_ALPHA;
+      const ic = smp.iso_colors || [DEFAULT_ISO_POS_COLOR, DEFAULT_ISO_NEG_COLOR];
+      state.isoPosColor = String(ic[0] || DEFAULT_ISO_POS_COLOR).toUpperCase();
+      state.isoNegColor = String(ic[1] || DEFAULT_ISO_NEG_COLOR).toUpperCase();
+    } else {
+      state.isoLevel = null;
     }
     state.isoShade = smp.iso_shade || "solid";
     document.querySelectorAll("#xm-view-buttons .xm-btn").forEach((b) => {
       b.classList.remove("active");
     });
+    invalidateScene();
     syncControlInputs();
     syncTrajectoryControls();
     renderFrame();
@@ -2838,6 +4268,10 @@ canvas#xm-canvas:active { cursor: grabbing; }
   });
 
   window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && sidebarOpen && window.innerWidth <= NARROW_BREAKPOINT) {
+      setSidebarOpen(false);
+      return;
+    }
     const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : "";
     if (tag === "input" || tag === "select" || tag === "textarea") return;
     if (e.key === "r" || e.key === "R") {
@@ -2977,9 +4411,23 @@ canvas#xm-canvas:active { cursor: grabbing; }
     link.click();
   });
 
-  window.addEventListener("resize", renderFrame);
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => {
+      scheduleResizeRedraw();
+    });
+    ro.observe(canvasWrap);
+    ro.observe(shellEl);
+  }
+  window.addEventListener("resize", scheduleResizeRedraw);
+
+  // Auto-collapse sidebar on narrow viewports (<= 780px) on initial load
+  setSidebarOpen(window.innerWidth > NARROW_BREAKPOINT);
+  syncControlInputs();
   syncTrajectoryControls();
   renderFrame();
+  requestAnimationFrame(() => {
+    shellEl.classList.add("xm-ready");
+  });
 })();
 </script>
 </body>
