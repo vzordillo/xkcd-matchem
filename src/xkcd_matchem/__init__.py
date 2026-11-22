@@ -70,6 +70,7 @@ if TYPE_CHECKING:
     ScatteringCoeffs = data.ScatteringCoeffs
     ScrollCard = layout.ScrollCard
     Spectrum = core.Spectrum
+    StrokeHierarchy = style.StrokeHierarchy
     StructureError = core.StructureError
     StyleError = core.StyleError
     ThemePreset = style.ThemePreset
@@ -191,6 +192,7 @@ if TYPE_CHECKING:
     set_default_font = style.set_default_font
     shade_between = style.shade_between
     spacegroup_to_crystal_system = plots.spacegroup_to_crystal_system
+    stroke_weights = style.stroke_weights
     style_existing_axes = style.style_existing_axes
     to_ase = io.to_ase
     to_pymatgen = io.to_pymatgen
@@ -237,6 +239,7 @@ __all__ = [
     "ScatteringCoeffs",
     "ScrollCard",
     "Spectrum",
+    "StrokeHierarchy",
     "StructureError",
     "StyleError",
     "ThemePreset",
@@ -365,6 +368,7 @@ __all__ = [
     "set_default_font",
     "shade_between",
     "spacegroup_to_crystal_system",
+    "stroke_weights",
     "style",
     "style_existing_axes",
     "to_ase",
@@ -427,6 +431,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "ScatteringCoeffs": (_DATA, "ScatteringCoeffs"),
     "ScrollCard": (_LAYOUT, "ScrollCard"),
     "Spectrum": (_CORE, "Spectrum"),
+    "StrokeHierarchy": (_STYLE, "StrokeHierarchy"),
     "StructureError": (_CORE, "StructureError"),
     "StyleError": (_CORE, "StyleError"),
     "ThemePreset": (_STYLE, "ThemePreset"),
@@ -554,6 +559,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
         _PLOTS,
         "spacegroup_to_crystal_system",
     ),
+    "stroke_weights": (_STYLE, "stroke_weights"),
     "style_existing_axes": (_STYLE, "style_existing_axes"),
     "to_ase": (_IO, "to_ase"),
     "to_pymatgen": (_IO, "to_pymatgen"),

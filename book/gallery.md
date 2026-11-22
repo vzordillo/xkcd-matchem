@@ -122,10 +122,17 @@ See [Tutorial 12: 3D Isosurfaces, Phonons, Wulff Shapes & Comic Strips](tutorial
 
 ## xkcd Pen-and-Ink 3D Isosurface Shading Techniques
 
-Switch seamlessly between smooth glass blending (`shade="solid"`) and classic hand-drawn comic shading techniques (`shade="hatch"`, `"crosshatch"`, `"contour"`, `"cross_contour"`, `"stipple"`, `"scumble"`, or `"outline"`) so molecular geometry stands out clearly inside orbital lobes.
+Compare all 8 depth-occluded orbital shading styles side by side with a top-left light key: smooth blending (`shade="solid"`), parallel pen flicks (`"hatch"`), comic cross-hatching (`"crosshatch"`), intrinsic 3D-axis latitude contours (`"contour"`), cross-contours (`"cross_contour"`), randomized fine-liner stippling (`"stipple"`), wandering curl scumbling (`"scumble"`), and clean silhouettes (`"outline"`).
 See [Tutorial 12: 3D Isosurfaces, Phonons, Wulff Shapes & Comic Strips](tutorials/12_isosurfaces_phonons_wulff_and_comics.ipynb).
 
 ![xkcd pen-and-ink 3D isosurface shading techniques](_static/gallery/isosurface_shading_styles.png)
+
+## xkcd Stick Scientists, Plot Commentary & Comic Strips
+
+Drop aspect-ratio-invariant `xkcd.com` characters (`"cueball"`, `"ponytail"`, `"megan"`, `"beret"`, `"goggles"`) with poses (`"stand"`, `"think"`, `"point"`, `"shrug"`, `"cheer"`) and authentic open line-leader speech directly onto any data plot (`draw_stick_scientist()`) or compose multi-panel stories (`plot_comic_strip()`).
+See [Tutorial 12: 3D Isosurfaces, Phonons, Wulff Shapes & Comic Strips](tutorials/12_isosurfaces_phonons_wulff_and_comics.ipynb).
+
+![xkcd stick scientists and research comic strips](_static/gallery/xkcd_comics_and_stickmen.png)
 
 ## First Brillouin Zones, Volcano Catalysis, Defects & LOBSTER COHP
 

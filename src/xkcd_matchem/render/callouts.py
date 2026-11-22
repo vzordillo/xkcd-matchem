@@ -82,28 +82,32 @@ def draw_callout(
 ) -> None:
     """Draws an xkcd-style boxed callout pointing to an annotated coordinate."""
     bg = str(plt.rcParams.get("figure.facecolor", palettes.PAPER))
-    ax.annotate(
+    ink = str(plt.rcParams.get("axes.edgecolor", palettes.INK))
+    ann = ax.annotate(
         text,
         xy=xy,
         xytext=xytext,
         fontsize=fontsize,
-        color=color,
+        color=ink,
         ha="center",
         va="center",
         bbox={
-            "boxstyle": "round,pad=0.3",
+            "boxstyle": "round,pad=0.28",
             "facecolor": bg,
             "edgecolor": color,
-            "lw": 1.3,
+            "lw": 1.10,
         },
         arrowprops={
             "arrowstyle": "->",
             "color": color,
-            "lw": 1.4,
+            "lw": 1.15,
             "connectionstyle": "arc3,rad=-0.15",
         },
         zorder=20.0,
     )
+    patch = ann.get_bbox_patch()
+    if patch is not None:
+        patch.set_sketch_params(0.0, 0.0, 0.0)
 
 
 def annotate_distance(
@@ -145,26 +149,31 @@ def annotate_distance(
         [p1[1] + perp[1], p2[1] + perp[1]],
         color=color,
         linestyle=":",
-        lw=1.5,
+        lw=1.15,
         zorder=19.0,
     )
     mid = 0.5 * (p1 + p2) + perp * 1.4
     bg = str(plt.rcParams.get("figure.facecolor", palettes.PAPER))
-    ax.text(
+    ink = str(plt.rcParams.get("axes.edgecolor", palettes.INK))
+    txt = ax.text(
         float(mid[0]),
         float(mid[1]),
         f"{dist:.2f} A",
         fontsize=9.5,
-        color=color,
+        color=ink,
         ha="center",
         va="center",
         bbox={
             "boxstyle": "round,pad=0.18",
             "facecolor": bg,
             "edgecolor": color,
+            "lw": 1.05,
         },
         zorder=19.5,
     )
+    patch = txt.get_bbox_patch()
+    if patch is not None:
+        patch.set_sketch_params(0.0, 0.0, 0.0)
     return dist
 
 
@@ -221,21 +230,26 @@ def annotate_angle(
         norm = max(float(np.linalg.norm(dir_avg)), 1e-6)
     pos = pts_2d[0] + 0.55 * (dir_avg / norm)
     bg = str(plt.rcParams.get("figure.facecolor", palettes.PAPER))
-    ax.text(
+    ink = str(plt.rcParams.get("axes.edgecolor", palettes.INK))
+    txt = ax.text(
         float(pos[0]),
         float(pos[1]),
         f"{deg:.1f}\u00b0",
         fontsize=9.0,
-        color=color,
+        color=ink,
         ha="center",
         va="center",
         bbox={
             "boxstyle": "round,pad=0.18",
             "facecolor": bg,
             "edgecolor": color,
+            "lw": 1.05,
         },
         zorder=19.5,
     )
+    patch = txt.get_bbox_patch()
+    if patch is not None:
+        patch.set_sketch_params(0.0, 0.0, 0.0)
     return deg
 
 

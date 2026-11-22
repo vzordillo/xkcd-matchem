@@ -103,6 +103,7 @@ def plot_spectrum(
     line_col = series[5 % len(series)] if color is None else color
     stick_col = series[6 % len(series)]
     ink_col = theme.get_preset(preset).ink_color
+    sw = theme.stroke_weights(preset)
     should_invert = (
         spectrum.kind.lower() in ("ir", "nmr") if invert_x is None else invert_x
     )
@@ -116,7 +117,7 @@ def plot_spectrum(
             theme.style_existing_axes(ax, preset=preset)
         if background_grid:
             patterns.apply_background_grid(ax, style=background_grid)
-        ax.plot(x_arr, y_arr, color=line_col, lw=2.0)
+        ax.plot(x_arr, y_arr, color=line_col, lw=sw.primary, zorder=3.5)
         if fill_under:
             patterns.shade_between(
                 ax,
@@ -137,8 +138,9 @@ def plot_spectrum(
                     0.0,
                     pk_y,
                     color=stick_col,
-                    lw=1.3,
-                    alpha=0.85,
+                    lw=sw.guide + 0.10,
+                    alpha=0.72,
+                    zorder=2.2,
                 )
         ann_top = _annotate_spectrum_peaks(
             ax,

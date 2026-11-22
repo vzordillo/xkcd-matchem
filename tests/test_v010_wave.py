@@ -348,7 +348,7 @@ def test_artistic_3d_isosurface_shading_modes(tmp_path: pathlib.Path) -> None:
     html_text = out_html.read_text(encoding="utf-8")
     assert "xm-iso-shade" in html_text
 
-    # Verify light squiggly strokes & non-uniform small stippling directly.
+    # Verify light strokes, wandering scumbles, atom occlusion & auto cam.
     raw_grid = xm.load("water_homo.cube")
     assert isinstance(raw_grid, electronic.VolumetricGrid)
     smooth = isosurface.upsample_coarse_grid(raw_grid, min_dim=36)
@@ -357,7 +357,11 @@ def test_artistic_3d_isosurface_shading_modes(tmp_path: pathlib.Path) -> None:
         (isosurface.extract_isosurface(smooth, 0.35 * max_v), "#0072B2"),
         (isosurface.extract_isosurface(smooth, -0.35 * max_v), "#D55E00"),
     ]
-    cam = geometry.resolve_camera("isometric")
+    cam = artistic3d.auto_orbital_camera(meshes, smooth)
+    assert isinstance(cam, geometry.Camera)
+    ax_auto = xm.plot_isosurface("water_homo.cube", camera="auto")
+    assert ax_auto is not None
+
     hatch_art = artistic3d.build_isosurface_art(
         meshes, smooth, cam, alpha=0.28, shade="crosshatch"
     )
@@ -365,7 +369,12 @@ def test_artistic_3d_isosurface_shading_modes(tmp_path: pathlib.Path) -> None:
     assert len(interior_lines) > 0
     for _, _, lw_b, al_b, _, _ in interior_lines:
         assert lw_b <= 0.85
-        assert al_b <= 0.48
+        assert al_b <= 0.50
+
+    scum_art = artistic3d.build_isosurface_art(
+        meshes, smooth, cam, alpha=0.28, shade="scumble"
+    )
+    assert any(b[2] < 1.0 for b in scum_art.line_batches)
 
     stipple_art = artistic3d.build_isosurface_art(
         meshes, smooth, cam, alpha=0.28, shade="stipple"
@@ -376,6 +385,15 @@ def test_artistic_3d_isosurface_shading_modes(tmp_path: pathlib.Path) -> None:
     assert float(np.min(all_sz)) < 1.0
     assert float(np.std(all_sz)) > 0.45
     assert all(b[2] >= 1.2 for b in stipple_art.line_batches)
+
+    # Confirm stipple points stay outside the Oxygen atom disk.
+    pivot, span, atom_xy, _ = artistic3d.iso_scene_frame(meshes, smooth, cam)
+    del pivot, span
+    assert atom_xy is not None
+    all_pts = np.vstack([b[0] for b in stipple_art.dot_batches])
+    r_o = max(0.24, min(0.58, 0.18 + 0.27 * 0.66)) * 1.08
+    d_o = np.linalg.norm(all_pts - atom_xy[0][None, :], axis=1)
+    assert float(np.min(d_o)) >= 0.90 * r_o
 
     # Verify coaxial squiggly bonds in ball-and-stick 3D plots & 2D CH3 gap.
     ax_mol = xm.plot_molecule("aspirin.xyz", style="ball_and_stick")
@@ -408,3 +426,86 @@ def test_v010_top_level_lazy_exports() -> None:
     for sym in expected:
         assert sym in xm.__all__
         assert getattr(xm, sym) is not None
+
+
+def test_sciviz_stroke_hierarchy_and_ink_labels() -> None:
+    """Verifies 4-tier stroke hierarchy, ink labels, scheme scale & sticks."""
+    sw = xm.stroke_weights("classic")
+    assert sw.guide < sw.leader < sw.overlay < sw.primary <= sw.frame
+    assert "stroke_weights" in xm.__all__
+
+    # BZ interior k-path must stay thinner than host polyhedron edges.
+    ax_bz = xm.plot_brillouin_zone("si_diamond.cif")
+    front_poly_lw = float(ax_bz.collections[1].get_linewidth()[0])
+    kpath_lw = float(ax_bz.lines[0].get_linewidth())
+    assert kpath_lw < front_poly_lw
+    plt.close(ax_bz.figure)
+
+    # Defect kink labels use dark theme ink, not bright curve colors.
+    ax_def = xm.plot_defect_formation(
+        {
+            "V_Si": [(2, 2.0), (1, 2.35), (0, 3.05)],
+            "Si_i": [(1, 2.5), (0, 2.95), (-1, 3.85)],
+        },
+        band_gap=1.12,
+    )
+    kink_texts = [t for t in ax_def.texts if "/" in t.get_text()]
+    assert len(kink_texts) >= 2
+    for t_art in kink_texts:
+        assert t_art.get_color() == xm.style.INK
+    plt.close(ax_def.figure)
+
+    # Reaction scheme uses unified coordinate system with 1:1 bond length.
+    ax_rxn = xm.plot_reaction_scheme(
+        ["benzene.sdf"],
+        ["aspirin.xyz"],
+        conditions_above="Acylation",
+        conditions_below=r"$\mathrm{AlCl_3}$",
+    )
+    assert len(ax_rxn.child_axes) == 0
+    bond_lens = [
+        float(
+            np.hypot(
+                ln.get_xdata()[-1] - ln.get_xdata()[0],
+                ln.get_ydata()[-1] - ln.get_ydata()[0],
+            )
+        )
+        for ln in ax_rxn.lines
+        if len(ln.get_xdata()) == 2
+    ]
+    assert any(1.25 <= length <= 1.52 for length in bond_lens)
+    plt.close(ax_rxn.figure)
+
+    # Aspect-invariant stick scientist characters & circular heads on wide axes.
+    fig_s, ax_s = plt.subplots(figsize=(8.0, 3.2), dpi=100)
+    for idx, (char_k, pose_k, prop_k) in enumerate(
+        (
+            ("cueball", "stand", "clipboard"),
+            ("ponytail", "think", None),
+            ("megan", "point", "pointer"),
+            ("beret", "shrug", None),
+            ("goggles", "cheer", "flask"),
+        )
+    ):
+        xm.draw_stick_scientist(
+            ax_s,
+            xy=(0.12 + 0.18 * idx, 0.15),
+            scale=0.35,
+            character=char_k,
+            pose=pose_k,
+            facing="left" if idx % 2 else "right",
+            prop=prop_k,
+            speech="Check!" if idx == 1 else None,
+        )
+    fig_s.canvas.draw()
+    ell = ax_s.patches[0]
+    w_px = ell.width * ax_s.bbox.width
+    h_px = ell.height * ax_s.bbox.height
+    assert w_px == pytest.approx(h_px, rel=0.08)
+    with pytest.raises(exceptions.StyleError):
+        xm.draw_stick_scientist(ax_s, character="unknown_char")
+    with pytest.raises(exceptions.StyleError):
+        xm.draw_stick_scientist(ax_s, facing="upward")
+    with pytest.raises(exceptions.StyleError):
+        xm.draw_speech_bubble(ax_s, "hi", kind="unknown_kind")
+    plt.close(fig_s)

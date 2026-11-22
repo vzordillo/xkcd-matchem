@@ -122,9 +122,9 @@ def draw_vector_arrow_2d(
         xy=(float(tip_2d[0]), float(tip_2d[1])),
         xytext=(float(tail_2d[0]), float(tail_2d[1])),
         arrowprops={
-            "arrowstyle": "-|>,head_length=0.45,head_width=0.28",
+            "arrowstyle": "-|>,head_length=0.42,head_width=0.25",
             "color": stroke,
-            "lw": linewidth + 1.4,
+            "lw": linewidth + 0.90,
             "shrinkA": 0.0,
             "shrinkB": 0.0,
         },
@@ -135,7 +135,7 @@ def draw_vector_arrow_2d(
         xy=(float(tip_2d[0]), float(tip_2d[1])),
         xytext=(float(tail_2d[0]), float(tail_2d[1])),
         arrowprops={
-            "arrowstyle": "-|>,head_length=0.40,head_width=0.24",
+            "arrowstyle": "-|>,head_length=0.38,head_width=0.22",
             "color": color,
             "lw": linewidth,
             "shrinkA": 0.0,
@@ -531,7 +531,7 @@ def draw_polyhedron_triangle(
     facecolor: str,
     edgecolor: str | None = None,
     alpha: float = 0.34,
-    linewidth: float = 1.1,
+    linewidth: float = 0.85,
     zorder: float = 2.0,
 ) -> None:
     """Draws one translucent coordination-polyhedron triangular facet."""
@@ -931,27 +931,19 @@ def draw_miller_plane(
         closed=True,
         facecolor=facecolor,
         edgecolor=edgecolor,
-        linewidth=2.0,
+        linewidth=1.25,
         alpha=alpha,
+        joinstyle="round",
         zorder=zorder,
     )
     ax.add_patch(patch)
-    outline = patches.Polygon(
-        poly_2d,
-        closed=True,
-        facecolor="none",
-        edgecolor=edgecolor,
-        linewidth=1.9,
-        zorder=zorder + 0.005,
-    )
-    ax.add_patch(outline)
     ax.scatter(
         poly_2d[:, 0],
         poly_2d[:, 1],
-        s=18.0,
+        s=14.0,
         color=edgecolor,
         edgecolor=palettes.PAPER,
-        linewidth=0.7,
+        linewidth=0.65,
         zorder=zorder + 0.008,
     )
     if show_label:

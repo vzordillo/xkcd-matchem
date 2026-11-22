@@ -95,6 +95,52 @@ def _resolve_fatband_weights(
     return np.clip(assert_non_none, 0.0, None) / max(peak, 1e-12)
 
 
+def _draw_band_curves(
+    ax: maxes.Axes,
+    bands: electronic.BandStructure,
+    eig: np.ndarray,
+    fb_weights: np.ndarray | None,
+    fatband_scale: float,
+    series: Sequence[str],
+    sw: theme.StrokeHierarchy,
+) -> None:
+    """Plots spin-resolved dispersion curves and optional orbital fatbands."""
+    n_spin, _, n_bands = eig.shape
+    for spin_idx in range(n_spin):
+        col = (
+            series[5 % len(series)]
+            if spin_idx == 0
+            else series[6 % len(series)]
+        )
+        ls = "-" if spin_idx == 0 else "--"
+        for ib in range(n_bands):
+            lbl = (
+                ("Spin Up" if spin_idx == 0 else "Spin Down")
+                if (n_spin == 2 and ib == 0)
+                else None
+            )
+            kx, ky = _split_kpath_breaks(
+                bands.k_distances, eig[spin_idx, :, ib]
+            )
+            ax.plot(
+                kx, ky, color=col, linestyle=ls, linewidth=sw.primary, label=lbl
+            )
+            if fb_weights is not None:
+                _, kw = _split_kpath_breaks(
+                    bands.k_distances, fb_weights[spin_idx, :, ib]
+                )
+                half_w = fatband_scale * kw
+                ax.fill_between(
+                    kx,
+                    ky - half_w,
+                    ky + half_w,
+                    color=col,
+                    alpha=0.28,
+                    linewidth=0.0,
+                    zorder=1.8,
+                )
+
+
 def plot_bands(
     bands: electronic.BandStructure,
     ax: maxes.Axes | None = None,
@@ -113,78 +159,37 @@ def plot_bands(
     e_ref = 0.0 if shift_fermi else bands.fermi_energy
     series = palettes.get_palette(palette)
     ink_col = theme.get_preset(preset).ink_color
+    sw = theme.stroke_weights(preset)
 
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.0, 4.4))
         else:
             theme.style_existing_axes(ax, preset=preset)
-        n_spin, _, n_bands = eig.shape
-        for spin_idx in range(n_spin):
-            col = (
-                series[5 % len(series)]
-                if spin_idx == 0
-                else series[6 % len(series)]
-            )
-            ls = "-" if spin_idx == 0 else "--"
-            for ib in range(n_bands):
-                lbl = (
-                    ("Spin Up" if spin_idx == 0 else "Spin Down")
-                    if (n_spin == 2 and ib == 0)
-                    else None
-                )
-                kx, ky = _split_kpath_breaks(
-                    bands.k_distances, eig[spin_idx, :, ib]
-                )
-                ax.plot(
-                    kx,
-                    ky,
-                    color=col,
-                    linestyle=ls,
-                    linewidth=1.8,
-                    label=lbl,
-                )
-        if fb_weights is not None:
-            for spin_idx in range(n_spin):
-                col = (
-                    series[5 % len(series)]
-                    if spin_idx == 0
-                    else series[6 % len(series)]
-                )
-                for ib in range(n_bands):
-                    kx, ky = _split_kpath_breaks(
-                        bands.k_distances, eig[spin_idx, :, ib]
-                    )
-                    _, kw = _split_kpath_breaks(
-                        bands.k_distances, fb_weights[spin_idx, :, ib]
-                    )
-                    half_w = fatband_scale * kw
-                    ax.fill_between(
-                        kx,
-                        ky - half_w,
-                        ky + half_w,
-                        color=col,
-                        alpha=0.28,
-                        linewidth=0.0,
-                        zorder=1.8,
-                    )
-        ax.axhline(
+        _draw_band_curves(
+            ax, bands, eig, fb_weights, fatband_scale, series, sw
+        )
+        ef_line = ax.axhline(
             e_ref,
             color=palettes.MUTED_GRAY,
             linestyle="--",
-            linewidth=1.3,
+            linewidth=sw.guide,
             label="$E_F$",
         )
+        ef_line.set_sketch_params(0.0, 0.0, 0.0)
         if bands.k_ticks and len(bands.k_ticks) == len(bands.k_labels):
             for tick_x in bands.k_ticks:
-                ax.axvline(tick_x, color=ink_col, linewidth=0.9, alpha=0.45)
+                t_line = ax.axvline(
+                    tick_x, color=ink_col, linewidth=sw.guide, alpha=0.40
+                )
+                t_line.set_sketch_params(0.0, 0.0, 0.0)
             ax.set_xticks(bands.k_ticks)
             ax.set_xticklabels(_format_k_labels(bands.k_labels))
         ax.set_xlim(float(bands.k_distances[0]), float(bands.k_distances[-1]))
         ax.set_ylim(ylim)
         ax.set_ylabel("$E - E_F$ (eV)" if shift_fermi else "Energy (eV)")
         ax.set_xlabel("Wavevector Path")
-        if n_spin == 2:
+        if eig.shape[0] == 2:
             ax.legend(loc="upper right", frameon=True)
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
@@ -408,11 +413,11 @@ def _draw_mo_group(
     grp: list[int],
     homo_idx: int | None,
     lumo_idx: int | None,
-    colors: tuple[str, str],
+    colors: tuple[str, str, str],
     arrow_half: float = 0.45,
 ) -> None:
     """Draws one degenerate energy multiplet on the MO ladder."""
-    occ_col, vir_col = colors
+    occ_col, vir_col, ink_col = colors
     n_deg = len(grp)
     span = 0.55 if n_deg == 1 else 0.78
     xs = np.linspace(-span * 0.5, span * 0.5, n_deg + 1)
@@ -422,21 +427,21 @@ def _draw_mo_group(
         x0 = float(xs[pos_k]) + 0.04
         x1 = float(xs[pos_k + 1]) - 0.04
         col = occ_col if occ > 0.5 else vir_col
-        ax.plot([x0, x1], [energy, energy], color=col, lw=2.6)
+        ax.plot([x0, x1], [energy, energy], color=col, lw=2.5)
         cx = 0.5 * (x0 + x1)
         if occ > 0.5:
             ax.annotate(
                 "",
                 xy=(cx - 0.03, energy + arrow_half),
                 xytext=(cx - 0.03, energy - arrow_half),
-                arrowprops={"arrowstyle": "->", "color": col, "lw": 1.3},
+                arrowprops={"arrowstyle": "->", "color": col, "lw": 1.15},
             )
         if occ > 1.5:
             ax.annotate(
                 "",
                 xy=(cx + 0.03, energy - arrow_half),
                 xytext=(cx + 0.03, energy + arrow_half),
-                arrowprops={"arrowstyle": "->", "color": col, "lw": 1.3},
+                arrowprops={"arrowstyle": "->", "color": col, "lw": 1.15},
             )
     if homo_idx is not None and homo_idx in grp:
         e_h = float(mo.energies[homo_idx])
@@ -445,8 +450,8 @@ def _draw_mo_group(
             e_h,
             f"HOMO ({e_h:.2f} eV)",
             va="center",
-            fontsize=9.5,
-            color=occ_col,
+            fontsize=9.2,
+            color=ink_col,
         )
     elif lumo_idx is not None and lumo_idx in grp:
         e_l = float(mo.energies[lumo_idx])
@@ -455,8 +460,8 @@ def _draw_mo_group(
             e_l,
             f"LUMO ({e_l:.2f} eV)",
             va="center",
-            fontsize=9.5,
-            color=vir_col,
+            fontsize=9.2,
+            color=ink_col,
         )
 
 
@@ -473,7 +478,8 @@ def plot_mo_diagram(
     series = palettes.get_palette(palette)
     occ_col = series[5 % len(series)]
     vir_col = series[6 % len(series)]
-    gap_col = series[3 % len(series)]
+    ink_col = theme.get_preset(preset).ink_color
+    sw = theme.stroke_weights(preset)
     arrow_half = 0.036 * max(float(window[1] - window[0]), 1.0)
     with theme.xkcd_style(preset=preset):
         if ax is None:
@@ -502,7 +508,7 @@ def plot_mo_diagram(
                 grp,
                 homo_idx,
                 lumo_idx,
-                (occ_col, vir_col),
+                (occ_col, vir_col, ink_col),
                 arrow_half,
             )
 
@@ -514,7 +520,11 @@ def plot_mo_diagram(
                 "",
                 xy=(-0.48, e_l),
                 xytext=(-0.48, e_h),
-                arrowprops={"arrowstyle": "<->", "color": gap_col, "lw": 1.6},
+                arrowprops={
+                    "arrowstyle": "<->",
+                    "color": ink_col,
+                    "lw": sw.leader,
+                },
             )
             ax.text(
                 -0.52,
@@ -522,11 +532,14 @@ def plot_mo_diagram(
                 f"Gap\n{gap:.2f} eV",
                 ha="right",
                 va="center",
-                fontsize=9.5,
-                color=gap_col,
+                fontsize=9.2,
+                color=ink_col,
             )
 
-        ax.axhline(0.0, color=palettes.MUTED_GRAY, linestyle=":", lw=1.2)
+        z_line = ax.axhline(
+            0.0, color=palettes.MUTED_GRAY, linestyle=":", lw=sw.guide
+        )
+        z_line.set_sketch_params(0.0, 0.0, 0.0)
         ax.set_xlim(-0.92, 1.32)
         ax.set_ylim(window)
         ax.set_xticks([])
@@ -592,11 +605,9 @@ def plot_volumetric_slice(
 ) -> maxes.Axes:
     """Plots a 2D filled-plus-inked slice across a ``VolumetricGrid``."""
     u, v, plane, basis = grid.slice_mesh(axis=axis, index=slice_index)
-    uu, vv = u, v
     p_min, p_max = float(np.min(plane)), float(np.max(plane))
     vmax = max(float(np.max(np.abs(plane))), 1e-6)
-    is_signed = p_min < -1e-9 * vmax
-    lo_lvl, hi_lvl = (-vmax, vmax) if is_signed else (0.0, vmax)
+    lo_lvl, hi_lvl = (-vmax, vmax) if p_min < -1e-9 * vmax else (0.0, vmax)
     is_flat = abs(p_max - p_min) < 1e-12
     lvl_arr = (
         np.array([p_min - 1e-6, p_max + 1e-6], dtype=np.float64)
@@ -610,8 +621,8 @@ def plot_volumetric_slice(
         else:
             theme.style_existing_axes(ax, preset=preset)
         ax.contourf(
-            uu,
-            vv,
+            u,
+            v,
             plane,
             levels=lvl_arr,
             cmap=cmap,
@@ -620,28 +631,33 @@ def plot_volumetric_slice(
             alpha=0.82,
         )
         if not is_flat:
-            ax.contour(
-                uu,
-                vv,
-                plane,
-                levels=lvl_arr,
-                colors=preset_obj.ink_color,
-                linewidths=0.9,
-                alpha=0.7,
-            )
+            c_lvls = lvl_arr[np.abs(lvl_arr) > 0.08 * vmax]
+            if c_lvls.size >= 1:
+                ax.contour(
+                    u,
+                    v,
+                    plane,
+                    levels=c_lvls,
+                    colors=preset_obj.ink_color,
+                    linewidths=0.75,
+                    alpha=0.58,
+                )
         if show_atoms:
             _draw_slice_atoms(ax, grid, axis, slice_index, basis, preset_obj)
         ax.set_aspect("equal")
-        is_ortho = (
-            float(np.max(np.abs(basis[0]))) > 0.999
-            and float(np.max(np.abs(basis[1]))) > 0.999
-        )
         axis_labels = {
             "x": ("y (A)", "z (A)"),
             "y": ("x (A)", "z (A)"),
             "z": ("x (A)", "y (A)"),
         }
-        xl, yl = axis_labels[axis.lower()] if is_ortho else ("u (A)", "v (A)")
+        xl, yl = (
+            axis_labels[axis.lower()]
+            if (
+                float(np.max(np.abs(basis[0]))) > 0.999
+                and float(np.max(np.abs(basis[1]))) > 0.999
+            )
+            else ("u (A)", "v (A)")
+        )
         ax.set_xlabel(xl)
         ax.set_ylabel(yl)
         theme.apply_xkcd_spines(ax, preset=preset)
@@ -757,7 +773,7 @@ def plot_isosurface(
     level: float | None = None,
     *,
     symmetric: bool | None = None,
-    camera: geometry.Camera | str | None = "isometric",
+    camera: geometry.Camera | str | None = None,
     ax: maxes.Axes | None = None,
     colors: tuple[str, str] = ("#0072B2", "#D55E00"),
     alpha: float = 0.28,
@@ -791,9 +807,14 @@ def plot_isosurface(
       Matplotlib ``Axes`` containing the rendered 3D isosurface.
     """
     grid, meshes = _extract_isosurface_meshes(source, level, symmetric, colors)
-    cam = geometry.resolve_camera(
-        camera, cell=grid.atoms.cell if grid.atoms is not None else None
-    )
+    if camera is None or (
+        isinstance(camera, str) and camera.strip().lower() == "auto"
+    ):
+        cam = artistic3d.auto_orbital_camera(meshes, grid)
+    else:
+        cam = geometry.resolve_camera(
+            camera, cell=grid.atoms.cell if grid.atoms is not None else None
+        )
     art = artistic3d.build_isosurface_art(
         meshes, grid, cam, alpha, shade=shade
     )
@@ -876,6 +897,7 @@ def plot_phonon_bands(
     freqs = pbs.frequencies_in(unit)
     series = palettes.get_palette(palette)
     ink_col = theme.get_preset(preset).ink_color
+    sw = theme.stroke_weights(preset)
     mode_col = series[5 % len(series)]
     imag_col = "#D55E00"
     imag_labeled = False
@@ -892,7 +914,7 @@ def plot_phonon_bands(
                 qx,
                 qy,
                 color=mode_col,
-                linewidth=1.7,
+                linewidth=sw.primary,
                 label="Acoustic / Optical" if mode_idx == 0 else None,
             )
             if highlight_imaginary and bool(np.any(qy < -1e-2)):
@@ -905,16 +927,22 @@ def plot_phonon_bands(
                     qx,
                     imag_y,
                     color=imag_col,
-                    linewidth=2.4,
+                    linewidth=sw.frame,
                     zorder=4.0,
                     label="Imaginary Modes" if not imag_labeled else None,
                 )
                 imag_labeled = True
 
-        ax.axhline(0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=1.2)
+        z_line = ax.axhline(
+            0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=sw.guide
+        )
+        z_line.set_sketch_params(0.0, 0.0, 0.0)
         if pbs.q_ticks and len(pbs.q_ticks) == len(pbs.q_labels):
             for tick_q in pbs.q_ticks:
-                ax.axvline(tick_q, color=ink_col, linewidth=0.9, alpha=0.45)
+                t_line = ax.axvline(
+                    tick_q, color=ink_col, linewidth=sw.guide, alpha=0.40
+                )
+                t_line.set_sketch_params(0.0, 0.0, 0.0)
             ax.set_xticks(pbs.q_ticks)
             ax.set_xticklabels(_format_k_labels(pbs.q_labels))
         ax.set_xlim(float(pbs.q_distances[0]), float(pbs.q_distances[-1]))
@@ -943,38 +971,66 @@ def _draw_cohp_series(
     vertical: bool,
     shade_lobes: bool,
     spin_dn: np.ndarray | None,
+    series_idx: int = 0,
+    sw: theme.StrokeHierarchy | None = None,
 ) -> None:
     """Plots one COHP/ICOHP interaction curve and optional lobe shading."""
+    weights = sw if sw is not None else theme.stroke_weights("classic")
+    lw_curve = (
+        weights.primary if series_idx == 0 else weights.overlay + 0.10
+    )
+    ls_curve = "-" if series_idx == 0 else "--"
+    z_curve = 4.0 + 0.25 * min(series_idx, 3)
     if vertical:
-        ax.plot(vals, e_grid, color=col, lw=2.0, label=label, zorder=4.0)
-        if shade_lobes:
+        ax.plot(
+            vals,
+            e_grid,
+            color=col,
+            lw=lw_curve,
+            linestyle=ls_curve,
+            label=label,
+            zorder=z_curve,
+        )
+        if shade_lobes and series_idx == 0:
             pos = np.where(vals >= 0.0, vals, 0.0)
             neg = np.where(vals < 0.0, vals, 0.0)
             patterns.shade_between(
                 ax, e_grid, 0.0, pos, color="#0072B2", shade="solid",
-                alpha=0.22, vertical=True,
+                alpha=0.20, vertical=True,
             )
             patterns.shade_between(
                 ax, e_grid, 0.0, neg, color="#D55E00", shade="solid",
-                alpha=0.22, vertical=True,
+                alpha=0.20, vertical=True,
             )
         if spin_dn is not None:
-            ax.plot(-spin_dn, e_grid, color=col, lw=1.6, linestyle="--")
+            ax.plot(
+                -spin_dn, e_grid, color=col, lw=weights.overlay, linestyle=":"
+            )
     else:
-        ax.plot(e_grid, vals, color=col, lw=2.0, label=label, zorder=4.0)
-        if shade_lobes:
+        ax.plot(
+            e_grid,
+            vals,
+            color=col,
+            lw=lw_curve,
+            linestyle=ls_curve,
+            label=label,
+            zorder=z_curve,
+        )
+        if shade_lobes and series_idx == 0:
             pos = np.where(vals >= 0.0, vals, 0.0)
             neg = np.where(vals < 0.0, vals, 0.0)
             patterns.shade_between(
                 ax, e_grid, 0.0, pos, color="#0072B2", shade="solid",
-                alpha=0.22, vertical=False,
+                alpha=0.20, vertical=False,
             )
             patterns.shade_between(
                 ax, e_grid, 0.0, neg, color="#D55E00", shade="solid",
-                alpha=0.22, vertical=False,
+                alpha=0.20, vertical=False,
             )
         if spin_dn is not None:
-            ax.plot(e_grid, -spin_dn, color=col, lw=1.6, linestyle="--")
+            ax.plot(
+                e_grid, -spin_dn, color=col, lw=weights.overlay, linestyle=":"
+            )
 
 
 def _configure_cohp_axes(
@@ -985,11 +1041,17 @@ def _configure_cohp_axes(
     ink_col: str,
     xlim: tuple[float, float] | None,
     ylim: tuple[float, float] | None,
+    sw: theme.StrokeHierarchy | None = None,
 ) -> None:
     """Applies Fermi reference lines, limits, and labels to a COHP panel."""
+    weights = sw if sw is not None else theme.stroke_weights("classic")
     if vertical:
-        ax.axhline(0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=1.2)
-        ax.axvline(0.0, color=ink_col, lw=1.0, alpha=0.55)
+        ef_ln = ax.axhline(
+            0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=weights.guide
+        )
+        z_ln = ax.axvline(0.0, color=ink_col, lw=weights.guide, alpha=0.50)
+        ef_ln.set_sketch_params(0.0, 0.0, 0.0)
+        z_ln.set_sketch_params(0.0, 0.0, 0.0)
         ax.set_xlabel(pop_label)
         ax.set_ylabel("$E - E_F$ (eV)")
         if xlim is not None:
@@ -997,8 +1059,12 @@ def _configure_cohp_axes(
         if ylim is not None:
             ax.set_ylim(ylim)
     else:
-        ax.axvline(0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=1.2)
-        ax.axhline(0.0, color=ink_col, lw=1.0, alpha=0.55)
+        ef_ln = ax.axvline(
+            0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=weights.guide
+        )
+        z_ln = ax.axhline(0.0, color=ink_col, lw=weights.guide, alpha=0.50)
+        ef_ln.set_sketch_params(0.0, 0.0, 0.0)
+        z_ln.set_sketch_params(0.0, 0.0, 0.0)
         ax.set_xlabel("$E - E_F$ (eV)")
         ax.set_ylabel(pop_label)
         if ylim is not None:
@@ -1091,6 +1157,7 @@ def plot_cohp(
     e_grid = data.energies - data.fermi_energy
     vertical = orientation.strip().lower() != "horizontal"
     series = palettes.get_palette(palette)
+    sw = theme.stroke_weights(preset)
 
     with theme.xkcd_style(preset=preset):
         if ax is None:
@@ -1110,6 +1177,8 @@ def plot_cohp(
                 vertical=vertical,
                 shade_lobes=bool(shade_lobes and not integrated),
                 spin_dn=dn_vals,
+                series_idx=idx,
+                sw=sw,
             )
         _configure_cohp_axes(
             ax,
@@ -1118,6 +1187,7 @@ def plot_cohp(
             ink_col=theme.get_preset(preset).ink_color,
             xlim=xlim,
             ylim=ylim,
+            sw=sw,
         )
         ax.legend(loc="best", frameon=True, fontsize=8.5)
         theme.apply_xkcd_spines(ax, preset=preset)

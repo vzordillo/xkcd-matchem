@@ -658,7 +658,7 @@ def _draw_queue_item(
             payload.tail_2d,
             payload.tip_2d,
             color=payload.color,
-            linewidth=max(1.8, 0.55 * state.bond_w),
+            linewidth=max(1.35, 0.44 * state.bond_w),
             zorder=z_layer,
         )
 
@@ -731,6 +731,7 @@ def _draw_miller_labels(
 ) -> None:
     """Places crisp ``(hkl)`` badges above the rendered crystal."""
     bg = str(plt.rcParams.get("axes.facecolor", palettes.PAPER))
+    ink = str(plt.rcParams.get("axes.edgecolor", palettes.INK))
     for hkl, centroid, edge_col in labels_meta:
         parts = [str(int(v)) for v in hkl]
         tag = (
@@ -738,23 +739,27 @@ def _draw_miller_labels(
             if all(len(p) == 1 for p in parts)
             else f"({' '.join(parts)})"
         )
-        txt_col = primitives.ensure_readable_text_color(edge_col, bg)
-        ax.text(
+        edge_clean = primitives.ensure_readable_text_color(edge_col, bg)
+        badge = ax.text(
             float(centroid[0]),
             float(centroid[1]),
             tag,
-            fontsize=9.5,
-            color=txt_col,
+            fontsize=9.2,
+            color=ink,
             ha="center",
             va="center",
             bbox={
-                "boxstyle": "round,pad=0.22",
+                "boxstyle": "round,pad=0.20",
                 "facecolor": bg,
-                "edgecolor": txt_col,
+                "edgecolor": edge_clean,
+                "linewidth": 1.0,
                 "alpha": 0.92,
             },
             zorder=zorder,
         )
+        patch = badge.get_bbox_patch()
+        if patch is not None:
+            patch.set_sketch_params(0.0, 0.0, 0.0)
 
 
 def _prepare_scene_geometry(

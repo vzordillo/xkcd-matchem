@@ -450,6 +450,89 @@ def xkcd_style(
             _ACTIVE_FONT_STACK.pop()
 
 
+@dataclasses.dataclass(frozen=True)
+class StrokeHierarchy:
+    """Four-tier xkcd linewidth scale derived from ``ThemePreset.linewidth``.
+
+    Attributes:
+      primary: Tier-1 weight for primary curves and host structural bonds.
+      frame: Tier-1 slightly emphasized weight for outer host object frames
+        (e.g., Brillouin zones, Wulff hulls, Gibbs triangles, spines).
+      overlay: Tier-2 weight for subordinate interior traces, paths inside
+        objects, trend fits, tie-lines, sticks, and Miller plane outlines.
+      guide: Tier-3 weight for zero references, symmetry dividers, & back edges.
+      leader: Tier-4 weight for callout pointers, triads, and speech leaders.
+    """
+
+    primary: float
+    frame: float
+    overlay: float
+    guide: float
+    leader: float
+
+
+def stroke_weights(
+    preset: str | ThemePreset = "classic",
+) -> StrokeHierarchy:
+    """Returns proportional 4-tier stroke weights for ``preset``."""
+    base = float(get_preset(preset).linewidth)
+    return StrokeHierarchy(
+        primary=round(base, 2),
+        frame=round(max(base, base * 1.06), 2),
+        overlay=round(max(1.05, base * 0.70), 2),
+        guide=round(max(0.75, base * 0.52), 2),
+        leader=round(max(0.90, base * 0.60), 2),
+    )
+
+
+def label_halo_bbox(
+    bg_color: str,
+    *,
+    pad: float = 0.12,
+    alpha: float = 0.88,
+) -> dict[str, Any]:
+    """Returns a subtle borderless paper-halo dict for readable labels."""
+    return {
+        "boxstyle": f"round,pad={pad}",
+        "facecolor": bg_color,
+        "edgecolor": "none",
+        "alpha": alpha,
+    }
+
+
+def place_halo_text(
+    ax: maxes.Axes,
+    x: float,
+    y: float,
+    text: str,
+    *,
+    color: str,
+    bg_color: str,
+    fontsize: float = 9.0,
+    ha: str = "center",
+    va: str = "center",
+    pad: float = 0.10,
+    alpha: float = 0.88,
+    zorder: float = 7.0,
+) -> Any:
+    """Places ink-first text backed by an un-sketched paper halo."""
+    artist = ax.text(
+        float(x),
+        float(y),
+        text,
+        ha=ha,
+        va=va,
+        fontsize=fontsize,
+        color=color,
+        bbox=label_halo_bbox(bg_color, pad=pad, alpha=alpha),
+        zorder=zorder,
+    )
+    patch = artist.get_bbox_patch()
+    if patch is not None:
+        patch.set_sketch_params(0.0, 0.0, 0.0)
+    return artist
+
+
 def _straighten_axis_gridlines(ax: maxes.Axes) -> None:
     """Keeps native Matplotlib major/minor gridlines straight without wobble."""
     ax.xaxis.set_tick_params(which="both", grid_sketch_params=0.0)

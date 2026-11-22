@@ -88,10 +88,11 @@ def _draw_stereo_bond(
     perp: np.ndarray,
     stereo: str,
     ink_color: str,
+    lw_scale: float = 1.0,
 ) -> None:
     """Draws wedge, dashed-wedge, or wavy stereo 2D bonds."""
     if stereo == "wedge":
-        half_w = 0.14
+        half_w = 0.135 * (0.82 + 0.18 * lw_scale)
         tri = np.vstack([start, end + half_w * perp, end - half_w * perp])
         ax.add_patch(
             patches.Polygon(
@@ -99,7 +100,7 @@ def _draw_stereo_bond(
                 closed=True,
                 facecolor=ink_color,
                 edgecolor=ink_color,
-                linewidth=1.0,
+                linewidth=0.95 * lw_scale,
                 joinstyle="round",
                 zorder=2.5,
             )
@@ -109,12 +110,12 @@ def _draw_stereo_bond(
         for step_k in range(1, n_ticks + 1):
             frac = step_k / float(n_ticks + 1)
             pt = start + frac * (end - start)
-            hw = 0.04 + 0.11 * frac
+            hw = (0.04 + 0.105 * frac) * (0.85 + 0.15 * lw_scale)
             ax.plot(
                 [pt[0] - hw * perp[0], pt[0] + hw * perp[0]],
                 [pt[1] - hw * perp[1], pt[1] + hw * perp[1]],
                 color=ink_color,
-                lw=1.7,
+                lw=1.65 * lw_scale,
                 solid_capstyle="round",
                 zorder=2.5,
             )
@@ -129,7 +130,7 @@ def _draw_stereo_bond(
             pts[:, 0],
             pts[:, 1],
             color=ink_color,
-            lw=1.9,
+            lw=1.85 * lw_scale,
             solid_capstyle="round",
             zorder=2.5,
         )
@@ -145,6 +146,7 @@ def _draw_skeletal_bond(
     shorten_j: float = 0.0,
     ring_center: np.ndarray | None = None,
     stereo: str = "none",
+    lw_scale: float = 1.0,
 ) -> None:
     """Draws single, double, triple, aromatic, or stereo 2D bonds."""
     vec = p2 - p1
@@ -159,9 +161,12 @@ def _draw_skeletal_bond(
     perp = np.array([-unit[1], unit[0]], dtype=np.float64)
     start = p1 + unit * shorten_i
     end = p2 - unit * shorten_j
+    gap_scale = 0.85 + 0.15 * lw_scale
 
     if stereo in ("wedge", "dash", "wavy"):
-        _draw_stereo_bond(ax, start, end, perp, stereo, ink_color)
+        _draw_stereo_bond(
+            ax, start, end, perp, stereo, ink_color, lw_scale=lw_scale
+        )
         return
 
     if abs(order - 2.0) < 0.25:
@@ -173,11 +178,11 @@ def _draw_skeletal_bond(
                 [start[0], end[0]],
                 [start[1], end[1]],
                 color=ink_color,
-                lw=2.1,
+                lw=2.05 * lw_scale,
                 solid_capstyle="round",
                 zorder=2,
             )
-            inner_off = perp * 0.165
+            inner_off = perp * (0.165 * gap_scale)
             trim = 0.14 * (end - start)
             in_s = start + trim + inner_off
             in_e = end - trim + inner_off
@@ -185,17 +190,17 @@ def _draw_skeletal_bond(
                 [in_s[0], in_e[0]],
                 [in_s[1], in_e[1]],
                 color=ink_color,
-                lw=1.85,
+                lw=1.75 * lw_scale,
                 solid_capstyle="round",
                 zorder=2,
             )
             return
-        off = perp * 0.085
+        off = perp * (0.088 * gap_scale)
         ax.plot(
             [start[0] + off[0], end[0] + off[0]],
             [start[1] + off[1], end[1] + off[1]],
             color=ink_color,
-            lw=1.9,
+            lw=1.80 * lw_scale,
             solid_capstyle="round",
             zorder=2,
         )
@@ -203,14 +208,14 @@ def _draw_skeletal_bond(
             [start[0] - off[0], end[0] - off[0]],
             [start[1] - off[1], end[1] - off[1]],
             color=ink_color,
-            lw=1.9,
+            lw=1.80 * lw_scale,
             solid_capstyle="round",
             zorder=2,
         )
         return
 
     if abs(order - 3.0) < 0.25:
-        off = perp * 0.105
+        off = perp * (0.105 * gap_scale)
         for mul in (-1.0, 0.0, 1.0):
             s_pt = start + mul * off
             e_pt = end + mul * off
@@ -218,7 +223,7 @@ def _draw_skeletal_bond(
                 [s_pt[0], e_pt[0]],
                 [s_pt[1], e_pt[1]],
                 color=ink_color,
-                lw=1.6,
+                lw=1.55 * lw_scale,
                 solid_capstyle="round",
                 zorder=2,
             )
@@ -228,7 +233,7 @@ def _draw_skeletal_bond(
         [start[0], end[0]],
         [start[1], end[1]],
         color=ink_color,
-        lw=2.1,
+        lw=2.05 * lw_scale,
         solid_capstyle="round",
         zorder=2,
     )
@@ -237,7 +242,7 @@ def _draw_skeletal_bond(
             mid = 0.5 * (p1 + p2)
             if float(np.dot(perp, ring_center - mid)) < 0.0:
                 perp = -perp
-        off = perp * 0.15
+        off = perp * (0.15 * gap_scale)
         ax.plot(
             [
                 start[0] + off[0] + 0.12 * unit[0],
@@ -248,7 +253,7 @@ def _draw_skeletal_bond(
                 end[1] + off[1] - 0.12 * unit[1],
             ],
             color=ink_color,
-            lw=1.5,
+            lw=1.45 * lw_scale,
             linestyle="--",
             zorder=2,
         )
@@ -334,26 +339,169 @@ def _terminal_carbon_label(
     return f"CH{h_cnt}"
 
 
+def resolve_span_label_metrics(
+    ax: maxes.Axes,
+    span_x_raw: float,
+    span_y_raw: float,
+    pad: float,
+) -> tuple[float, float, float, float, float]:
+    """Resolves ``(fontsize, char_w, char_h, margin, pt_per_ang)``."""
+    fig = ax.get_figure()
+    dpi = float(fig.dpi) if fig is not None else 100.0
+    bbox = ax.get_window_extent()
+    ax_w_pt = max(float(bbox.width) * 72.0 / max(dpi, 1.0), 45.0)
+    ax_h_pt = max(float(bbox.height) * 72.0 / max(dpi, 1.0), 45.0)
+    span_x = max(float(span_x_raw) + 2.0 * pad, 2.2)
+    span_y = max(float(span_y_raw) + 2.0 * pad, 2.2)
+    pt_per_ang = min(ax_w_pt / span_x, ax_h_pt / span_y)
+    fontsize = float(np.clip(0.54 * pt_per_ang, 7.6, 11.5))
+    ang_per_pt = 1.0 / max(pt_per_ang, 1.0)
+    char_w = 0.66 * fontsize * ang_per_pt
+    char_h = 0.80 * fontsize * ang_per_pt
+    margin = max(0.13, 0.24 * fontsize * ang_per_pt)
+    return fontsize, char_w, char_h, margin, pt_per_ang
+
+
 def _resolve_2d_label_metrics(
     ax: maxes.Axes,
     vis_xy: np.ndarray,
     pad: float,
 ) -> tuple[float, float, float, float]:
     """Resolves font size and Angstrom-space char box from axes extent."""
-    fig = ax.get_figure()
-    dpi = float(fig.dpi) if fig is not None else 100.0
-    bbox = ax.get_window_extent()
-    ax_w_pt = max(float(bbox.width) * 72.0 / max(dpi, 1.0), 45.0)
-    ax_h_pt = max(float(bbox.height) * 72.0 / max(dpi, 1.0), 45.0)
-    span_x = max(float(np.ptp(vis_xy[:, 0])) + 2.0 * pad, 2.2)
-    span_y = max(float(np.ptp(vis_xy[:, 1])) + 2.0 * pad, 2.2)
-    pt_per_ang = min(ax_w_pt / span_x, ax_h_pt / span_y)
-    fontsize = float(np.clip(0.54 * pt_per_ang, 8.2, 11.5))
-    ang_per_pt = 1.0 / max(pt_per_ang, 1.0)
-    char_w = 0.66 * fontsize * ang_per_pt
-    char_h = 0.80 * fontsize * ang_per_pt
-    margin = max(0.13, 0.24 * fontsize * ang_per_pt)
-    return fontsize, char_w, char_h, margin
+    fs, cw, ch, margin, _ = resolve_span_label_metrics(
+        ax,
+        float(np.ptp(vis_xy[:, 0])),
+        float(np.ptp(vis_xy[:, 1])),
+        pad,
+    )
+    return fs, cw, ch, margin
+
+
+def project_molecule_2d(
+    atoms: structure.AtomsData,
+    show_hydrogens: str = "polar",
+    bond_scale: float = 1.20,
+) -> tuple[
+    np.ndarray,
+    list[structure.Bond],
+    dict[int, list[tuple[int, float]]],
+    list[bool],
+    dict[int, int],
+    tuple[float, float],
+]:
+    """Projects a molecule into normalized Angstrom 2D coordinates."""
+    if len(atoms) == 0:
+        return (
+            np.zeros((0, 2), dtype=np.float64),
+            [],
+            {},
+            [],
+            {},
+            (0.0, 0.0),
+        )
+    xy = _pca_2d_projection(atoms.positions)
+    bonds = list(atoms.bonds) or bonding.infer_bonds(
+        atoms, scale=bond_scale, use_pbc=False
+    )
+    neighbors: dict[int, list[tuple[int, float]]] = {
+        i: [] for i in range(len(atoms))
+    }
+    for b in bonds:
+        neighbors[b.i].append((b.j, b.order))
+        neighbors[b.j].append((b.i, b.order))
+    visible, hetero_h_count = _compute_visibility(
+        atoms, neighbors, show_hydrogens
+    )
+    vis_xy = xy[np.array(visible, dtype=bool)]
+    if vis_xy.size == 0:
+        vis_xy = xy
+    xy[:, 0] -= float(np.min(vis_xy[:, 0]))
+    xy[:, 1] -= 0.5 * float(np.min(vis_xy[:, 1]) + np.max(vis_xy[:, 1]))
+    vis_shifted = xy[np.array(visible, dtype=bool)]
+    if vis_shifted.size == 0:
+        vis_shifted = xy
+    span_w = float(np.ptp(vis_shifted[:, 0]))
+    span_h = float(np.ptp(vis_shifted[:, 1]))
+    return xy, bonds, neighbors, visible, hetero_h_count, (span_w, span_h)
+
+
+def _projected_molecule_bounds(
+    xy: np.ndarray,
+    visible: list[bool],
+    label_specs: dict[int, tuple[str, np.ndarray, float, float]],
+) -> tuple[float, float, float, float]:
+    """Computes tight ``(xmin, xmax, ymin, ymax)`` covering bonds & labels."""
+    vis_xy = xy[np.array(visible, dtype=bool)]
+    if vis_xy.size == 0:
+        vis_xy = xy
+    xs_all = [vis_xy[:, 0]]
+    ys_all = [vis_xy[:, 1]]
+    for _, center, hw, hh in label_specs.values():
+        xs_all.append(np.array([center[0] - hw, center[0] + hw]))
+        ys_all.append(np.array([center[1] - hh, center[1] + hh]))
+    x_comb = np.concatenate(xs_all)
+    y_comb = np.concatenate(ys_all)
+    return (
+        float(np.min(x_comb)),
+        float(np.max(x_comb)),
+        float(np.min(y_comb)),
+        float(np.max(y_comb)),
+    )
+
+
+def draw_projected_molecule_2d(
+    ax: maxes.Axes,
+    atoms: structure.AtomsData,
+    proj_data: tuple[
+        np.ndarray,
+        list[structure.Bond],
+        dict[int, list[tuple[int, float]]],
+        list[bool],
+        dict[int, int],
+        tuple[float, float],
+    ],
+    *,
+    offset: tuple[float, float] = (0.0, 0.0),
+    metrics: tuple[float, float, float, float],
+    lw_scale: float = 1.0,
+    palette: str | Mapping[str, str] = "xkcd",
+) -> tuple[float, float, float, float]:
+    """Draws a pre-projected molecule at ``offset`` using shared metrics."""
+    base_xy, bonds, neighbors, visible, hetero_h_count, _ = proj_data
+    if len(atoms) == 0:
+        return (offset[0], offset[0], offset[1], offset[1])
+    xy = base_xy.copy()
+    xy[:, 0] += float(offset[0])
+    xy[:, 1] += float(offset[1])
+    ring_centroids = _find_ring_centroids(bonds, neighbors, xy)
+    label_specs = _build_label_specs(
+        atoms, xy, neighbors, visible, hetero_h_count, metrics
+    )
+    ink = str(plt.rcParams.get("axes.edgecolor", palettes.INK))
+    bg = str(plt.rcParams.get("axes.facecolor", palettes.PAPER))
+    for b in bonds:
+        if not (visible[b.i] and visible[b.j]):
+            continue
+        _draw_skeletal_bond(
+            ax,
+            xy[b.i],
+            xy[b.j],
+            b.order,
+            ink_color=ink,
+            shorten_i=_trim_bond_to_label(
+                xy[b.i], xy[b.j], label_specs.get(b.i)
+            ),
+            shorten_j=_trim_bond_to_label(
+                xy[b.j], xy[b.i], label_specs.get(b.j)
+            ),
+            ring_center=ring_centroids.get((min(b.i, b.j), max(b.i, b.j))),
+            stereo=b.stereo,
+            lw_scale=lw_scale,
+        )
+    _draw_skeletal_labels(
+        ax, atoms, label_specs, metrics[0], palette, ink, bg
+    )
+    return _projected_molecule_bounds(xy, visible, label_specs)
 
 
 def _build_label_specs(

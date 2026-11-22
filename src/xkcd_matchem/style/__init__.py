@@ -32,6 +32,7 @@ __all__ = [
     "PAPER",
     "PRESETS",
     "SHADE_STYLES",
+    "StrokeHierarchy",
     "ThemePreset",
     "WARM_PAPER",
     "apply_background_grid",
@@ -60,6 +61,7 @@ __all__ = [
     "resolve_hatch",
     "set_default_font",
     "shade_between",
+    "stroke_weights",
     "style_existing_axes",
     "use_xkcd_script",
     "xkcd_style",
@@ -75,6 +77,7 @@ OKABE_ITO = palettes.OKABE_ITO
 PAPER = palettes.PAPER
 PRESETS = theme.PRESETS
 SHADE_STYLES = patterns.SHADE_STYLES
+StrokeHierarchy = theme.StrokeHierarchy
 ThemePreset = theme.ThemePreset
 WARM_PAPER = palettes.WARM_PAPER
 apply_background_grid = patterns.apply_background_grid
@@ -103,6 +106,7 @@ resolve_font_chain = fonts.resolve_font_chain
 resolve_hatch = patterns.resolve_hatch
 set_default_font = fonts.set_default_font
 shade_between = patterns.shade_between
+stroke_weights = theme.stroke_weights
 style_existing_axes = theme.style_existing_axes
 use_xkcd_script = fonts.use_xkcd_script
 xkcd_style = theme.xkcd_style

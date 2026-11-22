@@ -410,7 +410,10 @@ def serialize_structure(
     atoms_obj, frames_list, auto_iso, source_sample = _coerce_interactive_input(
         atoms
     )
-    cam = geometry.resolve_camera(camera, cell=atoms_obj.cell)
+    if camera is None and auto_iso is not None:
+        cam = artistic3d.auto_orbital_camera([], auto_iso)
+    else:
+        cam = geometry.resolve_camera(camera, cell=atoms_obj.cell)
     palette_name, custom_colors = _resolve_custom_palette(atoms_obj, palette)
 
     out: dict[str, Any] = {

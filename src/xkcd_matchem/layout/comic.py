@@ -19,6 +19,8 @@ from collections.abc import Sequence
 import dataclasses
 import math
 import pathlib
+from typing import Any
+from typing import cast
 
 from matplotlib import axes as maxes
 from matplotlib import figure
@@ -50,7 +52,19 @@ class ComicPanel:
     speech: str | None = None
     speech_xy: tuple[float, float] = (0.66, 0.80)
     tail_xy: tuple[float, float] | None = (0.50, 0.54)
-    bubble_kind: str = "speech"
+    bubble_kind: str = "line"
+
+
+def _axes_aspect_factor(ax: maxes.Axes) -> float:
+    """Returns axes ``height / width`` ratio so stick heads stay circular."""
+    fig = ax.figure
+    if fig is not None:
+        fw, fh = cast(Any, fig).get_size_inches()
+        pos = ax.get_position()
+        w_in = max(float(pos.width) * float(fw), 1e-4)
+        h_in = max(float(pos.height) * float(fh), 1e-4)
+        return max(0.30, min(2.20, h_in / w_in))
+    return 1.0
 
 
 def draw_speech_bubble(
@@ -64,11 +78,12 @@ def draw_speech_bubble(
     edgecolor: str | None = None,
     fontsize: float = 9.5,
 ) -> None:
-    """Draws an xkcd-style speech or thought bubble in axes-fraction coords."""
+    """Draws an xkcd speech, thought, or borderless line-leader callout."""
     kind_key = kind.strip().lower()
-    if kind_key not in ("speech", "thought"):
+    if kind_key not in ("line", "speech", "thought"):
         raise exceptions.StyleError(
-            f"Unsupported bubble kind {kind!r}. Use 'speech' or 'thought'."
+            f"Unsupported bubble kind {kind!r}. "
+            "Use 'line', 'speech', or 'thought'."
         )
     bg = (
         facecolor
@@ -78,19 +93,21 @@ def draw_speech_bubble(
     ink = edgecolor if edgecolor is not None else primitives.resolve_ink()
     txt_col = primitives.ensure_readable_text_color(ink, bg)
 
-    if kind_key == "speech":
+    if kind_key == "line":
         target = xy if tail_xy is None else tail_xy
         arrow_cfg = (
             {
-                "arrowstyle": "->,head_width=0.26,head_length=0.35",
+                "arrowstyle": "-",
                 "color": ink,
-                "lw": 1.6,
-                "connectionstyle": "arc3,rad=0.14",
+                "lw": 1.05,
+                "shrinkA": 3.0,
+                "shrinkB": 3.0,
+                "connectionstyle": "arc3,rad=0.12",
             }
             if tail_xy is not None
             else None
         )
-        ax.annotate(
+        ann = ax.annotate(
             text,
             xy=target,
             xytext=xy,
@@ -101,28 +118,69 @@ def draw_speech_bubble(
             fontsize=fontsize,
             color=txt_col,
             bbox={
-                "boxstyle": "round,pad=0.36,rounding_size=0.30",
+                "boxstyle": "round,pad=0.14",
                 "facecolor": bg,
-                "edgecolor": ink,
-                "linewidth": 1.7,
+                "edgecolor": "none",
+                "alpha": 0.90,
             },
             arrowprops=arrow_cfg,
             zorder=20.0,
         )
+        patch = ann.get_bbox_patch()
+        if patch is not None:
+            patch.set_sketch_params(0.0, 0.0, 0.0)
+        return
+
+    if kind_key == "speech":
+        target = xy if tail_xy is None else tail_xy
+        arrow_cfg = (
+            {
+                "arrowstyle": "->,head_width=0.22,head_length=0.30",
+                "color": ink,
+                "lw": 1.25,
+                "connectionstyle": "arc3,rad=0.14",
+            }
+            if tail_xy is not None
+            else None
+        )
+        ann = ax.annotate(
+            text,
+            xy=target,
+            xytext=xy,
+            xycoords="axes fraction",
+            textcoords="axes fraction",
+            ha="center",
+            va="center",
+            fontsize=fontsize,
+            color=txt_col,
+            bbox={
+                "boxstyle": "round,pad=0.32,rounding_size=0.28",
+                "facecolor": bg,
+                "edgecolor": ink,
+                "linewidth": 1.35,
+            },
+            arrowprops=arrow_cfg,
+            zorder=20.0,
+        )
+        patch = ann.get_bbox_patch()
+        if patch is not None:
+            patch.set_sketch_params(0.0, 0.0, 0.0)
         return
 
     if tail_xy is not None:
-        for frac, rad in ((0.22, 0.012), (0.45, 0.020)):
+        asp = _axes_aspect_factor(ax)
+        for frac, rad in ((0.22, 0.011), (0.45, 0.018)):
             cx = tail_xy[0] + frac * (xy[0] - tail_xy[0])
             cy = tail_xy[1] + frac * (xy[1] - tail_xy[1])
             ax.add_patch(
-                patches.Circle(
+                patches.Ellipse(
                     (cx, cy),
-                    radius=rad,
+                    width=2.0 * rad * asp,
+                    height=2.0 * rad,
                     transform=ax.transAxes,
                     facecolor=bg,
                     edgecolor=ink,
-                    linewidth=1.4,
+                    linewidth=1.25,
                     zorder=19.0,
                 )
             )
@@ -136,14 +194,238 @@ def draw_speech_bubble(
         fontsize=fontsize,
         color=txt_col,
         bbox={
-            "boxstyle": "round,pad=0.38,rounding_size=0.45",
+            "boxstyle": "round,pad=0.34,rounding_size=0.42",
             "facecolor": bg,
             "edgecolor": ink,
-            "linewidth": 1.6,
+            "linewidth": 1.35,
             "linestyle": "--",
         },
         zorder=20.0,
     )
+
+
+def _draw_character_head_detail(
+    ax: maxes.Axes,
+    character: str,
+    head_xy: tuple[float, float],
+    radii: tuple[float, float],
+    flip: float,
+    ink: str,
+    bg: str,
+) -> None:
+    """Draws xkcd character hair, beret, or goggles onto the round head."""
+    hx, hy = head_xy
+    rx, ry = radii
+
+    def _stk(
+        xs: Sequence[float], ys: Sequence[float], lw: float = 1.65
+    ) -> None:
+        ax.plot(
+            xs,
+            ys,
+            transform=ax.transAxes,
+            color=ink,
+            linewidth=lw,
+            solid_capstyle="round",
+            zorder=18.4,
+        )
+
+    if character == "ponytail":
+        _stk(
+            [
+                hx + flip * 0.72 * rx,
+                hx + flip * 0.1 * rx,
+                hx - flip * 0.86 * rx,
+            ],
+            [hy + 0.56 * ry, hy + 0.96 * ry, hy + 0.35 * ry],
+            lw=1.7,
+        )
+        _stk(
+            [
+                hx - flip * 0.85 * rx,
+                hx - flip * 1.48 * rx,
+                hx - flip * 1.72 * rx,
+                hx - flip * 1.32 * rx,
+            ],
+            [hy + 0.32 * ry, hy + 0.25 * ry, hy - 0.32 * ry, hy - 0.86 * ry],
+            lw=1.9,
+        )
+    elif character == "megan":
+        _stk(
+            [
+                hx + flip * 0.80 * rx,
+                hx + flip * 0.25 * rx,
+                hx - flip * 0.45 * rx,
+                hx - flip * 0.96 * rx,
+                hx - flip * 1.02 * rx,
+            ],
+            [
+                hy + 0.48 * ry,
+                hy + 1.02 * ry,
+                hy + 0.98 * ry,
+                hy + 0.30 * ry,
+                hy - 0.78 * ry,
+            ],
+            lw=1.9,
+        )
+        _stk(
+            [hx + flip * 0.76 * rx, hx + flip * 0.94 * rx],
+            [hy + 0.50 * ry, hy - 0.55 * ry],
+            lw=1.75,
+        )
+    elif character == "beret":
+        beret = patches.Ellipse(
+            (hx - flip * 0.12 * rx, hy + 0.92 * ry),
+            width=2.35 * rx,
+            height=0.82 * ry,
+            angle=flip * -10.0,
+            transform=ax.transAxes,
+            facecolor=ink,
+            edgecolor=ink,
+            linewidth=1.2,
+            zorder=18.6,
+        )
+        ax.add_patch(beret)
+        _stk(
+            [hx - flip * 0.12 * rx, hx - flip * 0.22 * rx],
+            [hy + 1.28 * ry, hy + 1.50 * ry],
+            lw=1.5,
+        )
+    elif character == "goggles":
+        _stk(
+            [hx - 0.95 * rx, hx + 0.95 * rx],
+            [hy + 0.14 * ry, hy + 0.14 * ry],
+            lw=1.2,
+        )
+        lens = patches.FancyBboxPatch(
+            (hx + flip * 0.08 * rx - 0.42 * rx, hy - 0.14 * ry),
+            0.84 * rx,
+            0.52 * ry,
+            boxstyle="round,pad=0.0,rounding_size=0.008",
+            transform=ax.transAxes,
+            facecolor=bg,
+            edgecolor=ink,
+            linewidth=1.35,
+            zorder=18.6,
+        )
+        ax.add_patch(lens)
+
+
+def _draw_stick_prop(
+    ax: maxes.Axes,
+    prop: str | None,
+    hand_xy: tuple[float, float],
+    scale: float,
+    aspect: float,
+    flip: float,
+    ink: str,
+) -> None:
+    """Draws optional handheld lab props (pointer, flask, clipboard)."""
+    if prop is None:
+        return
+    hx, hy = hand_xy
+    prop_key = prop.strip().lower()
+    if prop_key == "pointer":
+        ax.plot(
+            [hx, hx + flip * 0.32 * scale * aspect],
+            [hy, hy + 0.19 * scale],
+            transform=ax.transAxes,
+            color=ink,
+            linewidth=1.55,
+            solid_capstyle="round",
+            zorder=18.2,
+        )
+    elif prop_key == "flask":
+        tri = [
+            (hx - 0.045 * scale * aspect, hy + 0.10 * scale),
+            (hx + 0.045 * scale * aspect, hy + 0.10 * scale),
+            (hx + 0.095 * scale * aspect, hy - 0.04 * scale),
+            (hx - 0.095 * scale * aspect, hy - 0.04 * scale),
+        ]
+        ax.add_patch(
+            patches.Polygon(
+                tri,
+                closed=True,
+                transform=ax.transAxes,
+                facecolor="#8ECAE6",
+                edgecolor=ink,
+                linewidth=1.25,
+                zorder=19.0,
+            )
+        )
+    elif prop_key == "clipboard":
+        board = patches.Rectangle(
+            (
+                hx - 0.055 * scale * aspect,
+                hy - 0.04 * scale,
+            ),
+            0.11 * scale * aspect,
+            0.14 * scale,
+            transform=ax.transAxes,
+            facecolor="#FAF6EE",
+            edgecolor=ink,
+            linewidth=1.25,
+            zorder=19.0,
+        )
+        ax.add_patch(board)
+
+
+def _stick_arm_polylines(
+    pose_key: str,
+    x0: float,
+    y0: float,
+    scale: float,
+    aspect: float,
+    flip: float,
+) -> tuple[list[float], list[float], tuple[float, float]]:
+    """Computes clean xkcd-proportioned arm vertices and active hand xy."""
+    dx_s = flip * scale * aspect
+    shoulder_y = y0 + 0.62 * scale
+    if pose_key == "point":
+        hx, hy = x0 + 0.25 * dx_s, y0 + 0.72 * scale
+        xs = [x0 - 0.14 * dx_s, x0, hx]
+        ys = [y0 + 0.45 * scale, shoulder_y, hy]
+    elif pose_key == "shrug":
+        hx, hy = x0 + 0.19 * dx_s, y0 + 0.70 * scale
+        xs = [
+            x0 - 0.19 * dx_s,
+            x0 - 0.12 * dx_s,
+            x0,
+            x0 + 0.12 * dx_s,
+            hx,
+        ]
+        ys = [
+            y0 + 0.70 * scale,
+            shoulder_y - 0.04 * scale,
+            shoulder_y,
+            shoulder_y - 0.04 * scale,
+            hy,
+        ]
+    elif pose_key == "cheer":
+        hx, hy = x0 + 0.26 * dx_s, y0 + 0.92 * scale
+        xs = [x0 - 0.26 * dx_s, x0, hx]
+        ys = [y0 + 0.92 * scale, shoulder_y, hy]
+    elif pose_key == "think":
+        hx, hy = x0 + 0.06 * dx_s, y0 + 0.72 * scale
+        xs = [
+            x0 - 0.11 * dx_s,
+            x0 - 0.09 * dx_s,
+            x0,
+            x0 + 0.14 * dx_s,
+            hx,
+        ]
+        ys = [
+            y0 + 0.43 * scale,
+            y0 + 0.54 * scale,
+            shoulder_y,
+            y0 + 0.54 * scale,
+            hy,
+        ]
+    else:
+        hx, hy = x0 + 0.11 * dx_s, y0 + 0.43 * scale
+        xs = [x0 - 0.11 * dx_s, x0, hx]
+        ys = [y0 + 0.43 * scale, shoulder_y, hy]
+    return xs, ys, (hx, hy)
 
 
 def draw_stick_scientist(
@@ -152,31 +434,53 @@ def draw_stick_scientist(
     *,
     scale: float = 0.26,
     pose: str = "point",
+    character: str = "cueball",
+    facing: str = "right",
     prop: str | None = None,
+    speech: str | None = None,
+    speech_offset: tuple[float, float] = (0.02, 0.22),
     color: str | None = None,
 ) -> None:
-    """Draws an xkcd-style stick-figure scientist in axes-fraction coords."""
+    """Draws an aspect-invariant xkcd.com stick scientist on any Axes."""
     pose_key = pose.strip().lower()
-    if pose_key not in ("point", "shrug", "cheer"):
+    if pose_key not in ("point", "shrug", "cheer", "stand", "think"):
         raise exceptions.StyleError(
-            f"Unsupported pose {pose!r}. Use 'point', 'shrug', or 'cheer'."
+            f"Unsupported pose {pose!r}. "
+            "Use 'stand', 'point', 'think', 'shrug', or 'cheer'."
         )
+    char_key = character.strip().lower()
+    if char_key not in ("cueball", "ponytail", "megan", "beret", "goggles"):
+        raise exceptions.StyleError(
+            f"Unsupported character {character!r}. "
+            "Use 'cueball', 'ponytail', 'megan', 'beret', or 'goggles'."
+        )
+    face_key = facing.strip().lower()
+    if face_key not in ("right", "left"):
+        raise exceptions.StyleError(
+            f"Unsupported facing {facing!r}. Use 'right' or 'left'."
+        )
+    flip = -1.0 if face_key == "left" else 1.0
     ink = color if color is not None else primitives.resolve_ink()
     bg = str(plt.rcParams.get("axes.facecolor", palettes.PAPER))
     x0, y0 = float(xy[0]), float(xy[1])
     h = float(scale)
+    asp = _axes_aspect_factor(ax)
+    rx = 0.115 * h * asp
+    ry = 0.120 * h
+    hy = y0 + 0.85 * h
 
     head = patches.Ellipse(
-        (x0, y0 + 0.85 * h),
-        width=0.22 * h,
-        height=0.25 * h,
+        (x0, hy),
+        width=2.0 * rx,
+        height=2.0 * ry,
         transform=ax.transAxes,
         facecolor=bg,
         edgecolor=ink,
-        linewidth=1.8,
+        linewidth=1.75,
         zorder=18.0,
     )
     ax.add_patch(head)
+    _draw_character_head_detail(ax, char_key, (x0, hy), (rx, ry), flip, ink, bg)
 
     def _seg(xs: Sequence[float], ys: Sequence[float]) -> None:
         ax.plot(
@@ -184,65 +488,31 @@ def draw_stick_scientist(
             ys,
             transform=ax.transAxes,
             color=ink,
-            linewidth=1.9,
+            linewidth=1.75,
             solid_capstyle="round",
             zorder=18.0,
         )
 
     _seg([x0, x0], [y0 + 0.72 * h, y0 + 0.34 * h])
-    _seg([x0 - 0.13 * h, x0, x0 + 0.13 * h], [y0, y0 + 0.34 * h, y0])
+    _seg(
+        [x0 - 0.12 * h * asp, x0, x0 + 0.12 * h * asp],
+        [y0, y0 + 0.34 * h, y0],
+    )
+    arm_xs, arm_ys, hand_xy = _stick_arm_polylines(
+        pose_key, x0, y0, h, asp, flip
+    )
+    _seg(arm_xs, arm_ys)
+    _draw_stick_prop(ax, prop, hand_xy, h, asp, flip, ink)
 
-    shoulder_y = y0 + 0.62 * h
-    if pose_key == "point":
-        hand_x, hand_y = x0 + 0.25 * h, y0 + 0.72 * h
-        _seg([x0 - 0.16 * h, x0, hand_x], [y0 + 0.48 * h, shoulder_y, hand_y])
-    elif pose_key == "shrug":
-        hand_x, hand_y = x0 + 0.18 * h, y0 + 0.70 * h
-        _seg(
-            [
-                x0 - 0.18 * h,
-                x0 - 0.12 * h,
-                x0,
-                x0 + 0.12 * h,
-                hand_x,
-            ],
-            [
-                y0 + 0.70 * h,
-                shoulder_y - 0.04 * h,
-                shoulder_y,
-                shoulder_y - 0.04 * h,
-                hand_y,
-            ],
+    if speech:
+        draw_speech_bubble(
+            ax,
+            speech,
+            xy=(x0 + speech_offset[0], y0 + h + speech_offset[1]),
+            tail_xy=(x0 + flip * 0.02 * h * asp, y0 + h + 0.02 * h),
+            kind="line",
+            edgecolor=ink,
         )
-    else:
-        hand_x, hand_y = x0 + 0.18 * h, y0 + 0.90 * h
-        _seg([x0 - 0.18 * h, x0, hand_x], [y0 + 0.90 * h, shoulder_y, hand_y])
-
-    if prop is not None:
-        prop_key = prop.strip().lower()
-        if prop_key == "pointer":
-            _seg(
-                [hand_x, hand_x + 0.34 * h],
-                [hand_y, hand_y + 0.20 * h],
-            )
-        elif prop_key == "flask":
-            tri = [
-                (hand_x - 0.04 * h, hand_y + 0.10 * h),
-                (hand_x + 0.04 * h, hand_y + 0.10 * h),
-                (hand_x + 0.09 * h, hand_y - 0.04 * h),
-                (hand_x - 0.09 * h, hand_y - 0.04 * h),
-            ]
-            ax.add_patch(
-                patches.Polygon(
-                    tri,
-                    closed=True,
-                    transform=ax.transAxes,
-                    facecolor="#8ECAE6",
-                    edgecolor=ink,
-                    linewidth=1.4,
-                    zorder=19.0,
-                )
-            )
 
 
 @dataclasses.dataclass
@@ -291,12 +561,26 @@ class ComicStrip:
         *,
         scale: float = 0.26,
         pose: str = "point",
+        character: str = "cueball",
+        facing: str = "right",
         prop: str | None = None,
+        speech: str | None = None,
+        speech_offset: tuple[float, float] = (0.02, 0.22),
     ) -> None:
         """Draws a stick-figure scientist onto panel ``index``."""
         ax = self.panel(index)
         with theme.xkcd_style(preset=self.preset):
-            draw_stick_scientist(ax, xy=xy, scale=scale, pose=pose, prop=prop)
+            draw_stick_scientist(
+                ax,
+                xy=xy,
+                scale=scale,
+                pose=pose,
+                character=character,
+                facing=facing,
+                prop=prop,
+                speech=speech,
+                speech_offset=speech_offset,
+            )
 
     def save(
         self,

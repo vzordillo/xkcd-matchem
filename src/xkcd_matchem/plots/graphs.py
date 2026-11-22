@@ -218,6 +218,7 @@ def _draw_graph_edge(
     dashed: bool,
     rad: float,
     color: str,
+    ink_col: str,
     linewidth: float,
     label: str | None,
     bg_color: str,
@@ -258,22 +259,25 @@ def _draw_graph_edge(
             # Matches Matplotlib ConnectionStyle.Arc3 quadratic midpoint.
             arc_offset = 0.5 * rad * np.array([vec[1], -vec[0]], dtype=float)
             mid = mid + arc_offset
-        ax.text(
+        lbl_txt = ax.text(
             float(mid[0]),
             float(mid[1]),
             label,
             ha="center",
             va="center",
             fontsize=8.2,
-            color=color,
+            color=ink_col,
             bbox={
-                "boxstyle": "round,pad=0.16",
+                "boxstyle": "round,pad=0.14",
                 "facecolor": bg_color,
                 "edgecolor": "none",
                 "alpha": 0.92,
             },
             zorder=4.5,
         )
+        patch = lbl_txt.get_bbox_patch()
+        if patch is not None:
+            patch.set_sketch_params(0.0, 0.0, 0.0)
 
 
 def _draw_all_graph_edges(
@@ -319,7 +323,8 @@ def _draw_all_graph_edges(
             dashed=is_dash,
             rad=rad,
             color="#0072B2" if is_dash else ink_col,
-            linewidth=1.55 if is_dash else 2.0,
+            ink_col=ink_col,
+            linewidth=1.30 if is_dash else 1.80,
             label=lbl,
             bg_color=bg_color,
             shrink_pt=shrink_pt,

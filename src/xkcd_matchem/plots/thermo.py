@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from collections.abc import Sequence
+import math
 
 from matplotlib import axes as maxes
 from matplotlib import patches
@@ -85,6 +86,8 @@ def _annotate_phase_labels(
     ys: np.ndarray,
     labels: Sequence[str],
     lower_indices: set[int],
+    ink_col: str,
+    bg_color: str,
 ) -> None:
     """Places stable phase labels below hull nodes and unstable above."""
     y_span = max(float(np.ptp(ys)), 0.25)
@@ -95,14 +98,19 @@ def _annotate_phase_labels(
             dx, dy, ha = 8, -2, "left"
         else:
             dx, dy, ha = 0, 8, "center"
-        ax.annotate(
+        ann = ax.annotate(
             lbl,
             xy=(xs[k], ys[k]),
             xytext=(dx, dy),
             textcoords="offset points",
             ha=ha,
             fontsize=9.5,
+            color=ink_col,
+            bbox=theme.label_halo_bbox(bg_color, pad=0.07, alpha=0.84),
         )
+        patch = ann.get_bbox_patch()
+        if patch is not None:
+            patch.set_sketch_params(0.0, 0.0, 0.0)
 
 
 def plot_phase_diagram_2d(
@@ -124,52 +132,66 @@ def plot_phase_diagram_2d(
     hull_y = ys[hull_sorted]
     series = palettes.get_palette(palette)
     hull_col = series[5 % len(series)]
-    stable_col = series[3 % len(series)]
-    above_col = series[6 % len(series)]
     preset_obj = theme.get_preset(preset)
+    sw = theme.stroke_weights(preset)
 
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.2, 4.4))
         else:
             theme.style_existing_axes(ax, preset=preset)
-        ax.plot(hull_x, hull_y, color=hull_col, lw=2.3, label="Convex Hull")
+        ax.plot(
+            hull_x, hull_y, color=hull_col, lw=sw.primary, label="Convex Hull"
+        )
         ax.scatter(
             hull_x,
             hull_y,
-            s=85,
-            facecolor=stable_col,
+            s=80,
+            facecolor=series[3 % len(series)],
             edgecolor=preset_obj.ink_color,
-            linewidth=1.5,
+            linewidth=1.35,
             zorder=6,
             label="Stable",
         )
         unstable = [k for k in range(len(xs)) if k not in lower_indices]
         if unstable:
+            above_col = series[6 % len(series)]
             ax.scatter(
                 xs[unstable],
                 ys[unstable],
-                s=75,
+                s=70,
                 marker="D",
                 facecolor=preset_obj.axes_facecolor,
                 edgecolor=above_col,
-                linewidth=1.6,
+                linewidth=1.35,
                 zorder=5,
                 label="Above Hull",
             )
             for k in unstable:
                 y_hull = float(np.interp(xs[k], hull_x, hull_y))
                 if abs(float(ys[k]) - y_hull) > 1e-9:
-                    ax.plot(
+                    drop = ax.plot(
                         [xs[k], xs[k]],
                         [y_hull, ys[k]],
                         color=above_col,
                         linestyle=":",
-                        lw=1.3,
-                    )
+                        lw=sw.guide,
+                    )[0]
+                    drop.set_sketch_params(0.0, 0.0, 0.0)
         if labels:
-            _annotate_phase_labels(ax, xs, ys, labels, lower_indices)
-        ax.axhline(0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=1.1)
+            _annotate_phase_labels(
+                ax,
+                xs,
+                ys,
+                labels,
+                lower_indices,
+                preset_obj.ink_color,
+                preset_obj.axes_facecolor,
+            )
+        z_line = ax.axhline(
+            0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=sw.guide
+        )
+        z_line.set_sketch_params(0.0, 0.0, 0.0)
         y_span = max(float(np.ptp(ys)), 0.25)
         x_lo, x_hi = float(np.min(xs)), float(np.max(xs))
         if x_lo >= -1e-9 and x_hi <= 1.0 + 1e-9:
@@ -239,6 +261,7 @@ def plot_eos(
     pts_col = series[1 % len(series)]
     fit_col = series[5 % len(series)]
     preset_obj = theme.get_preset(preset)
+    sw = theme.stroke_weights(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.0, 4.3))
@@ -247,10 +270,10 @@ def plot_eos(
         ax.scatter(
             vs,
             es,
-            s=70,
+            s=68,
             facecolor=pts_col,
             edgecolor=preset_obj.ink_color,
-            linewidth=1.5,
+            linewidth=1.35,
             zorder=5,
             label="DFT Points",
         )
@@ -259,7 +282,12 @@ def plot_eos(
             v_fine = np.linspace(float(np.min(vs)), float(np.max(vs)), 160)
             e_fine = _birch_murnaghan(v_fine, *popt)
             ax.plot(
-                v_fine, e_fine, color=fit_col, lw=2.2, label="Birch-Murnaghan"
+                v_fine,
+                e_fine,
+                color=fit_col,
+                lw=sw.overlay + 0.25,
+                zorder=3,
+                label="Birch-Murnaghan",
             )
             b0_gpa = float(popt[2]) * _EV_PER_A3_TO_GPA
             summary = (
@@ -267,7 +295,7 @@ def plot_eos(
                 f"B0 = {b0_gpa:.1f} GPa\n"
                 f"B0' = {popt[3]:.2f}"
             )
-            ax.text(
+            box_txt = ax.text(
                 0.50,
                 0.56,
                 summary,
@@ -275,12 +303,17 @@ def plot_eos(
                 ha="center",
                 va="center",
                 fontsize=9.0,
+                color=preset_obj.ink_color,
                 bbox={
                     "boxstyle": "round,pad=0.3",
                     "facecolor": preset_obj.axes_facecolor,
-                    "edgecolor": fit_col,
+                    "edgecolor": palettes.MUTED_GRAY,
+                    "linewidth": 1.1,
                 },
             )
+            patch = box_txt.get_bbox_patch()
+            if patch is not None:
+                patch.set_sketch_params(0.0, 0.0, 0.0)
         e_span = max(float(np.ptp(es)), 1e-3)
         ax.set_ylim(
             float(np.min(es)) - 0.14 * e_span,
@@ -324,7 +357,9 @@ def plot_pourbaix(
 ) -> maxes.Axes:
     """Plots a schematic or DFT Pourbaix pH vs E_SHE stability diagram."""
     series = palettes.get_palette(palette)
-    ink_col = theme.get_preset(preset).ink_color
+    preset_obj = theme.get_preset(preset)
+    ink_col = preset_obj.ink_color
+    sw = theme.stroke_weights(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.2, 4.8))
@@ -341,7 +376,7 @@ def plot_pourbaix(
                 closed=True,
                 facecolor=col,
                 edgecolor=ink_col,
-                linewidth=1.7,
+                linewidth=1.45,
                 alpha=0.28,
                 hatch=hatch,
                 zorder=2,
@@ -350,14 +385,16 @@ def plot_pourbaix(
                 poly.set_sketch_params(0.0, 0.0, 0.0)
             ax.add_patch(poly)
             ctr = _polygon_centroid(pts)
-            ax.text(
+            theme.place_halo_text(
+                ax,
                 float(ctr[0]),
                 float(ctr[1]),
                 label,
-                ha="center",
-                va="center",
-                fontsize=10.5,
                 color=ink_col,
+                bg_color=preset_obj.axes_facecolor,
+                fontsize=10.5,
+                pad=0.10,
+                alpha=0.68 if hatch else 0.0,
                 zorder=4,
             )
         p_span = max(potential_range[1] - potential_range[0], 0.5)
@@ -371,7 +408,7 @@ def plot_pourbaix(
                 -0.05916 * phs,
                 color=series[5 % len(series)],
                 linestyle="--",
-                lw=1.6,
+                lw=sw.overlay,
                 label="H2/H+",
             )
             ax.plot(
@@ -379,7 +416,7 @@ def plot_pourbaix(
                 1.229 - 0.05916 * phs,
                 color=series[6 % len(series)],
                 linestyle="--",
-                lw=1.6,
+                lw=sw.overlay,
                 label="O2/H2O",
             )
             ax.legend(loc="upper center", ncol=2, frameon=True, fontsize=8.5)
@@ -430,28 +467,111 @@ def _resolve_volcano_legs(
     return l_leg, r_leg, x_apex
 
 
+def _volcano_label_shift(
+    xi: float,
+    yi: float,
+    l_leg: tuple[float, float] | None,
+    r_leg: tuple[float, float] | None,
+    x_apex: float,
+    x_span: float,
+    y_span: float,
+    invert_y: bool,
+) -> tuple[int, int]:
+    """Computes outward normal label shift (pt) clear of scaling legs."""
+    sign_up = -1.0 if invert_y else 1.0
+    if abs(xi - x_apex) <= 0.08 * x_span:
+        return 0, int(round(12.0 * sign_up))
+    leg = l_leg if (xi < x_apex and l_leg is not None) else r_leg
+    if leg is None:
+        return 0, int(round(11.0 * sign_up))
+    y_line = leg[0] * xi + leg[1]
+    above = (
+        yi <= y_line + 0.02 * y_span
+        if invert_y
+        else yi >= y_line - 0.02 * y_span
+    )
+    side = 1.0 if above else -1.0
+    nx, ny = -leg[0] * (x_span / max(y_span, 1e-6)), 1.0
+    n_len = max(math.hypot(nx, ny), 1e-6)
+    return (
+        int(round(12.5 * (nx / n_len) * side)),
+        int(round(12.5 * (ny / n_len) * side * sign_up)),
+    )
+
+
 def _annotate_volcano_labels(
     ax: maxes.Axes,
     xs: np.ndarray,
     ys: np.ndarray,
     labels: Sequence[str] | None,
+    geom: tuple[
+        tuple[float, float] | None,
+        tuple[float, float] | None,
+        float,
+        float,
+        float,
+        bool,
+    ],
     ink_col: str,
+    bg_color: str,
 ) -> None:
-    """Places staggered catalyst labels above/below volcano scatter markers."""
+    """Places ink-first volcano catalyst labels away from scaling legs."""
     if labels is None:
         return
-    y_span = max(float(np.ptp(ys)), 0.2)
+    l_leg, r_leg, x_apex, x_span, y_span, invert_y = geom
     for idx, lbl in enumerate(labels):
-        dy = (0.06 if idx % 2 == 0 else -0.09) * y_span
-        ax.text(
-            float(xs[idx]),
-            float(ys[idx]) + dy,
+        xi, yi = float(xs[idx]), float(ys[idx])
+        dx_pt, dy_pt = _volcano_label_shift(
+            xi, yi, l_leg, r_leg, x_apex, x_span, y_span, invert_y
+        )
+        ann = ax.annotate(
             lbl,
+            xy=(xi, yi),
+            xytext=(dx_pt, dy_pt),
+            textcoords="offset points",
             ha="center",
             va="center",
             fontsize=9.0,
             color=ink_col,
+            bbox=theme.label_halo_bbox(bg_color, pad=0.07, alpha=0.86),
             zorder=6.0,
+        )
+        patch = ann.get_bbox_patch()
+        if patch is not None:
+            patch.set_sketch_params(0.0, 0.0, 0.0)
+
+
+def _draw_volcano_legs(
+    ax: maxes.Axes,
+    l_leg: tuple[float, float] | None,
+    r_leg: tuple[float, float] | None,
+    x_bounds: tuple[float, float, float],
+    series: Sequence[str],
+    sw: theme.StrokeHierarchy,
+) -> None:
+    """Draws subordinate strong- and weak-binding scaling legs."""
+    x_lo, x_apex, x_hi = x_bounds
+    if l_leg is not None and x_lo < x_apex:
+        x_l = np.linspace(x_lo, x_apex, 40)
+        ax.plot(
+            x_l,
+            l_leg[0] * x_l + l_leg[1],
+            color=series[5 % len(series)],
+            lw=sw.overlay + 0.12,
+            alpha=0.88,
+            zorder=2.5,
+            label="Strong-binding leg",
+        )
+    if r_leg is not None and x_apex < x_hi:
+        x_r = np.linspace(x_apex, x_hi, 40)
+        ax.plot(
+            x_r,
+            r_leg[0] * x_r + r_leg[1],
+            color=series[6 % len(series)],
+            lw=sw.overlay + 0.12,
+            alpha=0.88,
+            zorder=2.5,
+            label="Weak-binding leg",
         )
 
 
@@ -511,10 +631,12 @@ def plot_volcano(
         xs, ys, left_leg, right_leg, fit_legs, invert_y
     )
     series = palettes.get_palette(palette)
-    ink_col = theme.get_preset(preset).ink_color
+    preset_obj = theme.get_preset(preset)
+    sw = theme.stroke_weights(preset)
     x_span = max(float(np.ptp(xs)), 0.4)
-    x_lo = float(np.min(xs)) - 0.10 * x_span
-    x_hi = float(np.max(xs)) + 0.10 * x_span
+    y_span = max(float(np.ptp(ys)), 0.4)
+    x_lo = float(np.min(xs)) - 0.12 * x_span
+    x_hi = float(np.max(xs)) + 0.12 * x_span
 
     with theme.xkcd_style(preset=preset):
         if ax is None:
@@ -529,34 +651,28 @@ def plot_volcano(
                 alpha=0.14,
                 zorder=1.0,
             )
-        if l_leg is not None and x_lo < x_apex:
-            x_l = np.linspace(x_lo, x_apex, 40)
-            ax.plot(
-                x_l,
-                l_leg[0] * x_l + l_leg[1],
-                color=series[5 % len(series)],
-                lw=2.2,
-                label="Strong-binding leg",
-            )
-        if r_leg is not None and x_apex < x_hi:
-            x_r = np.linspace(x_apex, x_hi, 40)
-            ax.plot(
-                x_r,
-                r_leg[0] * x_r + r_leg[1],
-                color=series[6 % len(series)],
-                lw=2.2,
-                label="Weak-binding leg",
-            )
+        _draw_volcano_legs(ax, l_leg, r_leg, (x_lo, x_apex, x_hi), series, sw)
         ax.scatter(
             xs,
             ys,
             s=72.0,
             facecolor=series[1 % len(series)],
-            edgecolor=ink_col,
-            linewidth=1.5,
+            edgecolor=preset_obj.ink_color,
+            linewidth=1.35,
             zorder=5.0,
         )
-        _annotate_volcano_labels(ax, xs, ys, labels, ink_col)
+        _annotate_volcano_labels(
+            ax,
+            xs,
+            ys,
+            labels,
+            (l_leg, r_leg, x_apex, x_span, y_span, invert_y),
+            preset_obj.ink_color,
+            preset_obj.axes_facecolor,
+        )
+        y_lo = float(np.min(ys)) - 0.18 * y_span
+        y_hi = float(np.max(ys)) + 0.18 * y_span
+        ax.set_ylim(y_lo, y_hi)
         if invert_y:
             ax.invert_yaxis()
         ax.set_xlim(x_lo, x_hi)
@@ -656,22 +772,41 @@ def _format_defect_label(name: str) -> str:
     return name
 
 
+def _defect_bisector_offset(
+    q1: int,
+    q2: int,
+    x_span: float,
+    y_span: float,
+) -> tuple[int, int]:
+    """Computes outward upward bisector offset (pt) clear of both rays."""
+    sx = max(x_span, 1e-6)
+    sy = max(y_span, 1e-6)
+    a1 = math.hypot(1.0 / sx, float(q1) / sy)
+    a2 = math.hypot(1.0 / sx, float(q2) / sy)
+    n1x, n1y = -(float(q1) / sy) / a1, (1.0 / sx) / a1
+    n2x, n2y = -(float(q2) / sy) / a2, (1.0 / sx) / a2
+    bx, by = n1x + n2x, n1y + n2y
+    bn = max(math.hypot(bx, by), 1e-6)
+    return int(round(13.0 * bx / bn)), int(round(12.0 * by / bn))
+
+
 def _plot_single_defect(
     ax: maxes.Axes,
     d_name: str,
-    states: Sequence[tuple[int, float]],
+    curve: list[tuple[float, float]],
+    trans: list[tuple[float, float, int, int]],
     col: str,
-    ink_col: str,
-    bounds: tuple[float, float],
+    style_cfg: tuple[str, str, theme.StrokeHierarchy],
+    spans: tuple[float, float],
     show_transitions: bool,
 ) -> None:
-    """Plots one defect envelope curve and labels its transition levels."""
-    curve, trans = _lower_defect_envelope(states, bounds[0], bounds[1])
+    """Plots one defect envelope curve and ink-first kink labels."""
+    ink_col, bg_color, sw = style_cfg
     ax.plot(
         [pt[0] for pt in curve],
         [pt[1] for pt in curve],
         color=col,
-        lw=2.2,
+        lw=sw.primary,
         label=_format_defect_label(d_name),
         zorder=4.0,
     )
@@ -679,22 +814,54 @@ def _plot_single_defect(
         ax.scatter(
             [t[0] for t in trans],
             [t[1] for t in trans],
-            s=54.0,
+            s=46.0,
             facecolor=col,
             edgecolor=ink_col,
-            linewidth=1.3,
+            linewidth=1.15,
             zorder=6.0,
         )
         for xf, yf, q1, q2 in trans:
+            dx_pt, dy_pt = _defect_bisector_offset(q1, q2, spans[0], spans[1])
             lbl = f"({_fmt_charge(q1)}/{_fmt_charge(q2)})"
-            ax.annotate(
+            ann = ax.annotate(
                 lbl,
                 xy=(xf, yf),
-                xytext=(4.0, 5.0),
+                xytext=(dx_pt, dy_pt),
                 textcoords="offset points",
+                ha="center",
+                va="center",
                 fontsize=8.2,
-                color=col,
+                color=ink_col,
+                bbox=theme.label_halo_bbox(bg_color, pad=0.07, alpha=0.86),
+                zorder=7.0,
             )
+            patch = ann.get_bbox_patch()
+            if patch is not None:
+                patch.set_sketch_params(0.0, 0.0, 0.0)
+
+
+def _draw_defect_band_guides(
+    ax: maxes.Axes,
+    e_lo: float,
+    e_hi: float,
+    gap: float,
+    ink_col: str,
+    guide_lw: float,
+) -> None:
+    """Draws VBM/CBM straight guides and valence/conduction shading bands."""
+    if e_lo < 0.0:
+        ax.axvspan(e_lo, 0.0, color=palettes.MUTED_GRAY, alpha=0.14, zorder=1.0)
+    if e_hi > gap:
+        ax.axvspan(gap, e_hi, color=palettes.MUTED_GRAY, alpha=0.14, zorder=1.0)
+    for edge_x in (0.0, gap):
+        b_line = ax.axvline(
+            edge_x,
+            color=ink_col,
+            linestyle=":",
+            lw=guide_lw,
+            alpha=0.55,
+        )
+        b_line.set_sketch_params(0.0, 0.0, 0.0)
 
 
 def plot_defect_formation(
@@ -742,41 +909,44 @@ def plot_defect_formation(
     if gap <= 0.0:
         raise exceptions.StructureError("band_gap must be strictly positive.")
     e_lo, e_hi = (
-        (0.0, gap)
+        (-0.04 * gap, 1.04 * gap)
         if fermi_range is None
         else (float(fermi_range[0]), float(fermi_range[1]))
     )
     if e_hi <= e_lo:
         raise exceptions.StructureError("fermi_range must satisfy max > min.")
 
+    envelopes = [
+        (d_name, _lower_defect_envelope(states, e_lo, e_hi))
+        for d_name, states in defects.items()
+    ]
+    all_ys = [pt[1] for _, (curve, _) in envelopes for pt in curve]
+    y_min, y_max = float(min(all_ys)), float(max(all_ys))
+    y_span = max(y_max - y_min, 0.4)
     series = palettes.get_palette(palette)
-    ink_col = theme.get_preset(preset).ink_color
+    preset_obj = theme.get_preset(preset)
+    sw = theme.stroke_weights(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.4, 4.5))
         else:
             theme.style_existing_axes(ax, preset=preset)
-        if e_lo < 0.0:
-            ax.axvspan(
-                e_lo, 0.0, color=palettes.MUTED_GRAY, alpha=0.16, zorder=1.0
-            )
-        if e_hi > gap:
-            ax.axvspan(
-                gap, e_hi, color=palettes.MUTED_GRAY, alpha=0.16, zorder=1.0
-            )
-        for idx, (d_name, states) in enumerate(defects.items()):
+        _draw_defect_band_guides(
+            ax, e_lo, e_hi, gap, preset_obj.ink_color, sw.guide
+        )
+        for idx, (d_name, (curve, trans)) in enumerate(envelopes):
             _plot_single_defect(
                 ax,
                 d_name,
-                states,
+                curve,
+                trans,
                 series[(idx + 1) % len(series)],
-                ink_col,
-                (e_lo, e_hi),
+                (preset_obj.ink_color, preset_obj.axes_facecolor, sw),
+                (max(e_hi - e_lo, 0.2), y_span),
                 show_transitions,
             )
-        ax.axvline(0.0, color=ink_col, linestyle=":", lw=1.1, alpha=0.5)
-        ax.axvline(gap, color=ink_col, linestyle=":", lw=1.1, alpha=0.5)
         ax.set_xlim(e_lo, e_hi)
+        ax.set_ylim(y_min - 0.08 * y_span, y_max + 0.16 * y_span)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.legend(loc="best", frameon=True, fontsize=8.8)

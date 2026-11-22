@@ -52,19 +52,23 @@ def plot_parity(
         lo, hi = 0.0, 1.0
     pad = 0.08 * max(hi - lo, 1.0)
     preset_obj = theme.get_preset(preset)
+    sw = theme.stroke_weights(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(5.0, 4.8))
         else:
             theme.style_existing_axes(ax, preset=preset)
-        ax.plot(
+        p_line = ax.plot(
             [lo - pad, hi + pad],
             [lo - pad, hi + pad],
             color=preset_obj.ink_color,
             linestyle="--",
-            lw=1.5,
+            lw=sw.guide + 0.15,
+            alpha=0.68,
             label="y = x",
-        )
+            zorder=2,
+        )[0]
+        p_line.set_sketch_params(0.0, 0.0, 0.0)
         ax.scatter(
             yt,
             yp,
@@ -90,7 +94,7 @@ def plot_parity(
                 f"RMSE = {rmse:.3f} {unit}\n"
                 f"R^2 = {r2_str}"
             )
-            ax.text(
+            m_txt = ax.text(
                 0.05,
                 0.95,
                 metrics_txt,
@@ -98,12 +102,17 @@ def plot_parity(
                 va="top",
                 ha="left",
                 fontsize=9.5,
+                color=preset_obj.ink_color,
                 bbox={
                     "boxstyle": "round,pad=0.3",
                     "facecolor": preset_obj.axes_facecolor,
-                    "edgecolor": color,
+                    "edgecolor": palettes.MUTED_GRAY,
+                    "linewidth": 1.05,
                 },
             )
+            patch = m_txt.get_bbox_patch()
+            if patch is not None:
+                patch.set_sketch_params(0.0, 0.0, 0.0)
         ax.set_xlim(lo - pad, hi + pad)
         ax.set_ylim(lo - pad, hi + pad)
         ax.set_xlabel(f"Reference ({unit})")

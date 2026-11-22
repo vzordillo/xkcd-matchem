@@ -75,13 +75,23 @@ def plot_md_timeseries(
             f"Unsupported MD quantity {quantity!r}."
         )
 
+    sw = theme.stroke_weights(preset)
+    has_smooth = 1 < running_window <= len(ys)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.4, 3.8))
         else:
             theme.style_existing_axes(ax, preset=preset)
-        ax.plot(xs, ys, color=color, lw=1.9, alpha=0.88, label=quantity.upper())
-        if 1 < running_window <= len(ys):
+        ax.plot(
+            xs,
+            ys,
+            color=color,
+            lw=sw.overlay if has_smooth else sw.primary,
+            alpha=0.48 if has_smooth else 0.88,
+            zorder=2.5 if has_smooth else 3.5,
+            label=quantity.upper(),
+        )
+        if has_smooth:
             kernel = np.ones(running_window, dtype=np.float64) / running_window
             smooth = np.convolve(ys, kernel, mode="valid")
             xs_smooth = np.convolve(xs, kernel, mode="valid")
@@ -89,7 +99,8 @@ def plot_md_timeseries(
                 xs_smooth,
                 smooth,
                 color="#D55E00",
-                lw=2.2,
+                lw=sw.primary,
+                zorder=4.0,
                 label=f"{running_window}-pt mean",
             )
             ax.legend(loc="best", frameon=True)
@@ -114,14 +125,20 @@ def plot_rdf(
     disp_unit = (
         "$\\mathrm{\\AA}$" if unit.strip() in ("A", "Angstrom") else unit
     )
+    preset_obj = theme.get_preset(preset)
+    ink_col = preset_obj.ink_color
+    sw = theme.stroke_weights(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.0, 4.0))
         else:
             theme.style_existing_axes(ax, preset=preset)
-        ax.plot(r_vals, g_vals, color=color, lw=2.2)
+        ax.plot(r_vals, g_vals, color=color, lw=sw.primary)
         ax.fill_between(r_vals, 0.0, g_vals, color=color, alpha=0.18)
-        ax.axhline(1.0, color=palettes.MUTED_GRAY, linestyle="--", lw=1.3)
+        g_line = ax.axhline(
+            1.0, color=palettes.MUTED_GRAY, linestyle="--", lw=sw.guide
+        )
+        g_line.set_sketch_params(0.0, 0.0, 0.0)
         if len(g_vals) > 0 and len(r_vals) >= 2:
             peak_idx = int(np.argmax(g_vals))
             r_span = max(float(r_vals[-1] - r_vals[0]), 1e-6)
@@ -131,14 +148,25 @@ def plot_rdf(
             text_x = float(r_vals[peak_idx]) + (
                 -0.14 * r_span if near_right else 0.12 * r_span
             )
-            ax.annotate(
+            ann = ax.annotate(
                 f"$r_1$ = {r_vals[peak_idx]:.2f} {disp_unit}",
                 xy=(float(r_vals[peak_idx]), float(g_vals[peak_idx])),
                 xytext=(text_x, float(g_vals[peak_idx]) * 0.9),
                 ha="right" if near_right else "left",
-                color="#D55E00",
-                arrowprops={"arrowstyle": "->", "color": "#D55E00", "lw": 1.3},
+                color=ink_col,
+                bbox=theme.label_halo_bbox(
+                    preset_obj.axes_facecolor, pad=0.08, alpha=0.84
+                ),
+                arrowprops={
+                    "arrowstyle": "->",
+                    "color": ink_col,
+                    "lw": sw.leader,
+                    "connectionstyle": "arc3,rad=-0.12",
+                },
             )
+            patch = ann.get_bbox_patch()
+            if patch is not None:
+                patch.set_sketch_params(0.0, 0.0, 0.0)
         if len(r_vals) >= 2:
             ax.set_xlim(float(r_vals[0]), float(r_vals[-1]))
         ax.set_ylim(bottom=0.0)

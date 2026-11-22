@@ -192,7 +192,7 @@ def _draw_ternary_frame(
         closed=True,
         facecolor=primitives.muted_surface_color(bg_color) if hatch else "none",
         edgecolor=ink_col,
-        linewidth=2.0,
+        linewidth=1.95,
         hatch=hatch,
         alpha=0.22 if hatch else 1.0,
         zorder=1.0,
@@ -207,7 +207,7 @@ def _draw_ternary_frame(
                 closed=True,
                 facecolor="none",
                 edgecolor=ink_col,
-                linewidth=2.0,
+                linewidth=1.95,
                 zorder=2.2,
             )
         )
@@ -261,6 +261,75 @@ def _draw_ternary_frame(
     )
 
 
+def _annotate_ternary_labels(
+    ax: maxes.Axes,
+    xy: np.ndarray,
+    tie_edges: set[tuple[int, int]],
+    labels: Sequence[str],
+    stable_idx: set[int],
+    ink_col: str,
+    bg_color: str,
+) -> None:
+    """Places ink-first ternary labels clear of borders and tie-lines."""
+    ctr = np.array([0.5, _SQRT3_HALF / 3.0], dtype=np.float64)
+    adj: dict[int, list[int]] = {i: [] for i in range(len(xy))}
+    for u, v in tie_edges:
+        adj[u].append(v)
+        adj[v].append(u)
+
+    for idx, lbl in enumerate(labels):
+        if not lbl:
+            continue
+        p = xy[idx]
+        if idx not in stable_idx:
+            out_dir = p - ctr
+            on_edge = (
+                p[1] < 0.04
+                or abs((p[0] - 0.5) * _SQRT3_HALF - 0.5 * (p[1] - _SQRT3_HALF))
+                < 0.04
+                or abs((p[0] - 0.5) * _SQRT3_HALF + 0.5 * (p[1] - _SQRT3_HALF))
+                < 0.04
+            )
+            if on_edge and float(np.linalg.norm(out_dir)) > 1e-6:
+                u_out = out_dir / float(np.linalg.norm(out_dir))
+                dx = int(round(16.0 * float(u_out[0])))
+                dy = int(round(12.0 * float(u_out[1])))
+            else:
+                dx, dy = 0, -13
+        elif adj[idx]:
+            rays = [
+                (xy[nb] - p) / max(float(np.linalg.norm(xy[nb] - p)), 1e-9)
+                for nb in adj[idx]
+            ]
+            avg = np.sum(rays, axis=0)
+            avg_n = float(np.linalg.norm(avg))
+            if avg_n > 0.15:
+                push = -avg / avg_n
+            else:
+                out_dir = p - ctr
+                push = out_dir / max(float(np.linalg.norm(out_dir)), 1e-6)
+            dx = int(round(14.0 * float(push[0])))
+            dy = int(round(12.0 * float(push[1])))
+        else:
+            dy = 9 if p[1] > 0.08 else -13
+            dx = 0
+        ann = ax.annotate(
+            lbl,
+            xy=(float(p[0]), float(p[1])),
+            xytext=(dx, dy),
+            textcoords="offset points",
+            ha="center",
+            va="center",
+            fontsize=8.6,
+            color=ink_col,
+            bbox=theme.label_halo_bbox(bg_color, pad=0.08, alpha=0.86),
+            zorder=6.0,
+        )
+        patch = ann.get_bbox_patch()
+        if patch is not None:
+            patch.set_sketch_params(0.0, 0.0, 0.0)
+
+
 def plot_ternary_phase_diagram(
     compositions: Sequence[tuple[float, float, float]] | np.ndarray,
     energies: Sequence[float] | np.ndarray | None = None,
@@ -304,6 +373,7 @@ def plot_ternary_phase_diagram(
     above_col = series[6 % len(series)]
     preset_obj = theme.get_preset(preset)
     ink_col = preset_obj.ink_color
+    sw = theme.stroke_weights(preset)
 
     stable_idx: set[int] = set(range(len(xy)))
     tie_edges: set[tuple[int, int]] = set()
@@ -330,8 +400,9 @@ def plot_ternary_phase_diagram(
                 [xy[u, 0], xy[v, 0]],
                 [xy[u, 1], xy[v, 1]],
                 color=tie_col,
-                linewidth=1.8,
-                zorder=3.0,
+                linewidth=sw.overlay,
+                alpha=0.84,
+                zorder=2.8,
             )
 
         s_list = sorted(stable_idx)
@@ -340,10 +411,10 @@ def plot_ternary_phase_diagram(
             ax.scatter(
                 xy[s_list, 0],
                 xy[s_list, 1],
-                s=90,
+                s=86,
                 facecolor=stable_col,
                 edgecolor=ink_col,
-                linewidth=1.5,
+                linewidth=1.35,
                 zorder=5.0,
                 label="Stable",
             )
@@ -351,33 +422,28 @@ def plot_ternary_phase_diagram(
             ax.scatter(
                 xy[u_list, 0],
                 xy[u_list, 1],
-                s=75,
+                s=72,
                 marker="D",
                 facecolor=preset_obj.axes_facecolor,
                 edgecolor=above_col,
-                linewidth=1.5,
+                linewidth=1.35,
                 zorder=4.5,
                 label="Above Hull",
             )
         if labels:
-            for idx, lbl in enumerate(labels):
-                if not lbl:
-                    continue
-                dy = 8 if (idx in stable_idx and xy[idx, 1] > 0.08) else -13
-                ax.annotate(
-                    lbl,
-                    xy=(float(xy[idx, 0]), float(xy[idx, 1])),
-                    xytext=(0, dy),
-                    textcoords="offset points",
-                    ha="center",
-                    fontsize=8.8,
-                    color=ink_col,
-                    zorder=6.0,
-                )
+            _annotate_ternary_labels(
+                ax,
+                xy,
+                tie_edges,
+                labels,
+                stable_idx,
+                ink_col,
+                preset_obj.axes_facecolor,
+            )
         if energies is not None:
             ax.legend(loc="upper right", frameon=True, fontsize=8.5)
-        ax.set_xlim(-0.18, 1.18)
-        ax.set_ylim(-0.16, _SQRT3_HALF + 0.17)
+        ax.set_xlim(-0.20, 1.20)
+        ax.set_ylim(-0.18, _SQRT3_HALF + 0.18)
         ax.set_aspect("equal")
         ax.set_axis_off()
         if title:
@@ -625,19 +691,23 @@ def _draw_hist_series(
     vals: np.ndarray,
     bins: int | np.ndarray,
     style_cfg: tuple[str, str, str | None, bool, bool, bool, int],
+    *,
+    bg_color: str = palettes.PAPER,
+    sw: theme.StrokeHierarchy | None = None,
 ) -> None:
     """Draws one histogram series with optional hatch, KDE, and mean line."""
     col, ink_col, hatch, multi, show_kde, show_mean, series_idx = style_cfg
     clean = vals[np.isfinite(vals)]
     if clean.size == 0:
         return
+    weights = sw if sw is not None else theme.stroke_weights("classic")
     bins_arg: Any = bins.tolist() if isinstance(bins, np.ndarray) else bins
     _, edges, bar_patches = ax.hist(
         clean,
         bins=bins_arg,
         color=col,
         edgecolor=ink_col,
-        linewidth=1.3,
+        linewidth=1.15,
         alpha=0.58 if multi else 0.72,
         hatch=hatch,
         label=lbl if multi else None,
@@ -654,23 +724,23 @@ def _draw_hist_series(
             x_grid,
             kde(x_grid) * clean.size * bin_w,
             color=col,
-            linewidth=2.2,
+            linewidth=weights.overlay + 0.25,
             zorder=4.5,
         )
     if show_mean:
         mu = float(np.mean(clean))
-        mean_col = col if multi else ink_col
-        ax.axvline(
+        m_line = ax.axvline(
             mu,
-            color=mean_col,
+            color=ink_col,
             linestyle="--",
-            linewidth=1.45,
-            alpha=0.9,
+            linewidth=weights.guide,
+            alpha=0.82,
             zorder=4.2,
         )
+        m_line.set_sketch_params(0.0, 0.0, 0.0)
         txt = f" {lbl}: {mu:.2f}" if multi else f" mean={mu:.2f}"
         y_frac = max(0.18, 0.96 - 0.10 * series_idx)
-        ax.text(
+        artist = ax.text(
             mu,
             y_frac,
             txt,
@@ -678,9 +748,13 @@ def _draw_hist_series(
             ha="left",
             va="top",
             fontsize=8.6,
-            color=mean_col,
+            color=ink_col,
+            bbox=theme.label_halo_bbox(bg_color, pad=0.06, alpha=0.84),
             zorder=5.0,
         )
+        patch = artist.get_bbox_patch()
+        if patch is not None:
+            patch.set_sketch_params(0.0, 0.0, 0.0)
 
 
 def plot_histogram(
@@ -726,7 +800,9 @@ def plot_histogram(
         else {"Distribution": np.asarray(data, dtype=np.float64)}
     )
     series_cols = palettes.get_palette(palette)
-    ink_col = theme.get_preset(preset).ink_color
+    preset_obj = theme.get_preset(preset)
+    ink_col = preset_obj.ink_color
+    sw = theme.stroke_weights(preset)
     multi = len(series_map) > 1
     non_empty = [v[np.isfinite(v)] for v in series_map.values()]
     non_empty = [c for c in non_empty if c.size > 0]
@@ -757,6 +833,8 @@ def plot_histogram(
                 vals,
                 bin_spec,
                 (col, ink_col, hatch, multi, show_kde, show_mean, idx),
+                bg_color=preset_obj.axes_facecolor,
+                sw=sw,
             )
 
         if multi:
@@ -817,6 +895,85 @@ def _lambert_shade_rgb(
     )
 
 
+def _facet_clearance(xy_f: np.ndarray) -> tuple[np.ndarray, float, float]:
+    """Returns polygon 2D centroid, horizontal span, and min edge clearance."""
+    ctr = np.mean(xy_f, axis=0)
+    span_h = float(np.ptp(xy_f[:, 0]))
+    min_d = float("inf")
+    n_pts = len(xy_f)
+    for k in range(n_pts):
+        a = xy_f[k]
+        b = xy_f[(k + 1) % n_pts]
+        edge = b - a
+        e_len = float(np.linalg.norm(edge))
+        if e_len < 1e-9:
+            continue
+        dist = abs(
+            float((b[0] - a[0]) * (a[1] - ctr[1]))
+            - float((a[0] - ctr[0]) * (b[1] - a[1]))
+        ) / e_len
+        min_d = min(min_d, dist)
+    return ctr, span_h, (0.0 if min_d == float("inf") else min_d)
+
+
+def _collect_wulff_facet_visuals(
+    records: Sequence[tuple[float, wulff.WulffFacet, np.ndarray, np.ndarray]],
+    series: Sequence[str],
+    scene_w: float,
+    light_dir: np.ndarray,
+    show_labels: bool,
+) -> tuple[
+    list[np.ndarray],
+    list[tuple[float, float, float]],
+    list[tuple[np.ndarray, str, str, bool]],
+]:
+    """Shades sorted Wulff faces and filters collision-free facet labels."""
+    family_colors: dict[tuple[int, int, int], str] = {}
+    polys: list[np.ndarray] = []
+    face_cols: list[tuple[float, float, float]] = []
+    labels_meta: list[tuple[np.ndarray, str, str, bool]] = []
+    labeled_fams: set[tuple[int, int, int]] = set()
+    narrow_cands: dict[tuple[int, int, int], tuple[float, np.ndarray, str]] = (
+        {}
+    )
+    for _, facet, xy_f, n_rot in records:
+        s_vals = sorted(abs(x) for x in facet.hkl)
+        fam_key = (s_vals[0], s_vals[1], s_vals[2])
+        if fam_key not in family_colors:
+            family_colors[fam_key] = series[
+                (len(family_colors) + 1) % len(series)
+            ]
+        shaded = _lambert_shade_rgb(
+            family_colors[fam_key], float(np.dot(n_rot, light_dir))
+        )
+        polys.append(xy_f)
+        face_cols.append(shaded)
+        if not (show_labels and float(n_rot[2]) > 0.15):
+            continue
+        ctr, span_h, min_d = _facet_clearance(xy_f)
+        lbl = _format_hkl_label(facet.hkl)
+        fits = (
+            span_h >= max(0.18 * scene_w, 0.044 * len(lbl) * scene_w)
+            and min_d >= 0.085 * scene_w
+        )
+        if fits:
+            labeled_fams.add(fam_key)
+            labels_meta.append(
+                (
+                    ctr,
+                    lbl,
+                    primitives.contrast_text_color(mcolors.to_hex(shaded)),
+                    False,
+                )
+            )
+        elif fam_key not in narrow_cands or min_d > narrow_cands[fam_key][0]:
+            narrow_cands[fam_key] = (min_d, ctr, lbl)
+    for fam_key, (_, ctr, lbl) in narrow_cands.items():
+        if fam_key not in labeled_fams:
+            labels_meta.append((ctr, lbl, "", True))
+    return polys, face_cols, labels_meta
+
+
 def _project_wulff_facets(
     shape: wulff.WulffShape,
     cam: geometry.Camera,
@@ -825,59 +982,42 @@ def _project_wulff_facets(
 ) -> tuple[
     list[np.ndarray],
     list[tuple[float, float, float]],
-    list[tuple[np.ndarray, str, str]],
+    list[tuple[np.ndarray, str, str, bool]],
     tuple[float, float, float, float],
 ]:
     """Projects, depth-sorts, and shades Wulff facets back-to-front."""
     basis = geometry.rotation_matrix(cam.azimuth, cam.elevation, cam.roll)
     light_dir = np.array([-0.45, 0.55, 0.70], dtype=np.float64)
     light_dir /= float(np.linalg.norm(light_dir))
+    zero_ctr = np.zeros(3, dtype=np.float64)
     span = geometry.scene_projection_span(
-        shape.vertices, cam, center=np.zeros(3, dtype=np.float64)
+        shape.vertices, cam, center=zero_ctr
     )
-
-    family_colors: dict[tuple[int, int, int], str] = {}
-    records: list[tuple[float, wulff.WulffFacet, np.ndarray, np.ndarray]] = []
-    for facet in shape.facets:
-        s_vals = sorted(abs(x) for x in facet.hkl)
-        fam_key = (s_vals[0], s_vals[1], s_vals[2])
-        if fam_key not in family_colors:
-            family_colors[fam_key] = series[
-                (len(family_colors) + 1) % len(series)
-            ]
-        xy_f, dep_f = geometry.project_points(
-            facet.vertices, cam, center=np.zeros(3), span=span
+    records = [
+        (
+            float(np.mean(dep_f)),
+            facet,
+            xy_f,
+            facet.normal @ basis.T,
         )
-        records.append(
-            (float(np.mean(dep_f)), facet, xy_f, facet.normal @ basis.T)
-        )
-    records.sort(key=lambda item: item[0])
-
-    polys: list[np.ndarray] = []
-    face_cols: list[tuple[float, float, float]] = []
-    labels_meta: list[tuple[np.ndarray, str, str]] = []
-    for _, facet, xy_f, n_rot in records:
-        s_vals = sorted(abs(x) for x in facet.hkl)
-        fam_key = (s_vals[0], s_vals[1], s_vals[2])
-        base_hex = family_colors[fam_key]
-        shaded = _lambert_shade_rgb(base_hex, float(np.dot(n_rot, light_dir)))
-        polys.append(xy_f)
-        face_cols.append(shaded)
-        if show_labels and float(n_rot[2]) > 0.15:
-            labels_meta.append(
-                (
-                    np.mean(xy_f, axis=0),
-                    _format_hkl_label(facet.hkl),
-                    primitives.contrast_text_color(mcolors.to_hex(shaded)),
-                )
+        for facet in shape.facets
+        for xy_f, dep_f in [
+            geometry.project_points(
+                facet.vertices, cam, center=zero_ctr, span=span
             )
-
+        ]
+    ]
+    records.sort(key=lambda item: item[0])
     all_xy, _ = geometry.project_points(
-        shape.vertices, cam, center=np.zeros(3), span=span
+        shape.vertices, cam, center=zero_ctr, span=span
     )
     x_min, y_min = np.min(all_xy, axis=0)
     x_max, y_max = np.max(all_xy, axis=0)
-    pad = 0.22 * max(float(x_max - x_min), float(y_max - y_min), 1e-3)
+    scene_w = max(float(x_max - x_min), float(y_max - y_min), 1e-3)
+    polys, face_cols, labels_meta = _collect_wulff_facet_visuals(
+        records, series, scene_w, light_dir, show_labels
+    )
+    pad = 0.24 * scene_w
     bounds = (
         float(x_min - pad),
         float(x_max + pad),
@@ -885,6 +1025,52 @@ def _project_wulff_facets(
         float(y_max + pad),
     )
     return polys, face_cols, labels_meta, bounds
+
+
+def _draw_wulff_labels(
+    ax: maxes.Axes,
+    labels_meta: Sequence[tuple[np.ndarray, str, str, bool]],
+    ink_col: str,
+    bg_color: str,
+    sw: theme.StrokeHierarchy,
+    bounds: tuple[float, float, float, float],
+) -> None:
+    """Places interior facet Miller indices and fallback leader tags."""
+    step = 0.24 * max(bounds[1] - bounds[0], 1.0)
+    for centroid, txt_lbl, txt_col, is_callout in labels_meta:
+        if not is_callout:
+            ax.text(
+                float(centroid[0]),
+                float(centroid[1]),
+                txt_lbl,
+                ha="center",
+                va="center",
+                fontsize=8.2,
+                color=txt_col,
+                zorder=5.0,
+            )
+            continue
+        r_norm = max(float(np.linalg.norm(centroid)), 1e-6)
+        target = centroid + (centroid / r_norm) * step
+        ann = ax.annotate(
+            txt_lbl,
+            xy=(float(centroid[0]), float(centroid[1])),
+            xytext=(float(target[0]), float(target[1])),
+            ha="center",
+            va="center",
+            fontsize=8.0,
+            color=ink_col,
+            bbox=theme.label_halo_bbox(bg_color, pad=0.08, alpha=0.88),
+            arrowprops={
+                "arrowstyle": "->",
+                "color": ink_col,
+                "lw": sw.leader,
+            },
+            zorder=6.0,
+        )
+        patch = ann.get_bbox_patch()
+        if patch is not None:
+            patch.set_sketch_params(0.0, 0.0, 0.0)
 
 
 def plot_wulff_shape(
@@ -928,10 +1114,11 @@ def plot_wulff_shape(
     cell = _coerce_wulff_cell(source)
     shape = wulff.compute_wulff_shape(cell, surface_energies, symops=symops)
     cam = geometry.resolve_camera(camera, cell=cell)
-    series = palettes.get_palette(palette)
-    ink_col = theme.get_preset(preset).ink_color
+    preset_obj = theme.get_preset(preset)
+    ink_col = preset_obj.ink_color
+    sw = theme.stroke_weights(preset)
     polys, face_cols, labels_meta, bounds = _project_wulff_facets(
-        shape, cam, series, show_labels
+        shape, cam, palettes.get_palette(palette), show_labels
     )
 
     with theme.xkcd_style(preset=preset):
@@ -943,23 +1130,15 @@ def plot_wulff_shape(
             polys,
             facecolors=face_cols,
             edgecolors=ink_col,
-            linewidths=1.7,
+            linewidths=sw.primary,
             alpha=alpha,
             joinstyle="round",
             zorder=3.0,
         )
         ax.add_collection(poly_coll)
-        for centroid, txt_lbl, txt_col in labels_meta:
-            ax.text(
-                float(centroid[0]),
-                float(centroid[1]),
-                txt_lbl,
-                ha="center",
-                va="center",
-                fontsize=8.2,
-                color=txt_col,
-                zorder=5.0,
-            )
+        _draw_wulff_labels(
+            ax, labels_meta, ink_col, preset_obj.axes_facecolor, sw, bounds
+        )
         ax.set_xlim(bounds[0], bounds[1])
         ax.set_ylim(bounds[2], bounds[3])
         ax.set_aspect("equal")
@@ -969,52 +1148,130 @@ def plot_wulff_shape(
     return ax
 
 
+def _draw_bz_corner_axes(
+    ax: maxes.Axes,
+    bz: brillouin.BrillouinZone,
+    cam: geometry.Camera,
+    bounds: tuple[float, float, float, float],
+    sw: theme.StrokeHierarchy,
+    bg_color: str,
+) -> None:
+    """Draws reciprocal basis ``b1, b2, b3`` triad cleanly in bottom-left."""
+    basis = geometry.rotation_matrix(cam.azimuth, cam.elevation, cam.roll)
+    unit_b = np.array(
+        [
+            v / max(float(np.linalg.norm(v)), 1e-12)
+            for v in bz.reciprocal_cell
+        ],
+        dtype=np.float64,
+    )
+    proj = unit_b @ basis.T
+    x_w = max(bounds[1] - bounds[0], 1.0)
+    y_w = max(bounds[3] - bounds[2], 1.0)
+    a_len = 0.125 * min(x_w, y_w)
+    vecs = proj[:, :2] * a_len
+    ox = bounds[0] + 0.085 * x_w - min(0.0, float(np.min(vecs[:, 0])))
+    oy = bounds[2] + 0.095 * y_w - min(0.0, float(np.min(vecs[:, 1])))
+    raw_cols = ("#D55E00", "#009E73", "#0072B2")
+    ink_col = str(plt.rcParams.get("axes.edgecolor", palettes.INK))
+    ax.scatter([ox], [oy], s=14.0, color=ink_col, zorder=6.2)
+    for rank, idx in enumerate(
+        sorted(range(3), key=lambda k: float(proj[k, 2]))
+    ):
+        vx, vy = float(vecs[idx, 0]), float(vecs[idx, 1])
+        seg_len = math.hypot(vx, vy)
+        if seg_len < 1e-4:
+            continue
+        ax.annotate(
+            "",
+            xy=(ox + vx, oy + vy),
+            xytext=(ox, oy),
+            arrowprops={
+                "arrowstyle": "-|>,head_width=0.20,head_length=0.26",
+                "color": raw_cols[idx],
+                "lw": sw.leader,
+            },
+            zorder=5.5 + 0.05 * rank,
+        )
+        txt_col = primitives.ensure_readable_text_color(raw_cols[idx], bg_color)
+        pad_lbl = max(0.24 * a_len, 0.22)
+        ax.text(
+            ox + vx + pad_lbl * (vx / seg_len),
+            oy + vy + pad_lbl * (vy / seg_len),
+            f"$b_{idx + 1}$",
+            fontsize=8.8,
+            color=txt_col,
+            ha="center",
+            va="center",
+            zorder=6.4,
+        )
+
+
+def _kpoint_label_offset(
+    idx: int,
+    q_xy: np.ndarray,
+    bz_center: np.ndarray,
+    span: float,
+) -> tuple[float, float]:
+    """Finds angular-gap outward direction so k-labels never touch segments."""
+    pt = q_xy[idx]
+    inc_angles: list[float] = []
+    for k in range(len(q_xy) - 1):
+        if idx in (k, k + 1):
+            other = q_xy[k + 1] if k == idx else q_xy[k]
+            vec = other - pt
+            if float(np.linalg.norm(vec)) > 1e-6:
+                inc_angles.append(math.atan2(float(vec[1]), float(vec[0])))
+    rad_vec = pt - bz_center
+    rad_ang = (
+        math.atan2(float(rad_vec[1]), float(rad_vec[0]))
+        if float(np.linalg.norm(rad_vec)) > 0.08 * span
+        else 0.5 * math.pi
+    )
+    best_ang = rad_ang
+    if inc_angles:
+        cands = np.linspace(0.0, 2.0 * math.pi, 32, endpoint=False)
+        best_score = -1.0
+        for ang in cands:
+            min_sep = min(
+                abs(((ang - a + math.pi) % (2.0 * math.pi)) - math.pi)
+                for a in inc_angles
+            )
+            align = math.cos(ang - rad_ang)
+            score = min_sep + 0.22 * align
+            if score > best_score:
+                best_score = score
+                best_ang = float(ang)
+    step = 0.082 * span
+    return step * math.cos(best_ang), step * math.sin(best_ang)
+
+
 def _draw_bz_kpath_and_axes(
     ax: maxes.Axes,
     bz: brillouin.BrillouinZone,
     cam: geometry.Camera,
     span: float,
-    ink_col: str,
-    path_color: str,
+    bounds: tuple[float, float, float, float],
+    style_info: tuple[str, str, str, theme.StrokeHierarchy],
     *,
     kpath: Sequence[str] | None,
     show_kpoints: bool,
     show_axes: bool,
 ) -> None:
-    """Draws reciprocal basis vectors and high-symmetry k-path inside a BZ."""
+    """Draws reciprocal basis triad and subordinated high-symmetry k-path."""
+    ink_col, path_color, bg_color, sw = style_info
     origin = np.zeros(3, dtype=np.float64)
     if show_axes:
-        ax_cols = ("#D55E00", "#009E73", "#0072B2")
-        for idx, b_vec in enumerate(bz.reciprocal_cell):
-            tip = b_vec * (0.42 / max(float(np.linalg.norm(b_vec)), 1e-9))
-            pts = np.vstack([origin, tip])
-            xy, _ = geometry.project_points(pts, cam, center=origin, span=span)
-            ax.annotate(
-                "",
-                xy=(float(xy[1, 0]), float(xy[1, 1])),
-                xytext=(float(xy[0, 0]), float(xy[0, 1])),
-                arrowprops={
-                    "arrowstyle": "->,head_width=0.22,head_length=0.28",
-                    "color": ax_cols[idx],
-                    "lw": 1.6,
-                },
-                zorder=5.5,
-            )
-            ax.text(
-                float(xy[1, 0]) * 1.12,
-                float(xy[1, 1]) * 1.12,
-                f"$b_{idx + 1}$",
-                fontsize=8.5,
-                color=ax_cols[idx],
-                ha="center",
-                va="center",
-                zorder=6.0,
-            )
+        _draw_bz_corner_axes(ax, bz, cam, bounds, sw, bg_color)
 
     tour = list(bz.default_path if kpath is None else kpath)
     valid = [name for name in tour if name in bz.high_symmetry_points]
     if not show_kpoints or not valid:
         return
+    all_v, _ = geometry.project_points(
+        bz.vertices, cam, center=origin, span=span
+    )
+    bz_center = np.mean(all_v, axis=0)
     q_arr = np.vstack([bz.high_symmetry_points[name] for name in valid])
     q_xy, _ = geometry.project_points(q_arr, cam, center=origin, span=span)
     if len(q_xy) >= 2:
@@ -1022,17 +1279,19 @@ def _draw_bz_kpath_and_axes(
             q_xy[:, 0],
             q_xy[:, 1],
             color=path_color,
-            linewidth=2.3,
-            zorder=7.0,
+            linewidth=sw.overlay,
+            solid_capstyle="round",
+            solid_joinstyle="round",
+            zorder=6.5,
         )
     ax.scatter(
         q_xy[:, 0],
         q_xy[:, 1],
-        s=42.0,
+        s=28.0,
         facecolor=path_color,
         edgecolor=ink_col,
-        linewidth=1.1,
-        zorder=8.0,
+        linewidth=sw.guide,
+        zorder=7.5,
     )
     seen_pts: set[str] = set()
     for idx, name in enumerate(valid):
@@ -1040,16 +1299,18 @@ def _draw_bz_kpath_and_axes(
             continue
         seen_pts.add(name)
         disp_lbl = "Γ" if name == "G" else name
-        ax.text(
-            float(q_xy[idx, 0]),
-            float(q_xy[idx, 1]) + 0.045 * span,
+        dx, dy = _kpoint_label_offset(idx, q_xy, bz_center, span)
+        theme.place_halo_text(
+            ax,
+            float(q_xy[idx, 0]) + dx,
+            float(q_xy[idx, 1]) + dy,
             disp_lbl,
-            fontsize=9.5,
-            fontweight="bold",
             color=ink_col,
-            ha="center",
-            va="bottom",
-            zorder=9.0,
+            bg_color=bg_color,
+            fontsize=9.2,
+            pad=0.07,
+            alpha=0.82,
+            zorder=8.5,
         )
 
 
@@ -1057,6 +1318,8 @@ def _project_bz_facets(
     bz: brillouin.BrillouinZone,
     cam: geometry.Camera,
     color: str,
+    *,
+    pad_left_axes: bool = False,
 ) -> tuple[
     list[np.ndarray],
     list[tuple[float, float, float]],
@@ -1092,9 +1355,11 @@ def _project_bz_facets(
     )
     x_min, y_min = np.min(all_xy, axis=0)
     x_max, y_max = np.max(all_xy, axis=0)
-    pad = 0.24 * max(float(x_max - x_min), float(y_max - y_min), 1e-3)
+    scene_w = max(float(x_max - x_min), float(y_max - y_min), 1e-3)
+    pad = 0.24 * scene_w
+    left_extra = 0.28 * scene_w if pad_left_axes else 0.0
     bounds = (
-        float(x_min - pad),
+        float(x_min - pad - left_extra),
         float(x_max + pad),
         float(y_min - pad),
         float(y_max + pad),
@@ -1161,9 +1426,11 @@ def plot_brillouin_zone(
         )
 
     cam = geometry.resolve_camera(camera)
-    ink_col = theme.get_preset(preset).ink_color
+    preset_obj = theme.get_preset(preset)
+    ink_col = preset_obj.ink_color
+    sw = theme.stroke_weights(preset)
     front_polys, front_cols, back_polys, bounds, span = _project_bz_facets(
-        bz, cam, color
+        bz, cam, color, pad_left_axes=show_axes
     )
 
     with theme.xkcd_style(preset=preset):
@@ -1178,9 +1445,9 @@ def plot_brillouin_zone(
                     _lambert_shade_rgb(color, 0.15) for _ in back_polys
                 ],
                 edgecolors=palettes.MUTED_GRAY,
-                linewidths=1.0,
+                linewidths=round(0.85 * sw.guide, 2),
                 linestyles="--",
-                alpha=alpha * 0.45,
+                alpha=alpha * 0.40,
                 zorder=1.5,
             )
             ax.add_collection(back_coll)
@@ -1189,7 +1456,7 @@ def plot_brillouin_zone(
                 cast(Any, front_polys),
                 facecolors=front_cols,
                 edgecolors=ink_col,
-                linewidths=1.7,
+                linewidths=sw.frame,
                 alpha=alpha,
                 joinstyle="round",
                 zorder=3.0,
@@ -1200,8 +1467,8 @@ def plot_brillouin_zone(
             bz,
             cam,
             span,
-            ink_col,
-            path_color,
+            bounds,
+            (ink_col, path_color, preset_obj.axes_facecolor, sw),
             kpath=kpath,
             show_kpoints=show_kpoints,
             show_axes=show_axes,

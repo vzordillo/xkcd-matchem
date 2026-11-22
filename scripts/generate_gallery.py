@@ -281,8 +281,16 @@ def _make_md_thermo(out_dir: pathlib.Path) -> None:
             ax=axes_t[0],
             title="Binary Convex Hull",
         )
-        vols = np.linspace(36.0, 44.0, 8)
-        energies = -12.4 + 0.065 * (vols - 40.0) ** 2
+        vols = np.linspace(35.5, 45.0, 8)
+        ev_per_a3_to_gpa = 160.2176634
+        v0_si = 40.00
+        b0_si = 98.5 / ev_per_a3_to_gpa
+        bp_si = 4.15
+        eta = (v0_si / vols) ** (2.0 / 3.0)
+        f_bm = eta - 1.0
+        energies = -10.84 + (9.0 * v0_si * b0_si / 16.0) * (
+            (f_bm**3) * bp_si + (f_bm**2) * (6.0 - 4.0 * eta)
+        )
         xm.plot_eos(
             vols,
             energies,
@@ -973,7 +981,7 @@ def _make_flagship_features_gallery(out_dir: pathlib.Path) -> None:
             ["benzene.sdf"],
             ["aspirin.xyz"],
             conditions_above="Carboxylation",
-            conditions_below="cat. AlCl3, 85 C",
+            conditions_below=r"$\mathrm{AlCl_3},\ 85\,^\circ\mathrm{C}$",
             ax=axes[1, 1],
             title="2D Skeletal Reaction Scheme",
         )
@@ -988,17 +996,19 @@ def _make_flagship_features_gallery(out_dir: pathlib.Path) -> None:
 
 
 def _make_isosurface_shading_gallery(out_dir: pathlib.Path) -> None:
-    """Generates a 2x3 reference gallery of xkcd 3D shading techniques."""
+    """Generates a 2x4 reference gallery of all 8 xkcd 3D shading modes."""
     modes = (
-        ("hatch", "1. Parallel Hatching (hatch)"),
-        ("crosshatch", "2. Comic Cross-Hatch (crosshatch)"),
-        ("contour", "3. 3D Contour Shading (contour)"),
-        ("cross_contour", "4. 3D Cross-Contour (cross_contour)"),
-        ("stipple", "5. Felt-Tip Stippling (stipple)"),
-        ("scumble", "6. xkcd Scumbling / Scribble"),
+        ("solid", "1. Smooth Blending (solid)"),
+        ("hatch", "2. Parallel Hatching (hatch)"),
+        ("crosshatch", "3. Comic Cross-Hatch (crosshatch)"),
+        ("contour", "4. 3D Axis Contour (contour)"),
+        ("cross_contour", "5. 3D Cross-Contour (cross_contour)"),
+        ("stipple", "6. Fine-Liner Stippling (stipple)"),
+        ("scumble", "7. Wandering Scumble (scumble)"),
+        ("outline", "8. Clean Silhouette (outline)"),
     )
     with xm.xkcd_style("classic"):
-        fig, axes = plt.subplots(2, 3, figsize=(14.4, 9.2), dpi=165)
+        fig, axes = plt.subplots(2, 4, figsize=(16.8, 8.8), dpi=165)
         fig.patch.set_facecolor(xm.style.PAPER)
         for ax, (mode, heading) in zip(axes.ravel(), modes, strict=True):
             xm.plot_isosurface(
@@ -1007,12 +1017,20 @@ def _make_isosurface_shading_gallery(out_dir: pathlib.Path) -> None:
                 ax=ax,
                 title=heading,
             )
+        axes[0, 0].annotate(
+            "Light",
+            xy=(0.24, 0.78),
+            xytext=(0.06, 0.92),
+            xycoords="axes fraction",
+            fontsize=10.5,
+            arrowprops={"arrowstyle": "->", "lw": 1.3, "color": xm.style.INK},
+        )
         fig.suptitle(
             "xkcd Pen-and-Ink 3D Isosurface Shading Techniques",
             fontsize=15,
             y=0.98,
         )
-        fig.tight_layout(rect=(0.0, 0.02, 1.0, 0.93), w_pad=1.6, h_pad=2.0)
+        fig.tight_layout(rect=(0.0, 0.02, 1.0, 0.93), w_pad=1.4, h_pad=2.0)
         xm.save_figure(
             fig, out_dir / "isosurface_shading_styles.png", dpi=165
         )
@@ -1061,6 +1079,183 @@ def _make_brillouin_cohp_volcano_gallery(out_dir: pathlib.Path) -> None:
         plt.close(fig)
 
 
+def _make_xkcd_comics_gallery(out_dir: pathlib.Path) -> None:
+    """Generates xkcd.com stick-scientist comic panels & inline examples."""
+    q_pts = np.linspace(0.0, 1.0, 41)
+    soft_branch = 3.2 * np.sin(np.pi * q_pts) ** 2 - 1.6
+    opt_branch = 6.2 + 1.6 * np.cos(np.pi * q_pts)
+    ph_soft = xm.PhononBandStructure(
+        q_distances=q_pts,
+        frequencies=np.column_stack([soft_branch, opt_branch]),
+        q_labels=["G", "X", "M"],
+        q_ticks=[0.0, 0.5, 1.0],
+    )
+
+    with xm.xkcd_style("classic"):
+        fig = plt.figure(figsize=(15.6, 8.8), dpi=165)
+        fig.patch.set_facecolor(xm.style.PAPER)
+        gs = fig.add_gridspec(2, 1, height_ratios=[1.05, 1.0], hspace=0.34)
+        top_gs = gs[0].subgridspec(1, 3, wspace=0.14)
+        bot_gs = gs[1].subgridspec(1, 2, width_ratios=[1.1, 1.2], wspace=0.16)
+
+        ax0 = fig.add_subplot(top_gs[0, 0])
+        ax1 = fig.add_subplot(top_gs[0, 1])
+        ax2 = fig.add_subplot(top_gs[0, 2])
+        for p_ax, p_title in (
+            (ax0, "1. DFT Converged!"),
+            (ax1, "2. Check Phonons?!"),
+            (ax2, "3. Barrier Resolved"),
+        ):
+            p_ax.set_xticks([])
+            p_ax.set_yticks([])
+            for sp in p_ax.spines.values():
+                sp.set_visible(True)
+                sp.set_linewidth(2.0)
+                sp.set_color(xm.style.INK)
+            p_ax.set_title(p_title, fontsize=11.5, pad=6.0)
+
+        ax0_sub = ax0.inset_axes((0.32, 0.45, 0.36, 0.50))
+        xm.plot_crystal(
+            "si_diamond.cif",
+            show_legend=False,
+            show_cell="clean",
+            ax=ax0_sub,
+        )
+        xm.draw_stick_scientist(
+            ax0,
+            xy=(0.14, 0.05),
+            scale=0.28,
+            character="cueball",
+            pose="stand",
+            prop="clipboard",
+            speech="Forces < 1e-4.\nShip it!",
+            speech_offset=(0.01, 0.12),
+        )
+        xm.draw_stick_scientist(
+            ax0,
+            xy=(0.86, 0.05),
+            scale=0.28,
+            character="ponytail",
+            facing="left",
+            pose="think",
+            speech="Wait... did you\ncheck gamma/X?",
+            speech_offset=(-0.01, 0.12),
+        )
+
+        ax1_sub = ax1.inset_axes((0.36, 0.38, 0.59, 0.54))
+        xm.plot_phonon_bands(ph_soft, ax=ax1_sub)
+        ax1_sub.tick_params(labelsize=7.5)
+        ax1_sub.set_xlabel("")
+        ax1_sub.set_ylabel("THz", fontsize=8.0)
+        xm.draw_stick_scientist(
+            ax1,
+            xy=(0.11, 0.05),
+            scale=0.28,
+            character="ponytail",
+            pose="point",
+            prop="pointer",
+            speech="Imaginary\nmode!",
+            speech_offset=(0.01, 0.12),
+        )
+        xm.draw_stick_scientist(
+            ax1,
+            xy=(0.88, 0.05),
+            scale=0.26,
+            character="cueball",
+            facing="left",
+            pose="shrug",
+        )
+
+        ax2_sub = ax2.inset_axes((0.36, 0.38, 0.59, 0.54))
+        xm.plot_neb(
+            [0.0, 0.38, 0.96, 0.42, 1.08, 0.35, -0.22], ax=ax2_sub
+        )
+        ax2_sub.tick_params(labelsize=7.5)
+        ax2_sub.set_xlabel("")
+        ax2_sub.set_ylabel("eV", fontsize=8.0)
+        xm.draw_stick_scientist(
+            ax2,
+            xy=(0.13, 0.05),
+            scale=0.28,
+            character="megan",
+            pose="cheer",
+            speech="Double-well\nfound!",
+            speech_offset=(0.01, 0.12),
+        )
+
+        ax_inline = fig.add_subplot(bot_gs[0, 0])
+        xm.plot_defect_formation(
+            {
+                "V_Si": [(2, 2.0), (1, 2.35), (0, 3.05)],
+                "Si_i": [(1, 2.5), (0, 2.95), (-1, 3.85)],
+                "O_i": [(0, 2.4), (-1, 2.95), (-2, 3.85)],
+            },
+            band_gap=1.12,
+            ax=ax_inline,
+            title="Inline Plot Commentary (draw_stick_scientist)",
+        )
+        xm.draw_stick_scientist(
+            ax_inline,
+            xy=(0.17, 0.04),
+            scale=0.26,
+            character="ponytail",
+            facing="right",
+            pose="point",
+            speech="Low E_F drives\np-type V_Si!",
+            speech_offset=(0.05, 0.06),
+        )
+
+        ax_cast = fig.add_subplot(bot_gs[0, 1])
+        ax_cast.set_xlim(0.0, 1.0)
+        ax_cast.set_ylim(0.0, 1.0)
+        ax_cast.set_axis_off()
+        ax_cast.set_title(
+            "xkcd.com Scientist Cast, Poses & Lab Props", fontsize=12.5
+        )
+        cast = (
+            ("cueball", "stand", "clipboard", "cueball\n(stand)", "right"),
+            ("ponytail", "think", None, "ponytail\n(think)", "right"),
+            ("megan", "point", "pointer", "megan\n(point)", "right"),
+            ("beret", "shrug", None, "beret\n(shrug)", "right"),
+            ("goggles", "cheer", "flask", "goggles\n(cheer)", "right"),
+        )
+        for idx, (char_k, pose_k, prop_k, tag, face_k) in enumerate(cast):
+            x_c = 0.11 + idx * 0.195
+            xm.draw_stick_scientist(
+                ax_cast,
+                xy=(x_c, 0.28),
+                scale=0.38,
+                character=char_k,
+                pose=pose_k,
+                prop=prop_k,
+                facing=face_k,
+                speech="Hi!" if idx == 3 else None,
+                speech_offset=(0.0, 0.14),
+            )
+            ax_cast.text(
+                x_c,
+                0.14,
+                tag,
+                ha="center",
+                va="top",
+                fontsize=9.5,
+                color=xm.style.INK,
+            )
+
+        fig.suptitle(
+            "xkcd.com Stick Scientists, Inline Plot Commentary & Comic Strips",
+            fontsize=15,
+            y=0.98,
+        )
+        fig.subplots_adjust(
+            left=0.05, right=0.97, top=0.90, bottom=0.06
+        )
+        xm.save_figure(
+            fig, out_dir / "xkcd_comics_and_stickmen.png", dpi=165
+        )
+        plt.close(fig)
+
+
 def main() -> None:
     """Generates all gallery PNGs, GIFs, and static interactive assets."""
     matplotlib.use("Agg")
@@ -1080,6 +1275,7 @@ def main() -> None:
     _make_flagship_features_gallery(_OUT_DIR)
     _make_isosurface_shading_gallery(_OUT_DIR)
     _make_brillouin_cohp_volcano_gallery(_OUT_DIR)
+    _make_xkcd_comics_gallery(_OUT_DIR)
     _make_readme_gifs(_OUT_DIR)
     _export_docs_assets()
     print(f"Generated gallery images, GIFs, and studio in {_BOOK_STATIC}")

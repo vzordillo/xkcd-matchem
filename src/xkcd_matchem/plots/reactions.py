@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 import pathlib
+from typing import Any
 
 from matplotlib import axes as maxes
 from matplotlib import pyplot as plt
@@ -59,24 +60,26 @@ def _draw_barrier_span(
     """Draws one activation-energy arrow and badge between minimum and peak."""
     e_ref = float(y_vals[ref_idx])
     e_act = float(y_vals[peak_idx] - e_ref)
+    ink_col = str(plt.rcParams.get("axes.edgecolor", palettes.INK))
     ax.annotate(
         "",
         xy=(xs[peak_idx], y_vals[peak_idx]),
         xytext=(xs[peak_idx], e_ref),
-        arrowprops={"arrowstyle": "<->", "color": barrier_col, "lw": 1.6},
+        arrowprops={"arrowstyle": "<->", "color": ink_col, "lw": 1.10},
     )
-    ax.plot(
+    ref_line = ax.plot(
         [xs[ref_idx] + 0.22, xs[peak_idx] + 0.10],
         [e_ref, e_ref],
         color=barrier_col,
         linestyle=":",
-        lw=1.1,
-    )
-    ax.text(
+        lw=0.95,
+    )[0]
+    ref_line.set_sketch_params(0.0, 0.0, 0.0)
+    txt = ax.text(
         xs[peak_idx],
         0.5 * (e_ref + y_vals[peak_idx]),
         f"Ea = {e_act:.2f} {unit}",
-        color=barrier_col,
+        color=ink_col,
         ha="center",
         va="center",
         fontsize=9.0,
@@ -84,10 +87,13 @@ def _draw_barrier_span(
             "boxstyle": "round,pad=0.18",
             "facecolor": bg_color,
             "edgecolor": "none",
-            "alpha": 0.9,
+            "alpha": 0.90,
         },
         zorder=6,
     )
+    patch = txt.get_bbox_patch()
+    if patch is not None:
+        patch.set_sketch_params(0.0, 0.0, 0.0)
 
 
 def _annotate_reaction_barrier(
@@ -156,6 +162,7 @@ def plot_reaction_profile(
     line_col = series[5 % len(series)] if color is None else color
     barrier_col = series[6 % len(series)]
     preset_obj = theme.get_preset(preset)
+    sw = theme.stroke_weights(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.4, 4.2))
@@ -170,7 +177,12 @@ def plot_reaction_profile(
                     3.0 * t * t - 2.0 * t * t * t
                 )
                 ax.plot(
-                    sx, sy, color=line_col, linestyle="--", lw=1.4, alpha=0.8
+                    sx,
+                    sy,
+                    color=line_col,
+                    linestyle="--",
+                    lw=sw.overlay,
+                    alpha=0.78,
                 )
 
         for k in range(n_pts):
@@ -178,7 +190,7 @@ def plot_reaction_profile(
                 [xs[k] - 0.22, xs[k] + 0.22],
                 [y_vals[k], y_vals[k]],
                 color=line_col,
-                lw=3.2,
+                lw=2.8,
                 solid_capstyle="round",
             )
             lbl_txt = labels[k] if (labels and k < len(labels)) else f"S{k}"
@@ -263,8 +275,9 @@ def plot_neb(
 
     series = palettes.get_palette(palette)
     line_col = series[6 % len(series)] if color is None else color
-    ts_col = series[5 % len(series)]
     preset_obj = theme.get_preset(preset)
+    ink_col = preset_obj.ink_color
+    sw = theme.stroke_weights(preset)
     n_img = len(energies)
     xi = _neb_coordinates(source, n_img)
     with theme.xkcd_style(preset=preset):
@@ -276,22 +289,24 @@ def plot_neb(
             spline = interpolate.PchipInterpolator(xi, energies)
             x_fine = np.linspace(0.0, 1.0, 120)
             y_fine = spline(x_fine)
-            ax.plot(x_fine, y_fine, color=line_col, lw=2.2, label="NEB MEP")
+            ax.plot(
+                x_fine, y_fine, color=line_col, lw=sw.primary, label="NEB MEP"
+            )
         else:
-            ax.plot(xi, energies, color=line_col, lw=2.2)
+            ax.plot(xi, energies, color=line_col, lw=sw.primary)
         ax.scatter(
             xi,
             energies,
-            s=65,
+            s=58,
             facecolor=preset_obj.axes_facecolor,
             edgecolor=line_col,
-            linewidth=2.0,
+            linewidth=sw.primary,
             zorder=5,
             label="NEB Images",
         )
         if annotate_ts and n_img >= 3:
             ts_idx = int(np.argmax(energies))
-            ax.annotate(
+            ann = ax.annotate(
                 f"TS: {energies[ts_idx]:+.2f} {unit}",
                 xy=(xi[ts_idx], energies[ts_idx]),
                 xytext=(
@@ -299,10 +314,23 @@ def plot_neb(
                     energies[ts_idx] + 0.14 * max(float(np.ptp(energies)), 0.2),
                 ),
                 ha="center",
-                color=ts_col,
-                arrowprops={"arrowstyle": "->", "color": ts_col, "lw": 1.4},
+                color=ink_col,
+                bbox=theme.label_halo_bbox(
+                    preset_obj.axes_facecolor, pad=0.10, alpha=0.86
+                ),
+                arrowprops={
+                    "arrowstyle": "->",
+                    "color": ink_col,
+                    "lw": sw.leader,
+                },
             )
-        ax.axhline(0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=1.1)
+            patch = ann.get_bbox_patch()
+            if patch is not None:
+                patch.set_sketch_params(0.0, 0.0, 0.0)
+        z_line = ax.axhline(
+            0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=sw.guide
+        )
+        z_line.set_sketch_params(0.0, 0.0, 0.0)
         span = max(float(np.ptp(energies)), 0.4)
         ax.set_ylim(
             float(np.min(energies)) - 0.15 * span,
@@ -348,35 +376,232 @@ def _coerce_scheme_mols(
     return out
 
 
-def _draw_scheme_side(
+def _estimate_condition_len(
+    conditions_above: str | None,
+    conditions_below: str | None,
+) -> int:
+    """Estimates plain character length of condition text for arrow width."""
+    lengths = [0]
+    for raw in (conditions_above, conditions_below):
+        if not raw:
+            continue
+        cleaned = (
+            raw.replace("$", "")
+            .replace("\\mathrm{", "")
+            .replace("\\circ", "o")
+            .replace("{", "")
+            .replace("}", "")
+            .replace("\\,", " ")
+            .replace("\\ ", " ")
+            .replace("_", "")
+            .replace("^", "")
+        )
+        lengths.append(len(cleaned))
+    return max(lengths)
+
+
+def _draw_xkcd_reaction_arrow(
+    ax: maxes.Axes,
+    x0: float,
+    x1: float,
+    arrow_key: str,
+    ink_col: str,
+    lw: float,
+) -> None:
+    """Draws hand-inked forward or equilibrium arrow matching skeletal lw."""
+    head_l = min(0.38, 0.14 * max(x1 - x0, 1.0))
+    head_h = 0.56 * head_l
+    if arrow_key == "<=>":
+        y_top, y_bot = 0.14, -0.14
+        ax.plot(
+            [x0, x1, x1 - head_l],
+            [y_top, y_top, y_top + head_h],
+            color=ink_col,
+            lw=lw,
+            solid_capstyle="round",
+            solid_joinstyle="round",
+            zorder=3,
+        )
+        ax.plot(
+            [x1, x0, x0 + head_l],
+            [y_bot, y_bot, y_bot - head_h],
+            color=ink_col,
+            lw=lw,
+            solid_capstyle="round",
+            solid_joinstyle="round",
+            zorder=3,
+        )
+        return
+    ax.plot(
+        [x0, x1],
+        [0.0, 0.0],
+        color=ink_col,
+        lw=lw,
+        solid_capstyle="round",
+        zorder=3,
+    )
+    ax.plot(
+        [x1 - head_l, x1, x1 - head_l],
+        [head_h, 0.0, -head_h],
+        color=ink_col,
+        lw=lw,
+        solid_capstyle="round",
+        solid_joinstyle="round",
+        zorder=3,
+    )
+
+
+def _layout_scheme_participants(
+    r_proj: list[Any],
+    p_proj: list[Any],
+    arrow_len: float,
+    plus_gap: float = 1.65,
+    arrow_pad: float = 0.90,
+) -> tuple[list[float], list[float], list[float], float, float, float]:
+    """Computes horizontal Angstrom anchors for reactants, ``+``, and arrow."""
+    x_cur = 0.0
+    r_offs: list[float] = []
+    plus_xs: list[float] = []
+    for idx, proj in enumerate(r_proj):
+        if idx > 0:
+            plus_xs.append(x_cur + 0.5 * plus_gap)
+            x_cur += plus_gap
+        r_offs.append(x_cur)
+        x_cur += max(float(proj[5][0]), 0.8)
+
+    a_x0 = x_cur + arrow_pad
+    a_x1 = a_x0 + arrow_len
+    x_cur = a_x1 + arrow_pad
+
+    p_offs: list[float] = []
+    for idx, proj in enumerate(p_proj):
+        if idx > 0:
+            plus_xs.append(x_cur + 0.5 * plus_gap)
+            x_cur += plus_gap
+        p_offs.append(x_cur)
+        x_cur += max(float(proj[5][0]), 0.8)
+    return r_offs, p_offs, plus_xs, a_x0, a_x1, max(x_cur, 4.0)
+
+
+def _draw_scheme_group(
     ax: maxes.Axes,
     mols: Sequence[structure.AtomsData],
-    x_start: float,
-    mol_w: float,
-    plus_w: float,
+    projs: list[Any],
+    offsets: list[float],
+    metrics: tuple[float, float, float, float],
+    lw_scale: float,
     palette: str,
+) -> tuple[list[float], list[float]]:
+    """Draws one side of molecules and returns accumulated ``(xs, ys)``."""
+    x_vals: list[float] = []
+    y_vals: list[float] = []
+    for mol, proj, x_off in zip(mols, projs, offsets, strict=True):
+        bx0, bx1, by0, by1 = structure2d.draw_projected_molecule_2d(
+            ax,
+            mol,
+            proj,
+            offset=(x_off, 0.0),
+            metrics=metrics,
+            lw_scale=lw_scale,
+            palette=palette,
+        )
+        x_vals.extend((bx0, bx1))
+        y_vals.extend((by0, by1))
+    return x_vals, y_vals
+
+
+def _render_scheme_arrows_and_labels(
+    ax: maxes.Axes,
+    plus_xs: Sequence[float],
+    arrow_span: tuple[float, float, str],
+    conditions: tuple[str | None, str | None],
     ink_col: str,
-) -> float:
-    """Renders reactants or products horizontally with ``+`` separators."""
-    x_cur = x_start
-    for idx, mol in enumerate(mols):
-        if idx > 0:
-            ax.text(
-                x_cur + 0.5 * plus_w,
-                0.50,
-                "+",
-                ha="center",
-                va="center",
-                fontsize=16.0,
-                color=ink_col,
-            )
-            x_cur += plus_w
-        sub_ax = ax.inset_axes((x_cur, 0.12, mol_w, 0.76))
-        structure2d.render_structure_2d(mol, ax=sub_ax, palette=palette)
-        sub_ax.set_facecolor("none")
-        sub_ax.set_axis_off()
-        x_cur += mol_w
-    return x_cur
+    fs: float,
+    lw_scale: float,
+) -> None:
+    """Draws ``+`` separators, xkcd reaction arrow, and above/below text."""
+    for x_plus in plus_xs:
+        ax.text(
+            x_plus,
+            0.0,
+            "+",
+            ha="center",
+            va="center",
+            fontsize=fs * 1.28,
+            color=ink_col,
+            zorder=4,
+        )
+    a_x0, a_x1, arrow_key = arrow_span
+    _draw_xkcd_reaction_arrow(
+        ax, a_x0, a_x1, arrow_key, ink_col, 1.85 * lw_scale
+    )
+    mid_a = 0.5 * (a_x0 + a_x1)
+    cond_fs = max(8.2, 0.96 * fs)
+    cond_above, cond_below = conditions
+    if cond_above:
+        ax.text(
+            mid_a,
+            0.34,
+            cond_above,
+            ha="center",
+            va="bottom",
+            fontsize=cond_fs,
+            color=ink_col,
+        )
+    if cond_below:
+        ax.text(
+            mid_a,
+            -0.34,
+            cond_below,
+            ha="center",
+            va="top",
+            fontsize=cond_fs,
+            color=ink_col,
+        )
+
+
+def _draw_scheme_canvas(
+    ax: maxes.Axes,
+    groups: tuple[
+        list[structure.AtomsData],
+        list[structure.AtomsData],
+        list[Any],
+        list[Any],
+    ],
+    layout: tuple[list[float], list[float], list[float], float, float, float],
+    max_h: float,
+    style_cfg: tuple[str, str | None, str | None, str, str],
+) -> None:
+    """Renders molecules, hand-drawn arrow, and bounds onto unified axes."""
+    r_mols, p_mols, r_proj, p_proj = groups
+    r_offs, p_offs, plus_xs, a_x0, a_x1, total_w = layout
+    arrow_key, cond_above, cond_below, ink_col, palette = style_cfg
+    raw_m = structure2d.resolve_span_label_metrics(
+        ax, total_w, max_h, pad=0.75
+    )
+    metrics = raw_m[:4]
+    lw_scale = float(np.clip(raw_m[4] / 24.0, 0.74, 1.0))
+    r_bounds = _draw_scheme_group(
+        ax, r_mols, r_proj, r_offs, metrics, lw_scale, palette
+    )
+    p_bounds = _draw_scheme_group(
+        ax, p_mols, p_proj, p_offs, metrics, lw_scale, palette
+    )
+    _render_scheme_arrows_and_labels(
+        ax,
+        plus_xs,
+        (a_x0, a_x1, arrow_key),
+        (cond_above, cond_below),
+        ink_col,
+        raw_m[0],
+        lw_scale,
+    )
+    x_all = [0.0, total_w, *r_bounds[0], *p_bounds[0]]
+    y_all = [-1.1, 1.1, *r_bounds[1], *p_bounds[1]]
+    ax.set_xlim(min(x_all) - 0.75, max(x_all) + 0.75)
+    ax.set_ylim(min(y_all) - 0.85, max(y_all) + 0.85)
+    ax.set_aspect("equal")
+    ax.set_axis_off()
 
 
 def plot_reaction_scheme(
@@ -403,6 +628,10 @@ def plot_reaction_scheme(
 ) -> maxes.Axes:
     """Draws an xkcd-style 2D skeletal chemical reaction equation scheme.
 
+    All participants render inside a single unified Angstrom coordinate space
+    so ring sizes, bond lengths, and stroke weights stay strictly consistent
+    across reactants and products.
+
     Args:
       reactants: Reactant molecule or sequence of reactant structures/paths.
       products: Product molecule or sequence of product structures/paths.
@@ -424,62 +653,33 @@ def plot_reaction_scheme(
         raise exceptions.StructureError(
             f"Unsupported reaction arrow {arrow!r}. Use '->' or '<=>'."
         )
-    ink_col = theme.get_preset(preset).ink_color
-    n_mols = len(r_mols) + len(p_mols)
-    n_plus = max(len(r_mols) - 1, 0) + max(len(p_mols) - 1, 0)
-    plus_w = 0.055
-    arrow_w = 0.16
-    mol_w = (0.94 - n_plus * plus_w - arrow_w) / float(n_mols)
+    r_proj = [structure2d.project_molecule_2d(m) for m in r_mols]
+    p_proj = [structure2d.project_molecule_2d(m) for m in p_mols]
+    cond_len = _estimate_condition_len(conditions_above, conditions_below)
+    layout = _layout_scheme_participants(
+        r_proj, p_proj, max(3.2, 0.28 * float(cond_len) + 1.1)
+    )
+    max_h = max([float(p[5][1]) for p in r_proj + p_proj] + [2.4])
 
     with theme.xkcd_style(preset=preset):
         if ax is None:
-            fig_w = max(7.2, 2.2 * (n_mols + 1))
+            n_parts = len(r_mols) + len(p_mols)
+            fig_w = max(7.4, min(14.0, 0.45 * layout[5] + 1.5 * n_parts))
             _, ax = plt.subplots(figsize=(fig_w, 3.6))
         else:
             theme.style_existing_axes(ax, preset=preset)
-        ax.set_xlim(0.0, 1.0)
-        ax.set_ylim(0.0, 1.0)
-        ax.set_axis_off()
-
-        x_cur = _draw_scheme_side(
-            ax, r_mols, 0.03, mol_w, plus_w, palette, ink_col
-        )
-        a_x0 = x_cur + 0.02
-        a_x1 = x_cur + arrow_w - 0.02
-        arrow_style = "<->" if arrow_key == "<=>" else "->"
-        ax.annotate(
-            "",
-            xy=(a_x1, 0.50),
-            xytext=(a_x0, 0.50),
-            arrowprops={
-                "arrowstyle": arrow_style,
-                "color": ink_col,
-                "lw": 2.2,
-            },
-        )
-        mid_a = 0.5 * (a_x0 + a_x1)
-        if conditions_above:
-            ax.text(
-                mid_a,
-                0.56,
+        _draw_scheme_canvas(
+            ax,
+            (r_mols, p_mols, r_proj, p_proj),
+            layout,
+            max_h,
+            (
+                arrow_key,
                 conditions_above,
-                ha="center",
-                va="bottom",
-                fontsize=9.5,
-                color=ink_col,
-            )
-        if conditions_below:
-            ax.text(
-                mid_a,
-                0.44,
                 conditions_below,
-                ha="center",
-                va="top",
-                fontsize=9.5,
-                color=ink_col,
-            )
-        _draw_scheme_side(
-            ax, p_mols, x_cur + arrow_w, mol_w, plus_w, palette, ink_col
+                theme.get_preset(preset).ink_color,
+                palette,
+            ),
         )
         if title:
             ax.set_title(title)

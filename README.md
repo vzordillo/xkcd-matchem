@@ -64,9 +64,9 @@
 | :---: | :---: |
 | ![Isosurfaces, phonons, Wulff shapes, and schemes](book/_static/gallery/flagship_features.png) | ![Brillouin zones, COHP bonding, Sabatier volcanos, and defects](book/_static/gallery/brillouin_cohp_volcano.png) |
 
-Want hand-inked **xkcd pen-and-ink 3D orbital shading** (`shade="hatch"`, `"crosshatch"`, `"contour"`, `"cross_contour"`, `"stipple"`, `"scumble"`) so molecules stay crisp inside orbital lobes?
-
-![xkcd pen-and-ink 3D isosurface shading techniques](book/_static/gallery/isosurface_shading_styles.png)
+| xkcd Pen-and-Ink 3D Shading Modes | xkcd.com Stick Scientists & Comic Strips |
+| :---: | :---: |
+| ![xkcd pen-and-ink 3D isosurface shading techniques](book/_static/gallery/isosurface_shading_styles.png) | ![xkcd stick scientists and research comic strips](book/_static/gallery/xkcd_comics_and_stickmen.png) |
 
 Want pure atomic lattice sites without bonds (`show_bonds=False`) or **planar flat 2D GNN crystal & periodic quotient multigraphs** (`layout="planar"`, `multi_edges=True`)?
 
@@ -147,6 +147,10 @@ xm.plot_spacegroup_distribution({225: 32, 194: 26, 62: 28, 14: 22}, mode="sunbur
 xm.plot_structure_graph("si_diamond.cif", layout="camera", show_cell=True)
 xm.plot_structure_graph("si_diamond.cif", layout="planar")
 xm.plot_scroll_card("Lab Checklist", items=[("Step 1", "Relax cell"), ("Step 2", "Plot in xkcd")], background_grid="ruled")
+
+# Annotate any plot with aspect-invariant xkcd.com stick scientists
+ax_def = xm.plot_defect_formation({"V_Si": [(2, 2.0), (1, 2.35), (0, 3.05)]})
+xm.draw_stick_scientist(ax_def, xy=(0.86, 0.08), character="ponytail", facing="left", pose="think", speech="Check (+1/0)!")
 
 # Open the offline Interactive 3D Studio in Jupyter or a browser
 xm.view_structure("tio2_slab.poscar", style="polyhedra", polyhedra=("Ti", "O"))
