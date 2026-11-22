@@ -146,3 +146,17 @@ Render zero-dependency Wigner–Seitz 3D first Brillouin zones (the reciprocal-s
 See [Tutorial 13: Brillouin Zones, Catalysis Volcanos, Defects & LOBSTER COHP](tutorials/13_brillouin_volcano_defects_and_cohp.ipynb).
 
 ![Brillouin zones, COHP bonding, Sabatier volcanos, and defect formation](_static/gallery/brillouin_cohp_volcano.png)
+
+## Crystal-Field Theory, Electrochemistry, Battery dQ/dV, NMR & XPS
+
+Plot barycenter-conserving $d$-orbital crystal-field splittings with high/low-spin Hund filling (`plot_crystal_field()`), IUPAC or US-convention cyclic voltammograms with automatic $E_{pa}$, $E_{pc}$, $E_{1/2}$, and $\Delta E_p$ callouts (`plot_cyclic_voltammetry()`), Tafel kinetic slopes (`plot_tafel()`), galvanostatic battery charge/discharge plateaus (`plot_battery_profile()`), smoothed differential capacity redox peaks (`plot_dqdv()`), first-order $^1\mathrm{H}$ NMR multiplet splitting trees and step integrals (`plot_nmr()`), and XPS core-level fits with iterative Shirley backgrounds (`plot_xps()`).
+See [Tutorial 14: Crystal-Field Splitting, Electrochemistry, NMR/XPS & SciComm Templates](tutorials/14_crystalfield_electrochem_nmr_and_templates.ipynb).
+
+![Crystal-field theory, electrochemistry, battery dQ/dV, NMR, and XPS spectroscopy](_static/gallery/electrochem_crystalfield_nmr.png)
+
+## Turnkey SciComm Templates: Graphical Abstracts, Talk Slides & Mechanism Comics
+
+Assemble polished science-communication layouts in one call: millimeter-accurate journal TOC graphical abstracts with central workflow arrows and takeaway strips (`create_graphical_abstract()`), 16:9 widescreen talk slides with optional stick-scientist presenter callouts (`create_talk_slide()`), multi-card conference posters (`create_conference_poster()`), and multi-panel mechanism comic strips with pre-positioned plot insets (`create_mechanism_comic()`).
+See [Tutorial 14: Crystal-Field Splitting, Electrochemistry, NMR/XPS & SciComm Templates](tutorials/14_crystalfield_electrochem_nmr_and_templates.ipynb).
+
+![Turnkey SciComm layout templates: graphical abstracts, 16:9 talk slides, and mechanism comics](_static/gallery/scicomm_layout_templates.png)

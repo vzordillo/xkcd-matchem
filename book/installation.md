@@ -40,12 +40,12 @@ pip install "xkcd-matchem[ase,pymatgen,rdkit,animation]"
 ```
 
 :::{tip}
-The browser-based **Interactive 3D Studio** (`xm.view_structure(...)` and `xkcd-matchem view ...`) works with **zero extra dependencies** — no WebGL plugin, JavaScript build step, or remote server needed.
+Want to run the tutorials in your browser with zero local setup? Launch the repository directly on **[Binder](https://mybinder.org/v2/gh/vzordillo/xkcd-matchem/main?urlpath=lab%2Ftree%2Fbook%2Ftutorials%2F01_quickstart_and_themes.ipynb)**, or explore structures immediately in the zero-dependency **[Interactive 3D Studio](playground.md)** — no WebGL plugin, JavaScript build step, or remote server needed.
 :::
 
 ## Contributor & Documentation Setup
 
-If you want to run the test suite, lint checks, or build this Jupyter Book locally:
+If you want to run the full quality gate, tests, or build this Jupyter Book locally (see [`CONTRIBUTING.md`](https://github.com/vzordillo/xkcd-matchem/blob/main/CONTRIBUTING.md) for SciViz design guidelines and PR checklists):
 
 ```bash
 git clone https://github.com/vzordillo/xkcd-matchem.git
@@ -53,6 +53,9 @@ cd xkcd-matchem
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[animation,dev,docs]"
-pytest tests/
+ruff check . --no-cache
+pylint src/xkcd_matchem
+mypy src/xkcd_matchem
+pytest --cov=xkcd_matchem --cov-fail-under=90
 jupyter-book build book/ -W
 ```

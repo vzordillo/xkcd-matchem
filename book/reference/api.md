@@ -13,7 +13,9 @@ Looking for the right function? Start here:
 | Plot a crystal, Miller plane, Brillouin zone, Wulff shape, slab, or polyhedra | `xm.plot_crystal(...)`, `xm.plot_brillouin_zone(...)`, `xm.plot_wulff_shape(...)`, `xm.plot_slab(...)`, `xm.plot_coordination(...)` |
 | Spin a structure, trajectory, or CUBE orbital in the offline 3D Studio | `xm.view_structure(...)`, `xm.export_interactive_html(...)` |
 | Plot band structures, COHP, phonons, DOS, MOs, or 3D/2D cubes | `xm.plot_bands(...)`, `xm.plot_cohp(...)`, `xm.plot_phonon_bands(...)`, `xm.plot_dos(...)`, `xm.plot_bands_dos(...)`, `xm.plot_mo_diagram(...)`, `xm.plot_volumetric_slice(...)`, `xm.plot_isosurface(...)` |
-| Plot IR/UV-Vis spectra or simulated powder XRD | `xm.plot_spectrum(...)`, `xm.plot_xrd(...)`, `xm.compute_xrd(...)` |
+| Plot IR/UV-Vis, $^1\mathrm{H}$ NMR multiplets, XPS Shirley fits, or powder XRD | `xm.plot_spectrum(...)`, `xm.plot_nmr(...)`, `xm.plot_xps(...)`, `xm.plot_xrd(...)`, `xm.compute_xrd(...)` |
+| Plot crystal-field $d$-orbital splitting diagrams | `xm.plot_crystal_field(...)` |
+| Plot cyclic voltammetry, Tafel slopes, battery cycling, or $dQ/dV$ | `xm.plot_cyclic_voltammetry(...)`, `xm.plot_tafel(...)`, `xm.plot_battery_profile(...)`, `xm.plot_dqdv(...)` |
 | Sketch reaction pathways, schemes, or NEB barriers | `xm.plot_reaction_profile(...)`, `xm.plot_reaction_scheme(...)`, `xm.plot_neb(...)` |
 | Analyze or animate MD trajectories & RDFs | `xm.plot_md_timeseries(...)`, `xm.plot_rdf(...)`, `xm.plot_rmsd(...)`, `xm.animate_trajectory(...)` |
 | Plot hulls, EOS fits, Pourbaix, volcanos, defects, or parity | `xm.plot_phase_diagram_2d(...)`, `xm.plot_eos(...)`, `xm.plot_pourbaix(...)`, `xm.plot_volcano(...)`, `xm.plot_defect_formation(...)`, `xm.plot_parity(...)`, `xm.plot_bar_comparison(...)`, `xm.plot_pipeline_diagram(...)` |
@@ -23,7 +25,8 @@ Looking for the right function? Start here:
 | Draw xkcd chemistry/materials icons & element tiles | `xm.draw_icon(...)`, `xm.draw_element_badge(...)`, `xm.plot_icon_sheet(...)` |
 | Add notebook/graph/dotgrid/blueprint backgrounds or hatched fills | `xm.apply_background_grid(...)`, `xm.clear_background_grid(...)`, `xm.shade_between(...)`, `shade=...`, `background_grid=...` |
 | Customize themes, stroke weights, element colors, or existing Matplotlib axes | `xm.xkcd_style(...)`, `xm.stroke_weights(...)`, `xm.register_preset(...)`, `xm.register_palette(...)`, `xm.register_element_palette(...)`, `xm.style_existing_axes(...)` |
-| Compose a poster, stick-scientist comic strip, or vintage parchment scroll | `xm.Board`, `xm.Container`, `xm.Card`, `xm.ComicStrip`, `xm.plot_comic_strip(...)`, `xm.draw_stick_scientist(...)`, `xm.draw_speech_bubble(...)`, `xm.ScrollCard`, `xm.plot_scroll_card(...)`, `xm.Badge`, `xm.save_figure(...)` |
+| Build turnkey graphical abstracts, 16:9 talk slides, posters, or mechanism comics | `xm.create_graphical_abstract(...)`, `xm.create_talk_slide(...)`, `xm.create_conference_poster(...)`, `xm.create_mechanism_comic(...)`, `xm.GraphicalAbstractLayout`, `xm.TalkSlideLayout`, `xm.ConferencePosterLayout`, `xm.MechanismComicLayout` |
+| Compose custom poster boards, stick-scientist comic strips, or parchment scrolls | `xm.Board`, `xm.Container`, `xm.Card`, `xm.ComicStrip`, `xm.plot_comic_strip(...)`, `xm.draw_stick_scientist(...)`, `xm.draw_speech_bubble(...)`, `xm.ScrollCard`, `xm.plot_scroll_card(...)`, `xm.Badge`, `xm.save_figure(...)` |
 
 ## Top-Level Package (`xkcd_matchem`)
 
@@ -125,6 +128,8 @@ Looking for the right function? Start here:
 
 ## High-Level Plotters (`xkcd_matchem.plots`)
 
+- **Crystal-field, electrochemistry & analytical spectroscopy top-level shortcuts:** `xm.plot_crystal_field()`, `xm.plot_cyclic_voltammetry()`, `xm.plot_tafel()`, `xm.plot_battery_profile()`, `xm.plot_dqdv()`, `xm.plot_nmr()`, `xm.plot_xps()` (alongside analytical helpers `xm.plots.crystalfield.crystal_field_levels()`, `xm.plots.crystalfield.fill_crystal_field_orbitals()`, `xm.plots.spectroscopy.expand_nmr_multiplet()`, and `xm.plots.spectroscopy.compute_shirley_background()`).
+
 ```{eval-rst}
 .. automodule:: xkcd_matchem.plots.structure
    :members:
@@ -132,6 +137,16 @@ Looking for the right function? Start here:
 
 ```{eval-rst}
 .. automodule:: xkcd_matchem.plots.electronic
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.plots.crystalfield
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.plots.electrochem
    :members:
 ```
 
@@ -212,10 +227,17 @@ Looking for the right function? Start here:
    :members:
 ```
 
-## Opt-In Poster Layout, Comics & Export (`xkcd_matchem.layout`)
+## Opt-In Poster Layout, SciComm Templates, Comics & Export (`xkcd_matchem.layout`)
+
+- **Turnkey SciComm layout recipes (top-level `xm.*`):** `xm.create_graphical_abstract()`, `xm.GraphicalAbstractLayout`, `xm.create_talk_slide()`, `xm.TalkSlideLayout`, `xm.create_conference_poster()`, `xm.ConferencePosterLayout`, `xm.create_mechanism_comic()`, `xm.MechanismComicLayout`.
 
 ```{eval-rst}
 .. automodule:: xkcd_matchem.layout.canvas
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.layout.templates
    :members:
 ```
 

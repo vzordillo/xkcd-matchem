@@ -23,6 +23,7 @@ parts:
       - file: tutorials/11_periodic_table_scrolls_and_informatics
       - file: tutorials/12_isosurfaces_phonons_wulff_and_comics
       - file: tutorials/13_brillouin_volcano_defects_and_cohp
+      - file: tutorials/14_crystalfield_electrochem_nmr_and_templates
   - caption: Reference
     chapters:
       - file: reference/supported_formats

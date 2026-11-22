@@ -1,5 +1,8 @@
 # xkcd-matchem: An xkcd-Style Visualization Suite for Chemistry and Materials Science Communication
 
+[![CI](https://github.com/vzordillo/xkcd-matchem/actions/workflows/ci.yml/badge.svg)](https://github.com/vzordillo/xkcd-matchem/actions/workflows/ci.yml)
+[![Docs](https://github.com/vzordillo/xkcd-matchem/actions/workflows/docs.yml/badge.svg)](https://github.com/vzordillo/xkcd-matchem/actions/workflows/docs.yml)
+[![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/vzordillo/xkcd-matchem/main?urlpath=lab%2Ftree%2Fbook%2Ftutorials%2F01_quickstart_and_themes.ipynb)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/downloads/)
 [![Code License: Apache-2.0](https://img.shields.io/badge/code-Apache--2.0-green.svg)](LICENSE)
 [![Docs License: CC BY 4.0](https://img.shields.io/badge/docs-CC%20BY%204.0-lightgrey.svg)](book/LICENSE-CC-BY-4.0.txt)
@@ -68,6 +71,10 @@
 | :---: | :---: |
 | ![xkcd pen-and-ink 3D isosurface shading techniques](book/_static/gallery/isosurface_shading_styles.png) | ![xkcd stick scientists and research comic strips](book/_static/gallery/xkcd_comics_and_stickmen.png) |
 
+| Crystal-Field, Electrochemistry, Battery dQ/dV, NMR & XPS | Turnkey SciComm Templates (Abstracts, Slides & Comics) |
+| :---: | :---: |
+| ![Crystal-field splitting, electrochemistry, battery dQ/dV, NMR, and XPS spectroscopy](book/_static/gallery/electrochem_crystalfield_nmr.png) | ![Turnkey SciComm layout templates for graphical abstracts, 16:9 talk slides, and mechanism comics](book/_static/gallery/scicomm_layout_templates.png) |
+
 Want pure atomic lattice sites without bonds (`show_bonds=False`) or **planar flat 2D GNN crystal & periodic quotient multigraphs** (`layout="planar"`, `multi_edges=True`)?
 
 ![Bond-free crystals and planar 2D GNN graphs](book/_static/gallery/crystal_graphs_2d.png)
@@ -85,11 +92,12 @@ Putting together a research poster? Opt into `xm.Board`, `Container`, `Card`, `S
 | **Molecules (3D & 2D)** | Depth-sorted 3D `ball_and_stick`, `spacefill` (van der Waals spheres), and `stick` renderers with seamless two-tone bonds, force/velocity/spin vectors (`vectors=`), and specular highlights; 2D skeletal plots with stereobonds (`wedge`, `dash`, `wavy`), automatic organic double/triple bond perception (`infer_bond_orders`), and inward ring double bonds; optional bond-free atom clouds (`show_bonds=False`); 3D distance, angle & defect/vacancy annotations (`annotate_distance`, `annotate_angle`, `draw_defect_site`). |
 | **Crystals, Slabs, Wulff & Polyhedra** | Periodic crystals and supercells (`repeat`, `center_in_cell`); bond-free atomic lattice views (`show_bonds=False`); decoupled unit-cell box (`show_cell`) and standalone VESTA-style corner/origin/edge crystallographic axes (`crystal_axes="corner" \| "origin" \| "edges" \| False`); exact `(hkl)` Miller lattice planes, 3D Wigner–Seitz first Brillouin zones (the reciprocal-space unit cell with high-symmetry **k**-paths: `plot_brillouin_zone`, `compute_brillouin_zone`), & equilibrium 3D Wulff crystal habits minimizing surface energy (`plot_wulff_shape`, `compute_wulff_shape`); bond-free ConvexHull coordination polyhedra (`plot_coordination`); surface slab views with automatic vacuum-gap callouts (`plot_slab`). |
 | **Electronic Structure, COHP, Isosurfaces & Phonons** | Band structures with orbital fatband ribbons (`plot_bands`), aligned Band + DOS (`plot_bands_dos`), total/spin-polarized/orbital-projected DOS (`plot_dos`), LOBSTER `-pCOHP`/`-ICOHP` chemical bonding vs. antibonding curves (`plot_cohp`, `read_cohpcar`), molecular orbital HOMO–LUMO ladders (`plot_mo_diagram`), 2D volumetric slices (`plot_volumetric_slice`), pure-NumPy 3D orbital/density isosurfaces (`plot_isosurface` with all 8 shading modes: `shade="solid" \| "hatch" \| "crosshatch" \| "contour" \| "cross_contour" \| "stipple" \| "scumble" \| "outline"`, `extract_isosurface`), and Phonopy lattice-vibration phonon dispersions with imaginary-mode stability highlights (`plot_phonon_bands`). |
-| **Spectroscopy & Diffraction** | IR, Raman, UV-Vis, and NMR stick + broadened spectra with true Voigt & area-normalized profiles (`plot_spectrum`, `broaden_peaks`) and occupancy-weighted powder XRD (`plot_xrd`, `compute_xrd`) using Cromer-Mann (LA-3816) + exact H 1s scattering form factors at CODATA 2022 $\text{Cu K}\alpha_1$ (`1.54059313` Å). |
+| **Spectroscopy & Diffraction** | IR, Raman, UV-Vis, and NMR stick + broadened spectra with true Voigt & area-normalized profiles (`plot_spectrum`, `broaden_peaks`); first-order $^1\mathrm{H}$ NMR multiplet splitting trees (Pascal/doublet ratios via `J/MHz`) with step integrals (`plot_nmr`); XPS core-level deconvolution with iterative Shirley background subtraction (`plot_xps`); and occupancy-weighted powder XRD (`plot_xrd`, `compute_xrd`) using Cromer-Mann (LA-3816) + exact H 1s scattering form factors at CODATA 2022 $\text{Cu K}\alpha_1$ (`1.54059313` Å). |
+| **Crystal-Field Theory, Electrochemistry & Batteries** | Barycenter-conserving $d$-orbital crystal-field splitting diagrams across octahedral, tetrahedral, square-planar, trigonal-bipyramidal, and custom geometries with high/low-spin Hund filling (`plot_crystal_field`); IUPAC & US-convention cyclic voltammetry with automatic $E_{pa}$, $E_{pc}$, $E_{1/2}$, and $\Delta E_p$ callouts (`plot_cyclic_voltammetry`); Tafel overpotential kinetic fits (`plot_tafel`); galvanostatic battery charge/discharge profiles (`plot_battery_profile`); and smoothed differential capacity $dQ/dV$ peak analysis (`plot_dqdv`). |
 | **Reactions, Catalysis, Defects & Thermodynamics** | Multi-step catalytic free-energy profiles with global/elementary barriers (`plot_reaction_profile`), 2D skeletal reaction equation schemes (`plot_reaction_scheme`), climbing-image Nudged Elastic Band (NEB) transition-state barriers (`plot_neb`), periodic-unwrapped MD RMSD/temperature/pressure time-series (`plot_md_timeseries`, `plot_rmsd`), exact minimum-image radial distribution functions $g(r)$ (`plot_rdf`), binary & ternary convex stability hulls (`plot_phase_diagram_2d`, `plot_ternary_phase_diagram`), third-order Birch-Murnaghan equation-of-state (EOS) bulk-modulus fits (`plot_eos`), electrochemical Pourbaix diagrams (`plot_pourbaix`), Sabatier catalysis volcanos (`plot_volcano`), semiconductor defect formation diagrams with `(q1/q2)` charge-transition kinks (`plot_defect_formation`), and ML parity benchmarks (`plot_parity`). |
 | **Periodic Table, Informatics & Graph Networks** | 118-element xkcd Periodic Table (`plot_periodic_table`: chemical families, property heatmaps with hatched missing tiles, formula spotlights); `pymatviz`-inspired space-group sunburst/bar distributions (`plot_spacegroup_distribution`) and hatched KDE histograms (`plot_histogram`); 3D camera-matched GNN crystal graphs, flat planar 2D GNN crystal graphs (`layout="planar"`), periodic quotient multigraphs (`multi_edges=True, show_shift_labels=True`), and synthesis/phase-transformation pill networks (`plot_graph_network`, `plot_structure_graph`). |
-| **Themes, Comics, Scrolls & Poster Boards** | 9 built-in presets (`classic`, `notebook`, `poster`, `minimal`, `dark_chalk`, `blueprint`, `talk_16x9`, `talk_dark`, `graphical_abstract`) plus `register_preset`, `register_palette`, `register_element_palette`, and `style_existing_axes`; bundled `xkcd Script` default + SIL OFL 1.1 alternates (`Patrick Hand`, `Comic Neue`, `XM_COMMERCIAL_SAFE=1`); 5 background grids (`ruled`, `graph`, `dotgrid`, `isometric`, `blueprint`); 16 vector MatChem icons & element badges; multi-panel `ComicStrip` / `plot_comic_strip` with speech bubbles and stick scientists; millimeter poster `Board` (`board.save(..., exact_mm=True)`) with stacked `Card`s and vintage parchment `ScrollCard`s. |
-| **Interactive 3D Studio 2.0, Motion, I/O & CLI** | Offline browser/Jupyter **Interactive 3D Studio** (`view_structure`, `export_interactive_html`) synced with active/commercial-safe fonts, orbit/zoom/roll, trajectory playback, 3D orbital CUBE isosurfaces, force/spin vectors, live style/palette/axes toggles, supercells, local drag-drop upload, PNG/SVG export, and Copy Python; looping GIF animations (`animate_trajectory`); 29 zero-dependency native file readers + 6 optional ecosystem adapters (`ASE`, `pymatgen`, `RDKit`, `cclib`, `MDAnalysis`, `MDTraj`); `xkcd-matchem` CLI (`samples`, `formats`, `info`, `render`, `view`, `xrd`, `bands`, `dos`, `cohp`, `neb`, `ptable`, `phonon`). |
+| **Themes, SciComm Templates, Comics, Scrolls & Posters** | 9 built-in presets (`classic`, `notebook`, `poster`, `minimal`, `dark_chalk`, `blueprint`, `talk_16x9`, `talk_dark`, `graphical_abstract`) plus `register_preset`, `register_palette`, `register_element_palette`, and `style_existing_axes`; bundled `xkcd Script` default + SIL OFL 1.1 alternates (`Patrick Hand`, `Comic Neue`, `XM_COMMERCIAL_SAFE=1`); 5 background grids (`ruled`, `graph`, `dotgrid`, `isometric`, `blueprint`); 16 vector MatChem icons & element badges; turnkey SciComm recipes (`create_graphical_abstract`, `create_talk_slide`, `create_conference_poster`, `create_mechanism_comic`); multi-panel `ComicStrip` / `plot_comic_strip` with speech bubbles and stick scientists; millimeter poster `Board` (`board.save(..., exact_mm=True)`) with stacked `Card`s and vintage parchment `ScrollCard`s. |
+| **Interactive 3D Studio 2.0, Motion, I/O & CLI** | Offline browser/Jupyter **Interactive 3D Studio** (`view_structure`, `export_interactive_html`) synced with active/commercial-safe fonts, a 1-click **Quick Scene Switcher** across 9 curated scenes (`build_playground_scenes`), 1-click 8-mode pen-and-ink orbital shading bar, orbit/zoom/roll, trajectory playback, 3D orbital CUBE isosurfaces, force/spin vectors, live style/palette/axes toggles, supercells, local drag-drop upload, PNG/SVG export, and Copy Python; looping GIF animations (`animate_trajectory`); 29 zero-dependency native file readers + 6 optional ecosystem adapters (`ASE`, `pymatgen`, `RDKit`, `cclib`, `MDAnalysis`, `MDTraj`); `xkcd-matchem` CLI (`samples`, `formats`, `info`, `render`, `view`, `xrd`, `bands`, `dos`, `cohp`, `neb`, `ptable`, `phonon`). |
 
 ---
 
@@ -147,6 +155,10 @@ xm.plot_spacegroup_distribution({225: 32, 194: 26, 62: 28, 14: 22}, mode="sunbur
 xm.plot_structure_graph("si_diamond.cif", layout="camera", show_cell=True)
 xm.plot_structure_graph("si_diamond.cif", layout="planar")
 xm.plot_scroll_card("Lab Checklist", items=[("Step 1", "Relax cell"), ("Step 2", "Plot in xkcd")], background_grid="ruled")
+
+# Crystal-field splitting, analytical NMR/XPS, and turnkey SciComm templates
+xm.plot_crystal_field("octahedral", d_electrons=6, spin_state="high", delta=1.25)
+ga = xm.create_graphical_abstract(title="Catalyst Design", takeaway="Volcano apex guides *H binding")
 
 # Annotate any plot with aspect-invariant xkcd.com stick scientists
 ax_def = xm.plot_defect_formation({"V_Si": [(2, 2.0), (1, 2.35), (0, 3.05)]})
@@ -247,7 +259,7 @@ All **29 built-in readers** work with zero extra dependencies beyond NumPy, SciP
 | Domain | Built-in Formats |
 | --- | --- |
 | **Molecules & Biomolecules** | XYZ / extXYZ, PDB (`MODEL` + `CONECT`), SDF / MOL (V2000 + stereobonds), MOL2 |
-| **Crystals & Periodic DFT** | VASP (`POSCAR`, `CONTCAR`, `XDATCAR`, `DOSCAR`, `EIGENVAL`, `PROCAR`, `CHGCAR`, `LOCPOT`, `AECCAR0`/`2`), LOBSTER (`COHPCAR.lobster`, `COOPCAR.lobster`), CIF (multi-block + 61-group ITA symmetry with Origin Choice 1/2 for `Fd-3m`), Phonopy (`band.yaml`), Quantum ESPRESSO (`pw.in`, `pw.out`, `bands.dat`, `dos.dat`), CP2K `.ener`, xTB `.out` |
+| **Crystals & Periodic DFT** | VASP (`POSCAR`, `CONTCAR`, `XDATCAR`, `DOSCAR`, `EIGENVAL`, `PROCAR`, `CHGCAR`, `LOCPOT`, `AECCAR0`/`2`), LOBSTER (`COHPCAR.lobster`, `COOPCAR.lobster`), CIF (multi-block + 62-group ITA symmetry with Origin Choice 1/2 for `Fd-3m`), Phonopy (`band.yaml`), Quantum ESPRESSO (`pw.in`, `pw.out`, `bands.dat`, `dos.dat`), CP2K `.ener`, xTB `.out` |
 | **Molecular Dynamics** | LAMMPS data & `.lammpstrj` (orthogonal + triclinic), GROMACS `.gro` & `.xvg` |
 | **Quantum Chem & Grids** | Gaussian `.cube`, `.gjf`, `.log`, `.fchk`, ORCA `.inp`, `.out` |
 
@@ -279,11 +291,11 @@ xkcd-matchem/
 │   ├── data/                # Verified scientific tables, spacegroups, samples, fonts & HTML
 │   │   ├── elements.py      #   CODATA 2022, 118-element IUPAC/CIAAW/BODR/Alvarez/Mantina table
 │   │   ├── scattering.py    #   Cromer-Mann (LA-3816) + exact H 1s form factors
-│   │   ├── spacegroups.py   #   Generator-closure ITA symmetry table (61 space groups, Origin 1/2 for Fd-3m)
+│   │   ├── spacegroups.py   #   Generator-closure ITA symmetry table (62 space groups, Origin 1/2 for Fd-3m)
 │   │   ├── samples_registry.py # Registry and lookup helpers for the 17 bundled sample datasets
 │   │   ├── samples/         #   17 ready-to-run molecules, crystals, DFT, LOBSTER, MD, Phonopy & cube files
 │   │   ├── fonts/           #   Bundled `xkcd Script` (CC BY-NC 3.0) + `Patrick Hand` / `Comic Neue` (OFL)
-│   │   └── templates/       #   Offline HTML5/Canvas/SVG template (`viewer.html`) for 3D Studio
+│   │   └── templates/       #   Offline HTML5/Canvas/SVG template (`viewer.html`) with 9-scene Quick Switcher
 │   ├── io/                  # Format auto-detection, 29 native parsers & optional adapters
 │   │   ├── loader.py        #   Unified `load()`, `load_trajectory()`, `save()`
 │   │   ├── native/          #   Zero-dependency VASP, LOBSTER, Phonopy, CIF, QE, XYZ, PDB, SDF, LAMMPS, ...
@@ -300,11 +312,13 @@ xkcd-matchem/
 │   │   ├── structure2d.py   #   2D skeletal molecular renderer with stereobonds & inward ring bonds
 │   │   ├── callouts.py      #   Element legends, curved arrows, distance/angle & defect callouts
 │   │   ├── icons.py         #   16 vector MatChem icons & element badges
-│   │   └── interactive.py   #   Jupyter & standalone HTML exporter (frames, CUBE orbitals, vectors)
+│   │   └── interactive.py   #   Jupyter & standalone HTML exporter (9 curated scenes, frames, CUBE orbitals, vectors)
 │   ├── plots/               # High-level one-line domain plotters
 │   │   ├── structure.py     #   `plot_molecule`, `plot_crystal`, `plot_slab`, `plot_coordination`
 │   │   ├── electronic.py    #   `plot_bands`, `plot_cohp`, `plot_dos`, `plot_bands_dos`, `plot_mo_diagram`, `plot_volumetric_slice`, `plot_isosurface`, `plot_phonon_bands`
-│   │   ├── spectroscopy.py  #   `plot_spectrum`, `plot_xrd`
+│   │   ├── crystalfield.py  #   `plot_crystal_field` (octahedral, tetrahedral, square-planar, TBP & custom)
+│   │   ├── electrochem.py   #   `plot_cyclic_voltammetry`, `plot_tafel`, `plot_battery_profile`, `plot_dqdv`
+│   │   ├── spectroscopy.py  #   `plot_spectrum`, `plot_nmr` (multiplet trees), `plot_xps` (Shirley BG), `plot_xrd`
 │   │   ├── reactions.py     #   `plot_reaction_profile`, `plot_reaction_scheme`, `plot_neb`
 │   │   ├── trajectory.py    #   `plot_md_timeseries` (rmsd/energy/temp/pressure), `plot_rmsd`, `plot_rdf`, `animate_trajectory`
 │   │   ├── thermo.py        #   `plot_phase_diagram_2d`, `plot_eos`, `plot_pourbaix`, `plot_volcano`, `plot_defect_formation`
@@ -312,30 +326,34 @@ xkcd-matchem/
 │   │   ├── materials.py     #   `plot_ternary_phase_diagram`, `plot_spacegroup_distribution`, `plot_histogram`, `plot_wulff_shape`, `plot_brillouin_zone`
 │   │   ├── graphs.py        #   `plot_graph_network`, `plot_structure_graph` (3D camera & flat 2D planar)
 │   │   └── charts.py        #   `plot_parity`, `plot_bar_comparison`, `plot_pipeline_diagram`
-│   └── layout/              # Opt-in poster boards, comic strips, parchment scrolls & export
+│   └── layout/              # Opt-in poster boards, SciComm templates, comics, scrolls & export
 │       ├── canvas.py        #   `Board` (`board.save(..., exact_mm=True)`), `Container`, `Card`, `Badge` (mm coords)
+│       ├── templates.py     #   `create_graphical_abstract`, `create_talk_slide`, `create_conference_poster`, `create_mechanism_comic`
 │       ├── comic.py         #   `ComicPanel`, `ComicStrip`, `draw_speech_bubble`, `draw_stick_scientist`, `plot_comic_strip`
 │       ├── scroll.py        #   Portrait & landscape vintage parchment `ScrollCard` templates
 │       └── export.py        #   `save_figure()` (PNG, SVG, PDF)
-├── book/                    # Jupyter Book documentation (13 executable tutorials + reference + 3D playground)
-│   ├── tutorials/           #   Step-by-step notebooks `01_...` through `13_...`
+├── book/                    # Jupyter Book documentation (14 executable tutorials + reference + 3D playground)
+│   ├── tutorials/           #   Step-by-step notebooks `01_...` through `14_...`
 │   ├── reference/           #   API reference, supported formats & scientific attributions
 │   └── _static/             #   Generated gallery PNGs/GIFs & embedded `interactive_studio.html`
 ├── scripts/
 │   └── generate_gallery.py  # Reproduces every gallery PNG, GIF, and the offline 3D Studio HTML
-└── tests/                   # Pytest unit, visual smoke & Google-style AST compliance tests
+├── tests/                   # Pytest unit, visual smoke & Google-style AST compliance tests
+├── CONTRIBUTING.md          # Local setup, 6 SciViz Design Pillars, lint/test/docs checklists
+└── SECURITY.md              # Supported versions, private vulnerability reporting & offline guarantees
 ```
 
 ### Quick Navigation Guide
 
 | If you want to… | Start here |
 | :--- | :--- |
-| **Learn by runnable examples** | Open [`book/tutorials/`](book/tutorials/) (`01`–`04` & `06` for basics; `05`, `07`–`13` for advanced topics) |
-| **Spin crystals right in a browser** | Open [`book/_static/interactive_studio.html`](book/_static/interactive_studio.html) or run `xm.view_structure("tio2_slab.poscar")` |
+| **Learn by runnable examples** | Open [`book/tutorials/`](book/tutorials/) (`01`–`04` & `06` for basics; `05`, `07`–`14` for advanced topics) |
+| **Spin crystals right in a browser** | Open [`book/_static/interactive_studio.html`](book/_static/interactive_studio.html) or run `xm.view_structure("water_homo.cube", iso_shade="crosshatch")` |
 | **Look up a plotting function** | See [`book/reference/api.md`](book/reference/api.md) or browse [`src/xkcd_matchem/plots/`](src/xkcd_matchem/plots/) |
 | **Check file parser rules or add a reader** | See [`book/reference/supported_formats.md`](book/reference/supported_formats.md) and [`src/xkcd_matchem/io/native/`](src/xkcd_matchem/io/native/) |
 | **Tweak themes, fonts, grids, or hatching** | Edit [`src/xkcd_matchem/style/`](src/xkcd_matchem/style/) (`theme.py`, `fonts.py`, `palettes.py`, `patterns.py`) |
 | **Inspect 3D geometry, bonds, or Miller math** | Check [`src/xkcd_matchem/core/`](src/xkcd_matchem/core/) (`geometry.py`, `neighbors.py`, `bonding.py`) and [`src/xkcd_matchem/render/`](src/xkcd_matchem/render/) |
+| **Contribute code or report a security issue** | Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`SECURITY.md`](SECURITY.md) |
 | **Regenerate all gallery PNGs & GIFs** | Run `python scripts/generate_gallery.py` |
 | **Run linters, tests, and docs locally** | `ruff check . --no-cache && pylint src/xkcd_matchem && mypy src/xkcd_matchem && pytest --cov=xkcd_matchem --cov-fail-under=90 && jupyter-book build book/ -W` |
 
@@ -343,7 +361,7 @@ xkcd-matchem/
 
 ## How to Cite
 
-If `xkcd-matchem` helps you create a poster, lecture slide, tutorial, or outreach figure, please cite it using [`CITATION.cff`](CITATION.cff) (or GitHub's *"Cite this repository"* button; a Zenodo archive DOI can be added upon public release):
+If `xkcd-matchem` helps you create a poster, lecture slide, tutorial, or outreach figure, please cite it using [`CITATION.cff`](CITATION.cff) (or GitHub's *"Cite this repository"* button, and a Zenodo archive DOI can be added upon public release):
 
 > Ordillo, V. (2026). *xkcd-matchem: An xkcd-Style Visualization Suite for Chemistry and Materials Science Communication* (Version 0.1.0) [Computer software]. https://github.com/vzordillo/xkcd-matchem
 

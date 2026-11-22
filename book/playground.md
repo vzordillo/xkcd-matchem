@@ -2,13 +2,31 @@
 
 Explore molecules, crystals, slabs, coordination polyhedra, multi-frame trajectories, and 3D orbital isosurfaces directly in your browser — **completely offline, with no Python server or Binder wait time**.
 
+The studio opens right away on a cross-hatched **Water HOMO 3D Orbital** (`water_homo.cube`) and includes a **9-Scene Quick Scene Switcher** along the top bar plus a 1-click **8-Mode Ink Shading** pill bar whenever an orbital isosurface is loaded.
+
 ## Try This in 30 Seconds
 
-1. **Orbit & zoom:** Drag on the canvas to rotate (`Shift + Drag` to roll, scroll wheel to zoom).
-2. **Snap to crystal axes:** Click **Iso**, **Persp**, **Front**, **Side**, **Top**, or crystallographic **`a`, `b`, `c`, `a*`, `b*`, `c*`** along the top bar — or click **Reset** (shortcut **`R`**) to return to the starting view, and press **`Space`** to play/pause trajectories.
-3. **Make it yours:** Switch rendering styles (`ball_and_stick`, `spacefill`, `stick`, `polyhedra`), toggle **Bonds**, **Boundary**, **Center**, **Legend**, **Vectors**, or **Isosurface** (with all 8 **Iso Shading** pen-and-ink styles), tile up to `3x3x3` supercells (`na`, `nb`, `nc`), recolor any element with the swatch pickers, swap **White** / **Paper** / **Chalk** backgrounds, or adjust the **xkcd Wiggle** slider.
+1. **Switch curated scenes in one click:** Use the **Quick Scene Switcher** pills across the top (synced with the scene dropdown) to jump immediately between 3D orbitals, $\text{TiO}_2$ coordination polyhedra, an animated 9-frame $\text{S}_\text{N}2$ NEB reaction path, aspirin, layered $2\text{H-MoS}_2$, silicon, NaCl, benzene, and alanine dipeptide.
+2. **Orbit, zoom & snap to crystal axes:** Drag on the canvas to rotate (`Shift + Drag` to roll, scroll wheel to zoom), or click **Iso**, **Persp**, **Front**, **Side**, **Top**, or crystallographic **`a`, `b`, `c`, `a*`, `b*`, `c*`** — press **`R`** to reset the camera and **`Space`** to play/pause trajectories.
+3. **Explore pen-and-ink shading & styles:** On orbital scenes, click any of the 8 **Ink Shading** pills (`solid`, `hatch`, `crosshatch`, `contour`, `cross_contour`, `stipple`, `scumble`, `outline`). Switch rendering styles (`ball_and_stick`, `spacefill`, `stick`, `polyhedra`), toggle **Bonds**, **Boundary**, **Center**, **Legend**, **Vectors**, or **Isosurface**, tile up to `3x3x3` supercells (`na`, `nb`, `nc`), recolor any element with the swatch pickers, swap **White** / **Paper** / **Chalk** backgrounds, or tune the **xkcd Wiggle** slider.
 4. **Load your own structure:** Click **Open Structure File** to preview a local `.xyz`, `POSCAR`/`.vasp`, `.cif`, `.sdf`/`.mol`, or `.pdb` file right in the browser (files stay completely local on your machine).
 5. **Take it back to Python:** Click **Copy Python** for the exact `xkcd_matchem` script matching your current camera and colors, or click **Download PNG** / **Download SVG** immediately.
+
+## Curated 9-Scene Quick Switcher Lineup
+
+Built automatically via `xm.render.interactive.build_playground_scenes()` (and embedded whenever `export_interactive_html(..., include_bundled_samples=True)` is called):
+
+| # | Scene | Category | Highlights to Try |
+| :---: | :--- | :--- | :--- |
+| 1 | **Water HOMO 3D Orbital** (`water_homo.cube`) | 3D Orbitals | Default scene; switch across all 8 pen-and-ink **Ink Shading** modes |
+| 2 | **TiO2 (110) Octahedra** (`tio2_slab.poscar`) | Crystals & Slabs | Depth-sorted $\text{TiO}_6$ coordination polyhedra (`polyhedra` style) |
+| 3 | **SN2 Reaction Path** (`sn2_neb.xyz`) | Reactions & MD | Press **`Space`** or **Play** to scrub all 9 climbing-image NEB frames |
+| 4 | **Aspirin Molecule** (`aspirin.xyz`) | Molecules | Try `spacefill` van der Waals spheres or custom atom swatch colors |
+| 5 | **2H-MoS2 Monolayer** (`mos2_2h.poscar`) | Crystals & Slabs | Tile a `2x2x1` supercell and snap to **`c`** (top) vs. **`a`** (side) |
+| 6 | **Silicon Diamond Cell** (`si_diamond.cif`) | Crystals & Slabs | Toggle **Boundary** and crystallographic **`a`, `b`, `c`** axes |
+| 7 | **Rock-Salt NaCl** (`nacl.cif`) | Crystals & Slabs | Toggle **Bonds** off for a pure bond-free ionic lattice view |
+| 8 | **Benzene Ring** (`benzene.sdf`) | Molecules | Inspect explicit alternating aromatic bond orders |
+| 9 | **Alanine Dipeptide** (`alaninedipeptide.pdb`) | Biomolecules | Orbit a blocked peptide backbone parsed from PDB `CONECT` records |
 
 <div style="margin: 1rem 0;">
   <p>
