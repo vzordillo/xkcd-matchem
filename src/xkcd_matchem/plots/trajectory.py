@@ -31,7 +31,6 @@ from xkcd_matchem.core import structure
 from xkcd_matchem.core import trajectory
 from xkcd_matchem.io import loader
 from xkcd_matchem.render import structure3d
-from xkcd_matchem.style import palettes
 from xkcd_matchem.style import theme
 
 
@@ -78,6 +77,7 @@ def plot_md_timeseries(
             f"Unsupported MD quantity {quantity!r}."
         )
 
+    preset_obj = theme.get_preset(preset)
     sw = theme.stroke_weights(preset)
     has_smooth = 1 < running_window <= len(ys)
     with theme.xkcd_style(preset=preset):
@@ -111,7 +111,7 @@ def plot_md_timeseries(
         ax.set_ylabel(y_label)
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
-            ax.set_title(title)
+            ax.set_title(title, color=preset_obj.ink_color)
     return ax
 
 
@@ -145,7 +145,10 @@ def plot_rdf(
         ax.plot(r_arr, g_arr, color=color, lw=sw.primary)
         ax.fill_between(r_arr, 0.0, g_arr, color=color, alpha=0.18)
         g_line = ax.axhline(
-            1.0, color=palettes.MUTED_GRAY, linestyle="--", lw=sw.guide
+            1.0,
+            color=theme.guide_color(preset_obj),
+            linestyle="--",
+            lw=sw.guide,
         )
         g_line.set_sketch_params(0.0, 0.0, 0.0)
         if len(g_arr) > 0 and len(r_arr) >= 2:
@@ -183,7 +186,7 @@ def plot_rdf(
         ax.set_ylabel("$g(r)$")
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
-            ax.set_title(title)
+            ax.set_title(title, color=ink_col)
     return ax
 
 
@@ -197,6 +200,7 @@ def plot_rmsd(
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots a precomputed RMSD curve vs simulation time."""
+    preset_obj = theme.get_preset(preset)
     sw = theme.stroke_weights(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
@@ -208,7 +212,7 @@ def plot_rmsd(
         ax.set_ylabel("RMSD ($\\mathrm{\\AA}$)")
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
-            ax.set_title(title)
+            ax.set_title(title, color=preset_obj.ink_color)
     return ax
 
 
@@ -330,6 +334,9 @@ def animate_trajectory(
             def _update(seq_pos: int) -> tuple[()]:
                 frame_idx = seq_indices[seq_pos]
                 ax.clear()
+                fig.patch.set_facecolor(preset_obj.figure_facecolor)
+                fig.patch.set_edgecolor(preset_obj.figure_facecolor)
+                fig.patch.set_sketch_params(0.0, 0.0, 0.0)
                 ax.set_facecolor(preset_obj.axes_facecolor)
                 ax.patch.set_sketch_params(0.0, 0.0, 0.0)
                 structure3d.render_structure_3d(
@@ -340,6 +347,8 @@ def animate_trajectory(
                     show_cell=show_cell,
                     show_hbonds=show_hbonds,
                 )
+                for ax_item in fig.get_axes():
+                    ax_item.patch.set_sketch_params(0.0, 0.0, 0.0)
                 ax.set_xlim(viewport[0], viewport[1])
                 ax.set_ylim(viewport[2], viewport[3])
                 ax.set_aspect("equal", adjustable="box")
@@ -356,7 +365,15 @@ def animate_trajectory(
                 interval=int(1000 / max(1, fps)),
             )
             writer = animation.PillowWriter(fps=fps)
-            anim.save(str(out), writer=writer, dpi=dpi)
+            anim.save(
+                str(out),
+                writer=writer,
+                dpi=dpi,
+                savefig_kwargs={
+                    "facecolor": preset_obj.figure_facecolor,
+                    "edgecolor": preset_obj.figure_facecolor,
+                },
+            )
         finally:
             plt.close(fig)
     return out

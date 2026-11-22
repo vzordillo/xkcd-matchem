@@ -59,12 +59,18 @@ def _require_pillow() -> Any:
 
 def _figure_to_pil(fig: mfigure.Figure, dpi: int, pil_image: Any) -> Any:
     """Rasterizes a Matplotlib figure into an RGB ``PIL.Image`` frame."""
+    bg_col = fig.get_facecolor()
+    fig.patch.set_edgecolor(bg_col)
+    fig.patch.set_sketch_params(0.0, 0.0, 0.0)
+    for ax_item in fig.get_axes():
+        ax_item.patch.set_sketch_params(0.0, 0.0, 0.0)
     buf = io.BytesIO()
     fig.savefig(
         buf,
         format="png",
         dpi=dpi,
-        facecolor=fig.get_facecolor(),
+        facecolor=bg_col,
+        edgecolor=bg_col,
     )
     buf.seek(0)
     with pil_image.open(buf) as img:
@@ -254,6 +260,7 @@ def _render_orbit_frame(
             fig.patch.set_facecolor(preset_obj.figure_facecolor)
             fig.patch.set_edgecolor(preset_obj.figure_facecolor)
             fig.patch.set_sketch_params(0.0, 0.0, 0.0)
+            ax.set_facecolor(preset_obj.axes_facecolor)
             ax.patch.set_sketch_params(0.0, 0.0, 0.0)
             structure3d.render_structure_3d(
                 atoms,

@@ -28,7 +28,6 @@ import numpy as np
 
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.data import elements
-from xkcd_matchem.render import primitives
 from xkcd_matchem.style import patterns
 from xkcd_matchem.style import theme
 
@@ -235,13 +234,18 @@ def _draw_single_tile(
     col, row = _tile_coords(rec)
     x0 = col - 0.44
     y0 = row - 0.44
+    hatch_edge = (
+        theme.blend_colors(fill_color, ink_col, 0.24)
+        if theme.is_dark_background(fill_color)
+        else "#94A3B8"
+    )
     tile = patches.FancyBboxPatch(
         (x0, y0),
         0.88,
         0.88,
         boxstyle="round,pad=0.02,rounding_size=0.10",
         facecolor=fill_color,
-        edgecolor="#94A3B8" if hatch else ink_col,
+        edgecolor=hatch_edge if hatch else ink_col,
         linewidth=linewidth,
         hatch=hatch,
         zorder=2.5,
@@ -262,11 +266,10 @@ def _draw_single_tile(
                 zorder=2.8,
             )
         )
-    txt_col = (
-        primitives.ensure_readable_text_color(ink_col, fill_color)
-        if hatch
-        else primitives.contrast_text_color(mcolors.to_hex(fill_color))
-    )
+    if hatch and theme.wcag_contrast_ratio(ink_col, fill_color) >= 4.5:
+        txt_col = ink_col
+    else:
+        txt_col = theme.best_contrast_text(mcolors.to_hex(fill_color))
     if show_numbers:
         ax.text(
             x0 + 0.07,
@@ -279,16 +282,11 @@ def _draw_single_tile(
             zorder=4.0,
         )
     sym_bbox = (
-        {
-            "boxstyle": "round,pad=0.08",
-            "facecolor": fill_color,
-            "edgecolor": "none",
-            "alpha": 0.88,
-        }
+        theme.label_halo_bbox(fill_color, pad=0.08, alpha=0.88)
         if hatch
         else None
     )
-    ax.text(
+    sym_txt = ax.text(
         col,
         row - 0.02,
         rec.symbol,
@@ -299,6 +297,9 @@ def _draw_single_tile(
         bbox=sym_bbox,
         zorder=4.0,
     )
+    sym_patch = sym_txt.get_bbox_patch()
+    if sym_patch is not None:
+        sym_patch.set_sketch_params(0.0, 0.0, 0.0)
     if sub_text:
         ax.text(
             col,
@@ -384,7 +385,7 @@ def _draw_ptable_chrome(ax: maxes.Axes, ink_col: str) -> None:
             va="center",
             fontsize=8.5,
             color=ink_col,
-            alpha=0.75,
+            alpha=0.85,
         )
     for p in range(1, 8):
         ax.text(
@@ -395,7 +396,7 @@ def _draw_ptable_chrome(ax: maxes.Axes, ink_col: str) -> None:
             va="center",
             fontsize=8.5,
             color=ink_col,
-            alpha=0.75,
+            alpha=0.85,
         )
     for y_pos, tag in ((8.45, "La-Lu"), (9.55, "Ac-Lr")):
         ax.text(
@@ -505,12 +506,17 @@ def plot_periodic_table(
 
     preset_obj = theme.get_preset(preset)
     ink_col = preset_obj.ink_color
-    muted_bg = primitives.muted_surface_color(preset_obj.axes_facecolor)
+    muted_bg = (
+        theme.blend_colors(preset_obj.axes_facecolor, "#FFFFFF", 0.11)
+        if theme.is_dark_background(preset_obj.axes_facecolor)
+        else "#EAECEF"
+    )
     missing_hatch = patterns.resolve_hatch(missing_shade)
 
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(14.5, 7.6))
+            theme.prepare_figure_canvas(ax, preset=preset_obj)
         else:
             theme.style_existing_axes(ax, preset=preset)
         if background_grid:
