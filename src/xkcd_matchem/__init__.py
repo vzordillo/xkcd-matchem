@@ -49,15 +49,18 @@ if TYPE_CHECKING:
     CohpData = core.CohpData
     ComicPanel = layout.ComicPanel
     ComicStrip = layout.ComicStrip
+    ConferencePosterLayout = layout.ConferencePosterLayout
     Container = layout.Container
     CoordinationPolyhedron = core.CoordinationPolyhedron
     DensityOfStates = core.DensityOfStates
     ELEMENTS_BY_SYMBOL = data.ELEMENTS_BY_SYMBOL
     ELEMENTS_BY_Z = data.ELEMENTS_BY_Z
     ElementRecord = data.ElementRecord
+    GraphicalAbstractLayout = layout.GraphicalAbstractLayout
     InteractiveView = render.InteractiveView
     IsosurfaceMesh = core.IsosurfaceMesh
     MatchemError = core.MatchemError
+    MechanismComicLayout = layout.MechanismComicLayout
     MolecularOrbitals = core.MolecularOrbitals
     NeighborHit = core.NeighborHit
     OKABE_ITO = style.OKABE_ITO
@@ -73,6 +76,7 @@ if TYPE_CHECKING:
     StrokeHierarchy = style.StrokeHierarchy
     StructureError = core.StructureError
     StyleError = core.StyleError
+    TalkSlideLayout = layout.TalkSlideLayout
     ThemePreset = style.ThemePreset
     Trajectory = core.Trajectory
     UnsupportedFormatError = core.UnsupportedFormatError
@@ -90,6 +94,10 @@ if TYPE_CHECKING:
     compute_brillouin_zone = core.compute_brillouin_zone
     compute_wulff_shape = core.compute_wulff_shape
     compute_xrd = core.compute_xrd
+    create_conference_poster = layout.create_conference_poster
+    create_graphical_abstract = layout.create_graphical_abstract
+    create_mechanism_comic = layout.create_mechanism_comic
+    create_talk_slide = layout.create_talk_slide
     draw_callout = render.draw_callout
     draw_crystal_axes = render.draw_crystal_axes
     draw_curved_arrow = render.draw_curved_arrow
@@ -138,13 +146,17 @@ if TYPE_CHECKING:
     plot_bands = plots.plot_bands
     plot_bands_dos = plots.plot_bands_dos
     plot_bar_comparison = plots.plot_bar_comparison
+    plot_battery_profile = plots.plot_battery_profile
     plot_brillouin_zone = plots.plot_brillouin_zone
     plot_cohp = plots.plot_cohp
     plot_comic_strip = layout.plot_comic_strip
     plot_coordination = plots.plot_coordination
     plot_crystal = plots.plot_crystal
+    plot_crystal_field = plots.plot_crystal_field
+    plot_cyclic_voltammetry = plots.plot_cyclic_voltammetry
     plot_defect_formation = plots.plot_defect_formation
     plot_dos = plots.plot_dos
+    plot_dqdv = plots.plot_dqdv
     plot_eos = plots.plot_eos
     plot_graph_network = plots.plot_graph_network
     plot_histogram = plots.plot_histogram
@@ -154,6 +166,7 @@ if TYPE_CHECKING:
     plot_mo_diagram = plots.plot_mo_diagram
     plot_molecule = plots.plot_molecule
     plot_neb = plots.plot_neb
+    plot_nmr = plots.plot_nmr
     plot_parity = plots.plot_parity
     plot_periodic_table = plots.plot_periodic_table
     plot_phase_diagram_2d = plots.plot_phase_diagram_2d
@@ -169,10 +182,12 @@ if TYPE_CHECKING:
     plot_spacegroup_distribution = plots.plot_spacegroup_distribution
     plot_spectrum = plots.plot_spectrum
     plot_structure_graph = plots.plot_structure_graph
+    plot_tafel = plots.plot_tafel
     plot_ternary_phase_diagram = plots.plot_ternary_phase_diagram
     plot_volcano = plots.plot_volcano
     plot_volumetric_slice = plots.plot_volumetric_slice
     plot_wulff_shape = plots.plot_wulff_shape
+    plot_xps = plots.plot_xps
     plot_xrd = plots.plot_xrd
     read_cif_all = cif.read_cif_all
     read_cohpcar = lobster.read_cohpcar
@@ -218,15 +233,18 @@ __all__ = [
     "CohpData",
     "ComicPanel",
     "ComicStrip",
+    "ConferencePosterLayout",
     "Container",
     "CoordinationPolyhedron",
     "DensityOfStates",
     "ELEMENTS_BY_SYMBOL",
     "ELEMENTS_BY_Z",
     "ElementRecord",
+    "GraphicalAbstractLayout",
     "InteractiveView",
     "IsosurfaceMesh",
     "MatchemError",
+    "MechanismComicLayout",
     "MolecularOrbitals",
     "NeighborHit",
     "OKABE_ITO",
@@ -242,6 +260,7 @@ __all__ = [
     "StrokeHierarchy",
     "StructureError",
     "StyleError",
+    "TalkSlideLayout",
     "ThemePreset",
     "Trajectory",
     "UnsupportedFormatError",
@@ -261,6 +280,10 @@ __all__ = [
     "compute_wulff_shape",
     "compute_xrd",
     "core",
+    "create_conference_poster",
+    "create_graphical_abstract",
+    "create_mechanism_comic",
+    "create_talk_slide",
     "data",
     "draw_callout",
     "draw_crystal_axes",
@@ -312,13 +335,17 @@ __all__ = [
     "plot_bands",
     "plot_bands_dos",
     "plot_bar_comparison",
+    "plot_battery_profile",
     "plot_brillouin_zone",
     "plot_cohp",
     "plot_comic_strip",
     "plot_coordination",
     "plot_crystal",
+    "plot_crystal_field",
+    "plot_cyclic_voltammetry",
     "plot_defect_formation",
     "plot_dos",
+    "plot_dqdv",
     "plot_eos",
     "plot_graph_network",
     "plot_histogram",
@@ -328,6 +355,7 @@ __all__ = [
     "plot_mo_diagram",
     "plot_molecule",
     "plot_neb",
+    "plot_nmr",
     "plot_parity",
     "plot_periodic_table",
     "plot_phase_diagram_2d",
@@ -343,10 +371,12 @@ __all__ = [
     "plot_spacegroup_distribution",
     "plot_spectrum",
     "plot_structure_graph",
+    "plot_tafel",
     "plot_ternary_phase_diagram",
     "plot_volcano",
     "plot_volumetric_slice",
     "plot_wulff_shape",
+    "plot_xps",
     "plot_xrd",
     "plots",
     "read_cif_all",
@@ -410,15 +440,18 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "CohpData": (_CORE, "CohpData"),
     "ComicPanel": (_LAYOUT, "ComicPanel"),
     "ComicStrip": (_LAYOUT, "ComicStrip"),
+    "ConferencePosterLayout": (_LAYOUT, "ConferencePosterLayout"),
     "Container": (_LAYOUT, "Container"),
     "CoordinationPolyhedron": (_CORE, "CoordinationPolyhedron"),
     "DensityOfStates": (_CORE, "DensityOfStates"),
     "ELEMENTS_BY_SYMBOL": (_DATA, "ELEMENTS_BY_SYMBOL"),
     "ELEMENTS_BY_Z": (_DATA, "ELEMENTS_BY_Z"),
     "ElementRecord": (_DATA, "ElementRecord"),
+    "GraphicalAbstractLayout": (_LAYOUT, "GraphicalAbstractLayout"),
     "InteractiveView": (_RENDER, "InteractiveView"),
     "IsosurfaceMesh": (_CORE, "IsosurfaceMesh"),
     "MatchemError": (_CORE, "MatchemError"),
+    "MechanismComicLayout": (_LAYOUT, "MechanismComicLayout"),
     "MolecularOrbitals": (_CORE, "MolecularOrbitals"),
     "NeighborHit": (_CORE, "NeighborHit"),
     "OKABE_ITO": (_STYLE, "OKABE_ITO"),
@@ -434,6 +467,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "StrokeHierarchy": (_STYLE, "StrokeHierarchy"),
     "StructureError": (_CORE, "StructureError"),
     "StyleError": (_CORE, "StyleError"),
+    "TalkSlideLayout": (_LAYOUT, "TalkSlideLayout"),
     "ThemePreset": (_STYLE, "ThemePreset"),
     "Trajectory": (_CORE, "Trajectory"),
     "UnsupportedFormatError": (_CORE, "UnsupportedFormatError"),
@@ -454,6 +488,10 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "compute_brillouin_zone": (_CORE, "compute_brillouin_zone"),
     "compute_wulff_shape": (_CORE, "compute_wulff_shape"),
     "compute_xrd": (_CORE, "compute_xrd"),
+    "create_conference_poster": (_LAYOUT, "create_conference_poster"),
+    "create_graphical_abstract": (_LAYOUT, "create_graphical_abstract"),
+    "create_mechanism_comic": (_LAYOUT, "create_mechanism_comic"),
+    "create_talk_slide": (_LAYOUT, "create_talk_slide"),
     "draw_callout": (_RENDER, "draw_callout"),
     "draw_crystal_axes": (_RENDER, "draw_crystal_axes"),
     "draw_curved_arrow": (_RENDER, "draw_curved_arrow"),
@@ -502,13 +540,17 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "plot_bands": (_PLOTS, "plot_bands"),
     "plot_bands_dos": (_PLOTS, "plot_bands_dos"),
     "plot_bar_comparison": (_PLOTS, "plot_bar_comparison"),
+    "plot_battery_profile": (_PLOTS, "plot_battery_profile"),
     "plot_brillouin_zone": (_PLOTS, "plot_brillouin_zone"),
     "plot_cohp": (_PLOTS, "plot_cohp"),
     "plot_comic_strip": (_LAYOUT, "plot_comic_strip"),
     "plot_coordination": (_PLOTS, "plot_coordination"),
     "plot_crystal": (_PLOTS, "plot_crystal"),
+    "plot_crystal_field": (_PLOTS, "plot_crystal_field"),
+    "plot_cyclic_voltammetry": (_PLOTS, "plot_cyclic_voltammetry"),
     "plot_defect_formation": (_PLOTS, "plot_defect_formation"),
     "plot_dos": (_PLOTS, "plot_dos"),
+    "plot_dqdv": (_PLOTS, "plot_dqdv"),
     "plot_eos": (_PLOTS, "plot_eos"),
     "plot_graph_network": (_PLOTS, "plot_graph_network"),
     "plot_histogram": (_PLOTS, "plot_histogram"),
@@ -518,6 +560,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "plot_mo_diagram": (_PLOTS, "plot_mo_diagram"),
     "plot_molecule": (_PLOTS, "plot_molecule"),
     "plot_neb": (_PLOTS, "plot_neb"),
+    "plot_nmr": (_PLOTS, "plot_nmr"),
     "plot_parity": (_PLOTS, "plot_parity"),
     "plot_periodic_table": (_PLOTS, "plot_periodic_table"),
     "plot_phase_diagram_2d": (_PLOTS, "plot_phase_diagram_2d"),
@@ -533,10 +576,12 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "plot_spacegroup_distribution": (_PLOTS, "plot_spacegroup_distribution"),
     "plot_spectrum": (_PLOTS, "plot_spectrum"),
     "plot_structure_graph": (_PLOTS, "plot_structure_graph"),
+    "plot_tafel": (_PLOTS, "plot_tafel"),
     "plot_ternary_phase_diagram": (_PLOTS, "plot_ternary_phase_diagram"),
     "plot_volcano": (_PLOTS, "plot_volcano"),
     "plot_volumetric_slice": (_PLOTS, "plot_volumetric_slice"),
     "plot_wulff_shape": (_PLOTS, "plot_wulff_shape"),
+    "plot_xps": (_PLOTS, "plot_xps"),
     "plot_xrd": (_PLOTS, "plot_xrd"),
     "read_cif_all": (_NATIVE_CIF, "read_cif_all"),
     "read_cohpcar": (_NATIVE_LOBSTER, "read_cohpcar"),
