@@ -4,7 +4,7 @@ Every figure and animated GIF below is generated automatically by `scripts/gener
 
 ## Animated Motion & Theme Explorer
 
-Looping GIFs are rendered with `xm.animate_trajectory()`, `xm.animate_orbit()`, and `xm.animate_isosurface()` (requires the `animation` extra: `pip install "xkcd-matchem[animation] @ git+https://github.com/vzordillo/xkcd-matchem.git"`, or `pip install -e ".[animation]"` from a local clone) — see [Tutorial 15: Animated GIFs (MD, NEB, Crystal Orbits & 3D Isosurfaces)](tutorials/15_animations_md_orbits_and_isosurfaces.ipynb):
+Looping GIFs are rendered with `xm.animate_trajectory()`, `xm.animate_orbit()`, and `xm.animate_isosurface()` (requires the `animation` extra: `pip install "xkcd-matchem[animation]"`, or `pip install -e ".[animation]"` from a local clone) — see [Tutorial 15: Animated GIFs (MD, NEB, Crystal Orbits & 3D Isosurfaces)](tutorials/15_animations_md_orbits_and_isosurfaces.ipynb):
 
 | 3D Coordination Polyhedra Orbit | Climbing-Image NEB Pathway | Live Theme & Palette Switching |
 | :---: | :---: | :---: |
