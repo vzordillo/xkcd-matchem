@@ -319,7 +319,7 @@ def read_eigenval(
             else:
                 has_occ = False
             cursor += 1
-    diffs = np.diff(k_coords, axis=0)
+    diffs: np.ndarray = np.diff(k_coords, axis=0)
     if cell is not None:
         b_mat = (
             2.0 * np.pi * np.linalg.inv(np.asarray(cell, dtype=np.float64)).T
@@ -379,7 +379,7 @@ def read_chgcar(path: str | pathlib.Path) -> electronic.VolumetricGrid:
     )
     if vals.size < n_vals:
         raise exceptions.ParseError(f"Incomplete VASP grid data in {p}.")
-    data = vals.reshape((nx, ny, nz), order="F")
+    data: np.ndarray = vals.reshape((nx, ny, nz), order="F")
     upper_name = p.name.upper()
     is_potential = "LOCPOT" in upper_name or p.suffix.lower() == ".locpot"
     if not is_potential:
@@ -548,7 +548,7 @@ def read_procar(
     if not spin_blocks:
         raise exceptions.ParseError(f"No PROCAR data blocks found in {p}.")
     k_coords = spin_blocks[0][0]
-    diffs = np.diff(k_coords, axis=0)
+    diffs: np.ndarray = np.diff(k_coords, axis=0)
     if cell is not None:
         b_mat = (
             2.0 * np.pi * np.linalg.inv(np.asarray(cell, dtype=np.float64)).T

@@ -260,7 +260,9 @@ class AtomsData:
         masses = self.atomic_masses()
         total_mass = float(np.sum(masses))
         if total_mass <= 0.0:
-            return np.mean(self.positions, axis=0)
+            return np.asarray(
+                np.mean(self.positions, axis=0), dtype=np.float64
+            )
         return np.asarray(
             (masses[:, None] * self.positions).sum(axis=0) / total_mass,
             dtype=np.float64,
@@ -282,7 +284,9 @@ class AtomsData:
             raise exceptions.StructureError(
                 "Unit cell matrix is singular (zero volume)."
             )
-        return self.positions @ np.linalg.inv(self.cell)
+        return np.asarray(
+            self.positions @ np.linalg.inv(self.cell), dtype=np.float64
+        )
 
     def wrap_positions(self, tol: float = 1e-9) -> AtomsData:
         """Returns a copy with periodic coordinates wrapped into ``[0, 1)``.
@@ -459,6 +463,7 @@ class AtomsData:
         )
         grid_ijk = np.column_stack([ga.ravel(), gb.ravel(), gc.ravel()])
         cell_shifts = grid_ijk.astype(np.float64) @ self.cell
+        new_pos: np.ndarray
         if n_base > 0:
             new_pos = (
                 self.positions[None, :, :] + cell_shifts[:, None, :]
@@ -579,6 +584,7 @@ class AtomsData:
         """Constructs ``AtomsData`` from fractional coords and a cell matrix."""
         cell_arr = np.asarray(cell, dtype=np.float64)
         frac_arr = np.asarray(frac_positions, dtype=np.float64)
+        cart: np.ndarray
         if frac_arr.size == 0 and not symbols:
             cart = np.zeros((0, 3), dtype=np.float64)
         else:

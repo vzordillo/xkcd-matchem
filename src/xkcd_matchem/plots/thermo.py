@@ -339,13 +339,13 @@ def plot_eos(
 def _polygon_centroid(pts: np.ndarray) -> np.ndarray:
     """Computes the exact shoelace area centroid of a 2D polygon."""
     if len(pts) < 3:
-        return np.mean(pts, axis=0)
+        return np.asarray(np.mean(pts, axis=0), dtype=np.float64)
     x, y = pts[:, 0], pts[:, 1]
     x_nxt, y_nxt = np.roll(x, -1), np.roll(y, -1)
     cross = x * y_nxt - x_nxt * y
     area2 = float(np.sum(cross))
     if abs(area2) < 1e-12:
-        return np.mean(pts, axis=0)
+        return np.asarray(np.mean(pts, axis=0), dtype=np.float64)
     cx = float(np.sum((x + x_nxt) * cross)) / (3.0 * area2)
     cy = float(np.sum((y + y_nxt) * cross)) / (3.0 * area2)
     return np.array([cx, cy], dtype=np.float64)

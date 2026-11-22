@@ -135,11 +135,11 @@ def _bar_error_extents(
         return zeros, zeros
     arr = np.asarray(errors, dtype=np.float64)
     if arr.ndim == 0:
-        vec = np.full(n_bars, abs(float(arr)), dtype=np.float64)
-        return vec, vec
+        vec_s = np.full(n_bars, abs(float(arr)), dtype=np.float64)
+        return vec_s, vec_s
     if arr.ndim == 1:
-        vec = np.abs(arr)
-        return vec, vec
+        vec_1d = np.abs(arr)
+        return vec_1d, vec_1d
     return np.abs(arr[0]), np.abs(arr[1])
 
 

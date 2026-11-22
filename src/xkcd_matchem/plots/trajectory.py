@@ -274,7 +274,7 @@ def animate_trajectory(
     with theme.xkcd_style(preset=preset):
         fig, ax = plt.subplots(figsize=(4.8, 4.2))
 
-        def _update(frame_idx: int) -> None:
+        def _update(frame_idx: int) -> tuple[()]:
             ax.clear()
             atoms = selected[frame_idx]
             structure3d.render_structure_3d(
@@ -283,6 +283,7 @@ def animate_trajectory(
             ax.set_xlim(x_lo, x_hi)
             ax.set_ylim(y_lo, y_hi)
             ax.set_title(f"Frame {frame_idx + 1}/{len(selected)}")
+            return ()
 
         anim = animation.FuncAnimation(
             fig, _update, frames=len(selected), interval=int(1000 / max(1, fps))

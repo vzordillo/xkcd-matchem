@@ -206,6 +206,7 @@ def _dos_window_limits(
     xlim: tuple[float, float] | None,
 ) -> tuple[float, float]:
     """Computes DOS axis ``(lo, hi)`` scaled to the visible energy window."""
+    mask: np.ndarray
     if xlim is not None and e_grid.size > 0:
         e_lo = min(float(xlim[0]), float(xlim[1]))
         e_hi = max(float(xlim[0]), float(xlim[1]))

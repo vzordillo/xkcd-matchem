@@ -153,7 +153,7 @@ def broaden_peaks(
         raise exceptions.StructureError(
             f"Unknown lineshape profile {profile!r}."
         )
-    return shape @ amp
+    return np.asarray(shape @ amp, dtype=np.float64)
 
 
 def _structure_factors(
@@ -169,7 +169,7 @@ def _structure_factors(
         if atoms.occupancies is not None
         else np.ones(len(atoms), dtype=np.float64)
     )
-    f_hkl = np.zeros(len(hkl_v), dtype=np.complex128)
+    f_hkl: np.ndarray = np.zeros(len(hkl_v), dtype=np.complex128)
     for sym in sorted(set(atoms.symbols)):
         mask = np.array([s == sym for s in atoms.symbols], dtype=bool)
         phases = 2.0 * math.pi * (hkl_v @ frac[mask].T)

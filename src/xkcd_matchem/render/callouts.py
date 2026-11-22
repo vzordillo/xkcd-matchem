@@ -371,7 +371,7 @@ def draw_defect_site(
       color: Accent color for the defect marker and callout badge.
       label_offset: 2D offset ``(dx, dy)`` in projected coordinates for label.
     """
-    site_arr = np.asarray(site, dtype=np.float64).reshape(1, 3)
+    site_arr: np.ndarray = np.asarray(site, dtype=np.float64).reshape(1, 3)
     if fractional:
         if atoms.cell is None:
             raise ValueError("fractional=True requires atoms.cell.")

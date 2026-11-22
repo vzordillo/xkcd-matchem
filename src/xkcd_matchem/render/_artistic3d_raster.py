@@ -477,6 +477,7 @@ def _composite_single_lobe(
         n_buf[iy_h, ix_h], ly.hex_col, alpha, shade_key, light_dir, half_dir
     )
     atom_xy, atom_depth = atom_ref
+    is_back: np.ndarray
     if atom_xy is not None and atom_depth is not None:
         px_xy = np.column_stack([gs.gx[ix_h], gs.gy[iy_h]])
         near = np.argmin(

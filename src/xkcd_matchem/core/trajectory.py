@@ -108,6 +108,7 @@ class Trajectory:
                 f"Reference frame index {ref_index} out of range."
             )
         n_atoms = len(self.frames[ref_idx])
+        idx_arr: np.ndarray
         if indices is None:
             if n_atoms == 0:
                 raise exceptions.StructureError(
@@ -168,7 +169,10 @@ class Trajectory:
         rots = u_scaled @ vt_all
         aligned = np.einsum("fni,fij->fnj", centered, rots)
         diffs = aligned - ref_centered[None, :, :]
-        return np.sqrt(np.mean(np.sum(diffs * diffs, axis=2), axis=1))
+        return np.asarray(
+            np.sqrt(np.mean(np.sum(diffs * diffs, axis=2), axis=1)),
+            dtype=np.float64,
+        )
 
     def msd(
         self,

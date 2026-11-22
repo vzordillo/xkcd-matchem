@@ -272,6 +272,7 @@ def _project_single_lobe(
     tones = raster.compute_front_tones(
         n_rot[front_mask], light_pair[0], light_pair[1]
     )
+    behind_mask: np.ndarray
     if atom_xy is not None and atom_depth is not None:
         tri_xy = np.mean(tris_2d, axis=1)
         nearest = np.argmin(
