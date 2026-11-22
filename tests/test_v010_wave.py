@@ -509,3 +509,57 @@ def test_sciviz_stroke_hierarchy_and_ink_labels() -> None:
     with pytest.raises(exceptions.StyleError):
         xm.draw_speech_bubble(ax_s, "hi", kind="unknown_kind")
     plt.close(fig_s)
+
+
+def test_isosurface_orthographic_orbit_bounds_and_studio_shades() -> None:
+    """Ensures stipple/scumble/contour stay bounded across orbit angles."""
+    cube = xm.load("water_homo.cube")
+    grid_up = isosurface.upsample_coarse_grid(cube, min_dim=36)
+    max_abs = float(np.max(np.abs(grid_up.data)))
+    level = 0.35 * max_abs
+    meshes = [
+        (isosurface.extract_isosurface(grid_up, level), "#0072B2"),
+        (isosurface.extract_isosurface(grid_up, -level), "#D55E00"),
+    ]
+    cam_90 = geometry.Camera(
+        azimuth=90.0, elevation=35.2643897, perspective=0.0
+    )
+    pivot, _, atom_xy, _ = artistic3d.iso_scene_frame(
+        meshes, grid_up, cam_90
+    )
+    assert atom_xy is not None
+    proj_pts = np.vstack(
+        [
+            geometry.project_points(m.vertices, cam_90, center=pivot)[0]
+            for m, _ in meshes
+        ]
+    )
+    lx0, ly0 = np.min(proj_pts, axis=0)
+    lx1, ly1 = np.max(proj_pts, axis=0)
+
+    for mode in ("stipple", "scumble", "contour", "cross_contour"):
+        ax = xm.plot_isosurface(cube, camera=cam_90, shade=mode)
+        for col in ax.collections:
+            offsets = col.get_offsets()
+            if len(offsets) > 0:
+                xs, ys = offsets[:, 0], offsets[:, 1]
+                assert float(np.min(xs)) >= float(lx0) - 0.05
+                assert float(np.max(xs)) <= float(lx1) + 0.05
+                assert float(np.min(ys)) >= float(ly0) - 0.05
+                assert float(np.max(ys)) <= float(ly1) + 0.05
+        for ln in ax.lines:
+            if float(ln.get_linewidth()) < 1.0:
+                xs = np.asarray(ln.get_xdata(), dtype=np.float64)
+                ys = np.asarray(ln.get_ydata(), dtype=np.float64)
+                assert float(np.min(xs)) >= float(lx0) - 0.05
+                assert float(np.max(xs)) <= float(lx1) + 0.05
+                assert float(np.min(ys)) >= float(ly0) - 0.05
+                assert float(np.max(ys)) <= float(ly1) + 0.05
+        plt.close(ax.figure)
+
+    html_out = interactive.build_interactive_html(
+        cube, iso_shade="cross_contour"
+    )
+    assert 'value="cross_contour"' in html_out
+    assert "cross_contour" in html_out
+    assert "isoShade" in html_out

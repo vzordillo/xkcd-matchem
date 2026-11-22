@@ -355,6 +355,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
           <option value="crosshatch">Cross-Hatching</option>
           <option value="hatch">Hatching</option>
           <option value="contour">Contour Shading</option>
+          <option value="cross_contour">3D Cross-Contour</option>
           <option value="stipple">Stippling</option>
           <option value="scumble">Scumbling / Scribble</option>
           <option value="solid">Smooth Blending</option>
@@ -986,7 +987,132 @@ canvas#xm-canvas:active { cursor: grabbing; }
       }
     }
 
-  function collectIsoLobeArt(iso, pivot, basis, sceneSpan, toScreen) {
+  function computeLobeAxesWorld(verts, positions) {
+    let cx = 0, cy = 0, cz = 0;
+    for (const v of verts) { cx += v[0]; cy += v[1]; cz += v[2]; }
+    const n = Math.max(verts.length, 1);
+    cx /= n; cy /= n; cz /= n;
+    let uAxW = [1, 0, 0];
+    if (positions && positions.length) {
+      let bestD = Infinity, bestP = positions[0];
+      for (const p of positions) {
+        const d = (p[0] - cx) ** 2 + (p[1] - cy) ** 2 + (p[2] - cz) ** 2;
+        if (d < bestD) { bestD = d; bestP = p; }
+      }
+      const vw = [cx - bestP[0], cy - bestP[1], cz - bestP[2]];
+      const ln = norm3(vw);
+      if (ln > 1e-3) uAxW = [vw[0] / ln, vw[1] / ln, vw[2] / ln];
+    }
+    let refW = [0, 0, 1];
+    if (Math.abs(dot3(refW, uAxW)) > 0.92) refW = [0, 1, 0];
+    const d0 = dot3(refW, uAxW);
+    const mw = [refW[0] - d0 * uAxW[0], refW[1] - d0 * uAxW[1], refW[2] - d0 * uAxW[2]];
+    const mn = norm3(mw) || 1;
+    const uMerW = [mw[0] / mn, mw[1] / mn, mw[2] / mn];
+    const uMer2W = cross3(uAxW, uMerW);
+    return { uAxW, uMerW, uMer2W };
+  }
+
+  function _triDepthAndSide(vA, vB, vC, positions, proj) {
+    const md = (vA[2] + vB[2] + vC[2]) / 3;
+    if (!proj || !proj.length) return { md, behind: false };
+    const mx = (vA[0] + vB[0] + vC[0]) / 3;
+    const my = (vA[1] + vB[1] + vC[1]) / 3;
+    let bestD = Infinity, az = 0;
+    for (let i = 0; i < proj.length; i++) {
+      const dx = proj[i][0] - mx, dy = proj[i][1] - my;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; az = proj[i][2]; }
+    }
+    return { md, behind: md < az - 0.03 };
+  }
+
+  function sliceIsoMesh3D(iso, frontFlags, tones, toneMax, pivot, basis, sceneSpan, toScreen, axisW, spacingW, offFrac, proj) {
+    const sVerts = iso.vertices.map((v) => dot3(v, axisW));
+    let sMin = Infinity, sMax = -Infinity;
+    for (const s of sVerts) { if (s < sMin) sMin = s; if (s > sMax) sMax = s; }
+    const s0 = sMin + (0.42 + offFrac) * spacingW;
+    const s1 = sMax - 0.22 * spacingW;
+    const backSegs = [], frontSegs = [];
+    if (s1 <= s0) return { backSegs, frontSegs };
+    for (let sk = s0; sk <= s1; sk += spacingW) {
+      for (let fIdx = 0; fIdx < iso.faces.length; fIdx++) {
+        if (!frontFlags[fIdx] || tones[fIdx] >= toneMax) continue;
+        const tri = iso.faces[fIdx];
+        const hits = [];
+        for (const [a, b] of [[tri[0], tri[1]], [tri[1], tri[2]], [tri[2], tri[0]]]) {
+          const sa = sVerts[a], sb = sVerts[b];
+          if ((sa <= sk && sk < sb) || (sb <= sk && sk < sa)) {
+            const frac = (sk - sa) / ((sb - sa) || 1e-12);
+            const va = iso.vertices[a], vb = iso.vertices[b];
+            hits.push([va[0] + frac * (vb[0] - va[0]), va[1] + frac * (vb[1] - va[1]), va[2] + frac * (vb[2] - va[2])]);
+          }
+        }
+        if (hits.length === 2) {
+          const hp = projectList(hits, pivot, basis, sceneSpan);
+          const seg = [toScreen(hp[0]), toScreen(hp[1])];
+          const midZ = 0.5 * (hp[0][2] + hp[1][2]);
+          let behind = false;
+          if (proj && proj.length) {
+            const mx = 0.5 * (hp[0][0] + hp[1][0]), my = 0.5 * (hp[0][1] + hp[1][1]);
+            let bestD = Infinity, az = 0;
+            for (const ap of proj) {
+              const d = (ap[0] - mx) ** 2 + (ap[1] - my) ** 2;
+              if (d < bestD) { bestD = d; az = ap[2]; }
+            }
+            behind = midZ < az - 0.03;
+          }
+          if (behind) backSegs.push(seg);
+          else frontSegs.push(seg);
+        }
+      }
+    }
+    return { backSegs, frontSegs };
+  }
+
+  function sampleIsoSurfaceMarks(iso, frontFlags, tones, frontFaces, vProj, proj, toScreen, shade) {
+    const backPts = [], frontPts = [];
+    if (!frontFaces.length || (shade !== "stipple" && shade !== "scumble")) {
+      return { backPts, frontPts };
+    }
+    const target = shade === "stipple" ? 420 : 28;
+    for (let k = 0; k < target; k++) {
+      const fIdx = Math.min(iso.faces.length - 1, Math.floor(_isoHash(k * 7 + 1) * iso.faces.length));
+      if (!frontFlags[fIdx]) continue;
+      const tone = tones[fIdx];
+      const maxT = shade === "stipple" ? 0.64 : 0.60;
+      if (tone >= maxT) continue;
+      const sh = (maxT - tone) / maxT;
+      if (_isoHash(k * 7 + 2) > 0.12 + 0.88 * Math.pow(sh, 1.4)) continue;
+      const [f0, f1, f2] = iso.faces[fIdx];
+      const su = Math.sqrt(_isoHash(k * 7 + 3)), r2 = _isoHash(k * 7 + 4);
+      const w0 = 1 - su, w1 = su * (1 - r2), w2 = su * r2;
+      const px = w0 * vProj[f0][0] + w1 * vProj[f1][0] + w2 * vProj[f2][0];
+      const py = w0 * vProj[f0][1] + w1 * vProj[f1][1] + w2 * vProj[f2][1];
+      const pz = w0 * vProj[f0][2] + w1 * vProj[f1][2] + w2 * vProj[f2][2];
+      let behind = false;
+      if (proj && proj.length) {
+        let bestD = Infinity, az = 0;
+        for (const ap of proj) {
+          const d = (ap[0] - px) ** 2 + (ap[1] - py) ** 2;
+          if (d < bestD) { bestD = d; az = ap[2]; }
+        }
+        behind = pz < az - 0.03;
+      }
+      const scPt = toScreen([px, py, pz]);
+      const rec = {
+        pt: scPt,
+        r: 0.55 + 1.45 * Math.pow(_isoHash(k * 7 + 5), 1.55),
+        aa: 0.24 + 0.24 * _isoHash(k * 7 + 6),
+        seed: k,
+      };
+      if (behind) backPts.push(rec);
+      else frontPts.push(rec);
+    }
+    return { backPts, frontPts };
+  }
+
+  function collectIsoLobeArt(iso, pivot, basis, sceneSpan, toScreen, proj, positions) {
     const lDir = [-0.52, 0.58, 0.63];
     const lNorm = Math.hypot(...lDir) || 1;
     const lu = [lDir[0] / lNorm, lDir[1] / lNorm, lDir[2] / lNorm];
@@ -995,10 +1121,16 @@ canvas#xm-canvas:active { cursor: grabbing; }
     const hu = [hRaw[0] / hNorm, hRaw[1] / hNorm, hRaw[2] / hNorm];
     const vProj = projectList(iso.vertices, pivot, basis, sceneSpan);
     const frontFlags = new Array(iso.faces.length).fill(false);
+    const tonesArr = new Array(iso.faces.length).fill(1.0);
     const triItems = [];
-    const frontPolys = [], shadowPolys = [], corePolys = [];
-    let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
-    let dSum = 0, dCnt = 0;
+    const frontFaces = [];
+
+    const makeBucket = () => ({
+      frontPolys: [], shadowPolys: [], corePolys: [], rimSegs: [],
+      contourSegs: [], stipplePts: [], scumblePts: [],
+      minX: 1e9, minY: 1e9, maxX: -1e9, maxY: -1e9, dSum: 0, dCnt: 0,
+    });
+    const backB = makeBucket(), frontB = makeBucket();
 
     for (let fIdx = 0; fIdx < iso.faces.length; fIdx++) {
       const [f0, f1, f2] = iso.faces[fIdx];
@@ -1013,25 +1145,29 @@ canvas#xm-canvas:active { cursor: grabbing; }
       const nRot = [dot3(wn, basis[0]) / wnn, dot3(wn, basis[1]) / wnn, dot3(wn, basis[2]) / wnn];
       if (nRot[2] < -0.02) continue;
       frontFlags[fIdx] = true;
+      frontFaces.push(fIdx);
       const nd = Math.max(0, dot3(nRot, lu));
       const spec = Math.pow(Math.max(0, dot3(nRot, hu)), 12);
       const nzF = Math.max(0, nRot[2]);
       const rimBounce = 0.22 * Math.pow(1 - nzF, 2.2) * (1 - nd);
       const tone = 0.10 + 0.74 * nd + 0.22 * spec + rimBounce;
-      const md = (pA[2] + pB[2] + pC[2]) / 3 - 0.12;
+      tonesArr[fIdx] = tone;
+      const sideInfo = _triDepthAndSide(pA, pB, pC, positions, proj);
+      const md = sideInfo.md - 0.12;
       triItems.push({ depth: md, kind: "iso_tri", pts: [pA, pB, pC], col: iso.color, shade: Math.min(1.3, 0.58 + 0.42 * nd + 0.35 * spec + 0.16 * rimBounce), nz: nRot[2] });
 
       const sp = [toScreen(pA), toScreen(pB), toScreen(pC)];
+      const bk = sideInfo.behind ? backB : frontB;
       for (const pt of sp) {
-        if (pt[0] < minX) minX = pt[0];
-        if (pt[1] < minY) minY = pt[1];
-        if (pt[0] > maxX) maxX = pt[0];
-        if (pt[1] > maxY) maxY = pt[1];
+        if (pt[0] < bk.minX) bk.minX = pt[0];
+        if (pt[1] < bk.minY) bk.minY = pt[1];
+        if (pt[0] > bk.maxX) bk.maxX = pt[0];
+        if (pt[1] > bk.maxY) bk.maxY = pt[1];
       }
-      frontPolys.push(sp);
-      if (tone < 0.52) shadowPolys.push(sp);
-      if (tone < 0.32) corePolys.push(sp);
-      dSum += md; dCnt += 1;
+      bk.frontPolys.push(sp);
+      if (tone < 0.56) bk.shadowPolys.push(sp);
+      if (tone < 0.34) bk.corePolys.push(sp);
+      bk.dSum += md; bk.dCnt += 1;
     }
 
     const edgeMap = new Map();
@@ -1045,28 +1181,72 @@ canvas#xm-canvas:active { cursor: grabbing; }
         edgeMap.get(key).flags.push(isF);
       }
     }
-    const rimSegs = [];
     for (const rec of edgeMap.values()) {
       const fl = rec.flags;
       if ((fl.length === 2 && fl[0] !== fl[1]) || (fl.length === 1 && fl[0])) {
-        if (vProj[rec.u] && vProj[rec.v]) {
-          rimSegs.push([toScreen(vProj[rec.u]), toScreen(vProj[rec.v])]);
+        const pu = vProj[rec.u], pv = vProj[rec.v];
+        if (pu && pv) {
+          const midZ = 0.5 * (pu[2] + pv[2]);
+          let behind = false;
+          if (proj && proj.length) {
+            const mx = 0.5 * (pu[0] + pv[0]), my = 0.5 * (pu[1] + pv[1]);
+            let bestD = Infinity, az = 0;
+            for (const ap of proj) {
+              const d = (ap[0] - mx) ** 2 + (ap[1] - my) ** 2;
+              if (d < bestD) { bestD = d; az = ap[2]; }
+            }
+            behind = midZ < az - 0.03;
+          }
+          (behind ? backB : frontB).rimSegs.push([toScreen(pu), toScreen(pv)]);
         }
       }
     }
-    return {
-      triItems,
-      artItem: dCnt ? {
-        depth: dSum / dCnt,
+
+    const axesW = computeLobeAxesWorld(iso.vertices, positions);
+    const spW = Math.max(sceneSpan * 0.065, 0.14);
+    if (state.isoShade === "contour" || state.isoShade === "cross_contour") {
+      const lat1 = sliceIsoMesh3D(iso, frontFlags, tonesArr, 0.68, pivot, basis, sceneSpan, toScreen, axesW.uAxW, spW * 1.15, 0.0, proj);
+      const lat2 = sliceIsoMesh3D(iso, frontFlags, tonesArr, 0.36, pivot, basis, sceneSpan, toScreen, axesW.uAxW, spW, 0.5, proj);
+      backB.contourSegs.push(...lat1.backSegs, ...lat2.backSegs);
+      frontB.contourSegs.push(...lat1.frontSegs, ...lat2.frontSegs);
+      if (state.isoShade === "cross_contour") {
+        const merW = [
+          0.80 * axesW.uMerW[0] + 0.60 * axesW.uMer2W[0],
+          0.80 * axesW.uMerW[1] + 0.60 * axesW.uMer2W[1],
+          0.80 * axesW.uMerW[2] + 0.60 * axesW.uMer2W[2],
+        ];
+        const mer = sliceIsoMesh3D(iso, frontFlags, tonesArr, 0.50, pivot, basis, sceneSpan, toScreen, merW, spW * 1.08, 0.0, proj);
+        backB.contourSegs.push(...mer.backSegs);
+        frontB.contourSegs.push(...mer.frontSegs);
+      }
+    }
+    const surfMarks = sampleIsoSurfaceMarks(iso, frontFlags, tonesArr, frontFaces, vProj, proj, toScreen, state.isoShade);
+    if (state.isoShade === "stipple") {
+      backB.stipplePts = surfMarks.backPts;
+      frontB.stipplePts = surfMarks.frontPts;
+    } else if (state.isoShade === "scumble") {
+      backB.scumblePts = surfMarks.backPts;
+      frontB.scumblePts = surfMarks.frontPts;
+    }
+
+    const artItems = [];
+    for (const bk of [backB, frontB]) {
+      if (!bk.dCnt) continue;
+      artItems.push({
+        depth: bk.dSum / bk.dCnt,
         kind: "iso_art",
         col: iso.color,
-        frontPolys,
-        shadowPolys,
-        corePolys,
-        rimSegs,
-        bbox: [minX, minY, maxX, maxY],
-      } : null,
-    };
+        frontPolys: bk.frontPolys,
+        shadowPolys: bk.shadowPolys,
+        corePolys: bk.corePolys,
+        rimSegs: bk.rimSegs,
+        contourSegs: bk.contourSegs,
+        stipplePts: bk.stipplePts,
+        scumblePts: bk.scumblePts,
+        bbox: [bk.minX, bk.minY, bk.maxX, bk.maxY],
+      });
+    }
+    return { triItems, artItems };
   }
 
   function tracePolyBatch(polys) {
@@ -1156,47 +1336,36 @@ canvas#xm-canvas:active { cursor: grabbing; }
     } else if (shade === "crosshatch") {
       drawClippedHatchCanvas(item.shadowPolys, item.bbox, 38, 8.5, 0, ink, 0.65, state.wiggle, 1.4);
       drawClippedHatchCanvas(item.corePolys, item.bbox, -50, 8.5, 0, ink, 0.68, state.wiggle, -1.4);
-    } else if (shade === "contour") {
-      drawClippedHatchCanvas(item.shadowPolys, item.bbox, 22, 9.0, 0, ink, 0.72, Math.max(state.wiggle * 0.85, 0.8), 18.0);
-    } else if (shade === "stipple" && item.shadowPolys.length) {
-      const [x0, y0, x1, y1] = item.bbox;
-      const bw = Math.max(x1 - x0, 1), bh = Math.max(y1 - y0, 1);
-      const count = Math.min(720, Math.max(90, Math.round((bw * bh) / 22)));
-      ctx.save();
-      tracePolyBatch(item.shadowPolys);
-      ctx.clip();
-      for (let k = 0; k < count; k++) {
-        const px = x0 + _isoHash(k * 4 + 1) * bw;
-        const py = y0 + _isoHash(k * 4 + 2) * bh;
-        const rr = 0.55 + 1.45 * Math.pow(_isoHash(k * 4 + 3), 1.55);
-        const aa = 0.24 + 0.22 * _isoHash(k * 4 + 4);
-        ctx.fillStyle = shadeHexRgba(item.col, aa, 0.80);
+    } else if ((shade === "contour" || shade === "cross_contour") && item.contourSegs.length) {
+      item.contourSegs.forEach((seg, idx) => {
+        drawStrokeWiggle(seg[0], seg[1], ink, 0.70, false, Math.max(state.wiggle * 0.35, 0.25), idx + 3);
+      });
+    } else if (shade === "stipple" && item.stipplePts.length) {
+      for (const d of item.stipplePts) {
+        ctx.fillStyle = shadeHexRgba(item.col, d.aa, 0.80);
         ctx.beginPath();
-        ctx.arc(px, py, rr, 0, Math.PI * 2);
+        ctx.arc(d.pt[0], d.pt[1], d.r, 0, Math.PI * 2);
         ctx.fill();
       }
-      ctx.restore();
-    } else if (shade === "scumble" && item.shadowPolys.length) {
+    } else if (shade === "scumble" && item.scumblePts.length && item.frontPolys.length) {
       const [x0, y0, x1, y1] = item.bbox;
       const bw = Math.max(x1 - x0, 1), bh = Math.max(y1 - y0, 1);
       ctx.save();
-      tracePolyBatch(item.shadowPolys);
+      tracePolyBatch(item.frontPolys);
       ctx.clip();
       ctx.strokeStyle = shadeHexRgba(item.col, 0.34, 0.80);
       ctx.lineWidth = 0.64;
-      for (let cIdx = 0; cIdx < 24; cIdx++) {
-        const sx = x0 + _isoHash(cIdx * 5 + 1) * bw;
-        const sy = y0 + _isoHash(cIdx * 5 + 2) * bh;
-        const th0 = _isoHash(cIdx * 5 + 3) * Math.PI * 2;
-        const drift = 0.22 * Math.hypot(bw, bh);
-        const rc = 2.8 + 2.2 * _isoHash(cIdx * 5 + 4);
+      for (const sItem of item.scumblePts) {
+        const th0 = _isoHash(sItem.seed * 5 + 3) * Math.PI * 2;
+        const drift = 0.14 * Math.hypot(bw, bh);
+        const rc = 2.4 + 1.8 * _isoHash(sItem.seed * 5 + 4);
         ctx.beginPath();
-        for (let k = 0; k <= 40; k++) {
-          const t = k / 40;
-          const spx = sx + drift * t * Math.cos(th0 + t * 1.4);
-          const spy = sy + drift * t * Math.sin(th0 + t * 1.4);
-          const px = spx + rc * Math.cos(t * 28.0 + cIdx);
-          const py = spy + rc * Math.sin(t * 28.0 + cIdx);
+        for (let k = 0; k <= 36; k++) {
+          const t = k / 36 - 0.5;
+          const spx = sItem.pt[0] + drift * t * Math.cos(th0 + t * 1.4);
+          const spy = sItem.pt[1] + drift * t * Math.sin(th0 + t * 1.4);
+          const px = spx + rc * Math.cos((t + 0.5) * 26.0 + sItem.seed);
+          const py = spy + rc * Math.sin((t + 0.5) * 26.0 + sItem.seed);
           if (k === 0) ctx.moveTo(px, py);
           else ctx.lineTo(px, py);
         }
@@ -1212,11 +1381,11 @@ canvas#xm-canvas:active { cursor: grabbing; }
 
     if (state.showIso && isosurfaces && isosurfaces.length) {
       for (const iso of isosurfaces) {
-        const res = collectIsoLobeArt(iso, pivot, basis, sceneSpan, toScreen);
+        const res = collectIsoLobeArt(iso, pivot, basis, sceneSpan, toScreen, proj, positions);
         if (state.isoShade === "solid") {
           for (const it of res.triItems) items.push(it);
-        } else if (res.artItem) {
-          items.push(res.artItem);
+        } else {
+          for (const it of res.artItems) items.push(it);
         }
       }
     }
@@ -1797,13 +1966,15 @@ canvas#xm-canvas:active { cursor: grabbing; }
     }
     if (state.showIso && isosurfaces && isosurfaces.length) {
       for (const iso of isosurfaces) {
-        const res = collectIsoLobeArt(iso, pivot, basis, sceneSpan, sc);
+        const res = collectIsoLobeArt(iso, pivot, basis, sceneSpan, sc, proj, positions);
         if (state.isoShade === "solid") {
           for (const it of res.triItems) {
             q.push({ d: it.depth, t: "iso_tri", pts: [sc(it.pts[0]), sc(it.pts[1]), sc(it.pts[2])], c: it.col, rim: it.nz < 0.26 });
           }
-        } else if (res.artItem) {
-          q.push({ d: res.artItem.depth, t: "iso_art", item: res.artItem });
+        } else {
+          for (const artItem of res.artItems) {
+            q.push({ d: artItem.depth, t: "iso_art", item: artItem });
+          }
         }
       }
     }
@@ -1832,35 +2003,53 @@ canvas#xm-canvas:active { cursor: grabbing; }
           const dPath = art.frontPolys.map((p) => `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}L${p[1][0].toFixed(1)},${p[1][1].toFixed(1)}L${p[2][0].toFixed(1)},${p[2][1].toFixed(1)}Z`).join("");
           parts.push(`<path d="${dPath}" fill="${art.col}" fill-opacity="${state.isoShade === "outline" ? "0.04" : "0.14"}"/>`);
         }
-        if (state.isoShade !== "outline" && art.shadowPolys.length) {
+        if (state.isoShade === "stipple" && art.stipplePts.length) {
+          parts.push(`<g fill="${art.col}">`);
+          for (const d of art.stipplePts) {
+            parts.push(`<circle cx="${d.pt[0].toFixed(1)}" cy="${d.pt[1].toFixed(1)}" r="${d.r.toFixed(2)}" fill-opacity="${d.aa.toFixed(2)}"/>`);
+          }
+          parts.push("</g>");
+        } else if ((state.isoShade === "contour" || state.isoShade === "cross_contour") && art.contourSegs.length) {
+          parts.push(`<g fill="none" stroke="${art.col}" stroke-opacity="0.42" stroke-width="0.70" stroke-linecap="round">`);
+          for (const seg of art.contourSegs) {
+            parts.push(`<line x1="${seg[0][0].toFixed(1)}" y1="${seg[0][1].toFixed(1)}" x2="${seg[1][0].toFixed(1)}" y2="${seg[1][1].toFixed(1)}"/>`);
+          }
+          parts.push("</g>");
+        } else if (state.isoShade === "scumble" && art.scumblePts.length && art.frontPolys.length) {
+          const sPath = art.frontPolys.map((p) => `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}L${p[1][0].toFixed(1)},${p[1][1].toFixed(1)}L${p[2][0].toFixed(1)},${p[2][1].toFixed(1)}Z`).join("");
+          parts.push(`<defs><clipPath id="${cid}"><path d="${sPath}"/></clipPath></defs>`);
+          const [bx0, by0, bx1, by1] = art.bbox;
+          const bw = Math.max(bx1 - bx0, 1), bh = Math.max(by1 - by0, 1);
+          parts.push(`<g clip-path="url(#${cid})" fill="none" stroke="${art.col}" stroke-opacity="0.34" stroke-width="0.64" stroke-linecap="round">`);
+          for (const sItem of art.scumblePts) {
+            const th0 = _isoHash(sItem.seed * 5 + 3) * Math.PI * 2;
+            const drift = 0.14 * Math.hypot(bw, bh);
+            const rc = 2.4 + 1.8 * _isoHash(sItem.seed * 5 + 4);
+            const cPts = [];
+            for (let k = 0; k <= 36; k++) {
+              const t = k / 36 - 0.5;
+              const spx = sItem.pt[0] + drift * t * Math.cos(th0 + t * 1.4);
+              const spy = sItem.pt[1] + drift * t * Math.sin(th0 + t * 1.4);
+              cPts.push([spx + rc * Math.cos((t + 0.5) * 26.0 + sItem.seed), spy + rc * Math.sin((t + 0.5) * 26.0 + sItem.seed)]);
+            }
+            parts.push(`<polyline points="${_svgPolylinePoints(cPts)}"/>`);
+          }
+          parts.push("</g>");
+        } else if ((state.isoShade === "hatch" || state.isoShade === "crosshatch") && art.shadowPolys.length) {
           const sPath = art.shadowPolys.map((p) => `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}L${p[1][0].toFixed(1)},${p[1][1].toFixed(1)}L${p[2][0].toFixed(1)},${p[2][1].toFixed(1)}Z`).join("");
           parts.push(`<defs><clipPath id="${cid}"><path d="${sPath}"/></clipPath></defs>`);
           const [bx0, by0, bx1, by1] = art.bbox;
-          if (state.isoShade === "stipple") {
-            const bw = Math.max(bx1 - bx0, 1), bh = Math.max(by1 - by0, 1);
-            const cnt = Math.min(540, Math.max(80, Math.round((bw * bh) / 26)));
-            parts.push(`<g clip-path="url(#${cid})" fill="${art.col}">`);
-            for (let k = 0; k < cnt; k++) {
-              const px = bx0 + _isoHash(k * 4 + 1) * bw;
-              const py = by0 + _isoHash(k * 4 + 2) * bh;
-              const rr = 0.55 + 1.45 * Math.pow(_isoHash(k * 4 + 3), 1.55);
-              const aa = 0.24 + 0.22 * _isoHash(k * 4 + 4);
-              parts.push(`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${rr.toFixed(2)}" fill-opacity="${aa.toFixed(2)}"/>`);
+          const diag = Math.hypot(bx1 - bx0, by1 - by0);
+          parts.push(`<g clip-path="url(#${cid})" fill="none" stroke="${art.col}" stroke-opacity="0.38" stroke-width="0.68" stroke-linecap="round">`);
+          for (let d = -diag; d <= diag; d += 9.0) {
+            const qPts = wiggledSegment([bx0 + d, by1], [bx0 + d + diag * 0.84, by1 - diag], Math.max(state.wiggle * 0.5, 0.5), Math.abs(Math.round(d)));
+            parts.push(`<polyline points="${_svgPolylinePoints(qPts)}"/>`);
+            if (state.isoShade === "crosshatch") {
+              const qPts2 = wiggledSegment([bx0 + d, by0], [bx0 + d + diag * 0.90, by0 + diag], Math.max(state.wiggle * 0.5, 0.5), Math.abs(Math.round(d)) + 13);
+              parts.push(`<polyline points="${_svgPolylinePoints(qPts2)}"/>`);
             }
-            parts.push("</g>");
-          } else {
-            const diag = Math.hypot(bx1 - bx0, by1 - by0);
-            parts.push(`<g clip-path="url(#${cid})" fill="none" stroke="${art.col}" stroke-opacity="0.38" stroke-width="0.68" stroke-linecap="round">`);
-            for (let d = -diag; d <= diag; d += 9.0) {
-              const qPts = wiggledSegment([bx0 + d, by1], [bx0 + d + diag * 0.84, by1 - diag], Math.max(state.wiggle * 0.5, 0.5), Math.abs(Math.round(d)));
-              parts.push(`<polyline points="${_svgPolylinePoints(qPts)}"/>`);
-              if (state.isoShade === "crosshatch") {
-                const qPts2 = wiggledSegment([bx0 + d, by0], [bx0 + d + diag * 0.90, by0 + diag], Math.max(state.wiggle * 0.5, 0.5), Math.abs(Math.round(d)) + 13);
-                parts.push(`<polyline points="${_svgPolylinePoints(qPts2)}"/>`);
-              }
-            }
-            parts.push("</g>");
           }
+          parts.push("</g>");
         }
         for (const seg of art.rimSegs) {
           parts.push(`<line x1="${seg[0][0].toFixed(1)}" y1="${seg[0][1].toFixed(1)}" x2="${seg[1][0].toFixed(1)}" y2="${seg[1][1].toFixed(1)}" stroke="${art.col}" stroke-opacity="0.58" stroke-width="1.35" stroke-linecap="round"/>`);

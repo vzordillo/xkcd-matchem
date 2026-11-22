@@ -616,11 +616,135 @@ def _make_theme_switcher_gif(out_dir: pathlib.Path) -> None:
     _save_gif(frames, out_dir / "theme_switcher.gif", duration_ms=1300)
 
 
+def _draw_orbit_triad(
+    ax: matplotlib.axes.Axes,
+    cam: xm.Camera,
+    lim: float,
+) -> None:
+    """Draws a compact rotating (x, y, z) triad in corner of orbit panel."""
+    basis = xm.core.geometry.rotation_matrix(
+        cam.azimuth, cam.elevation, cam.roll
+    )
+    ox, oy = -0.78 * lim, -0.76 * lim
+    axis_len = 0.24 * lim
+    specs = [(0, "x", "#D55E00"), (1, "y", "#009E73"), (2, "z", "#0072B2")]
+    rows = [
+        (float(basis[2, k]), float(basis[0, k]), float(basis[1, k]), lbl, col)
+        for k, lbl, col in specs
+    ]
+    rows.sort(key=lambda item: item[0])
+    for _, dx, dy, lbl, col in rows:
+        tx, ty = ox + dx * axis_len, oy + dy * axis_len
+        arr = ax.annotate(
+            "",
+            xy=(tx, ty),
+            xytext=(ox, oy),
+            arrowprops={
+                "arrowstyle": "-|>,head_width=0.16,head_length=0.25",
+                "lw": 1.35,
+                "color": col,
+                "shrinkA": 0.0,
+                "shrinkB": 0.0,
+            },
+            zorder=52,
+        )
+        if arr.arrow_patch is not None:
+            arr.arrow_patch.set_sketch_params(0.0, 0.0, 0.0)
+        n2 = max(float(np.hypot(dx, dy)), 1e-6)
+        txt = ax.text(
+            tx + 0.11 * lim * (dx / n2),
+            ty + 0.11 * lim * (dy / n2),
+            lbl,
+            color=col,
+            fontsize=8.0,
+            ha="center",
+            va="center",
+            zorder=53,
+        )
+        txt.set_sketch_params(0.0, 0.0, 0.0)
+    dot = ax.scatter([ox], [oy], s=14, color=xm.style.INK, zorder=54)
+    dot.set_sketch_params(0.0, 0.0, 0.0)
+
+
+def _make_isosurface_orbit_gif(out_dir: pathlib.Path) -> None:
+    """Generates a 2x4 orthographic isometric 360-deg orbit comparison GIF."""
+    cube_raw = xm.load("water_homo.cube")
+    cube_up = xm.core.isosurface.upsample_coarse_grid(cube_raw, min_dim=36)
+    iso_elev = float(np.degrees(np.arcsin(1.0 / np.sqrt(3.0))))
+    max_abs = max(float(np.max(np.abs(cube_up.data))), 1e-12)
+    level = 0.35 * max_abs
+    m_pos = xm.core.isosurface.extract_isosurface(cube_up, level)
+    m_neg = xm.core.isosurface.extract_isosurface(cube_up, -level)
+    pivot = np.mean(cube_up.atoms.positions, axis=0)
+    pts_all = np.vstack(
+        [cube_up.atoms.positions, m_pos.vertices, m_neg.vertices]
+    )
+    lim = float(np.max(np.linalg.norm(pts_all - pivot, axis=1))) + 0.48
+    modes = (
+        ("solid", "1. Smooth Blending (solid)"),
+        ("hatch", "2. Parallel Hatching (hatch)"),
+        ("crosshatch", "3. Comic Cross-Hatch (crosshatch)"),
+        ("contour", "4. 3D Axis Contour (contour)"),
+        ("cross_contour", "5. 3D Cross-Contour (cross_contour)"),
+        ("stipple", "6. Fine-Liner Stippling (stipple)"),
+        ("scumble", "7. Wandering Scumble (scumble)"),
+        ("outline", "8. Clean Silhouette (outline)"),
+    )
+    frames: list[Image.Image] = []
+    for az in 45.0 + np.linspace(0.0, 360.0, 18, endpoint=False):
+        cam = xm.Camera(
+            azimuth=float(az),
+            elevation=iso_elev,
+            roll=0.0,
+            perspective=0.0,
+            zoom=1.0,
+        )
+        with xm.xkcd_style("classic"):
+            fig, axes = plt.subplots(2, 4, figsize=(13.6, 7.2), dpi=100)
+            fig.patch.set_facecolor(xm.style.PAPER)
+            for ax, (mode, heading) in zip(axes.ravel(), modes, strict=True):
+                xm.plot_isosurface(
+                    cube_up, camera=cam, shade=mode, ax=ax, title=heading
+                )
+                ax.set_adjustable("box")
+                ax.set_xlim(-lim, lim)
+                ax.set_ylim(-lim, lim)
+            _draw_orbit_triad(axes[0, 0], cam, lim)
+            l_ann = axes[0, 0].annotate(
+                "Light",
+                xy=(0.20, 0.80),
+                xytext=(0.04, 0.94),
+                xycoords="axes fraction",
+                fontsize=9.0,
+                color=xm.style.INK,
+                arrowprops={
+                    "arrowstyle": "->",
+                    "lw": 1.25,
+                    "color": xm.style.INK,
+                },
+            )
+            if l_ann.arrow_patch is not None:
+                l_ann.arrow_patch.set_sketch_params(0.0, 0.0, 0.0)
+            fig.suptitle(
+                "3D Isosurface Shading — Orthographic Isometric Orbit "
+                f"(el = 35.3°, az = {float(az) % 360.0:05.1f}°)",
+                fontsize=14.0,
+                y=0.975,
+            )
+            fig.tight_layout(
+                rect=(0.0, 0.01, 1.0, 0.935), w_pad=1.1, h_pad=1.5
+            )
+            frames.append(_fig_to_pil(fig))
+            plt.close(fig)
+    _save_gif(frames, out_dir / "isosurface_shading_orbit.gif", 130)
+
+
 def _make_readme_gifs(out_dir: pathlib.Path) -> None:
     """Generates lightweight animated GIFs showcasing 3D, NEB, and themes."""
     _make_crystal_orbit_gif(out_dir)
     _make_neb_gif(out_dir)
     _make_theme_switcher_gif(out_dir)
+    _make_isosurface_orbit_gif(out_dir)
 
 
 def _make_periodic_table_gallery(out_dir: pathlib.Path) -> None:

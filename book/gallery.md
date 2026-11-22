@@ -127,6 +127,12 @@ See [Tutorial 12: 3D Isosurfaces, Phonons, Wulff Shapes & Comic Strips](tutorial
 
 ![xkcd pen-and-ink 3D isosurface shading techniques](_static/gallery/isosurface_shading_styles.png)
 
+### Orthographic Isometric 360° Orbit Comparison
+
+Evaluate how shading styles, 3D axis contours, surface-anchored stippling/scumbling, and atom-sphere depth occlusion behave across a full 360° orthographic isometric rotation (`elevation = 35.3°`, `perspective = 0.0`):
+
+![3D isosurface orthographic isometric orbit](_static/gallery/isosurface_shading_orbit.gif)
+
 ## xkcd Stick Scientists, Plot Commentary & Comic Strips
 
 Drop aspect-ratio-invariant `xkcd.com` characters (`"cueball"`, `"ponytail"`, `"megan"`, `"beret"`, `"goggles"`) with poses (`"stand"`, `"think"`, `"point"`, `"shrug"`, `"cheer"`) and authentic open line-leader speech directly onto any data plot (`draw_stick_scientist()`) or compose multi-panel stories (`plot_comic_strip()`).
