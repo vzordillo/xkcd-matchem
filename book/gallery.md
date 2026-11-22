@@ -4,7 +4,7 @@ Every figure and animated GIF below is generated automatically by `scripts/gener
 
 ## Animated Motion & Theme Explorer
 
-Looping GIFs are rendered with `xm.animate_trajectory()` (requires `pip install "xkcd-matchem[animation]"`) or custom camera/preset loops:
+Looping GIFs are rendered with `xm.animate_trajectory()` (requires the `animation` extra: `pip install "xkcd-matchem[animation] @ git+https://github.com/vzordillo/xkcd-matchem.git"`, or `pip install -e ".[animation]"` from a local clone) or custom camera/preset loops:
 
 | 3D Coordination Polyhedra Orbit | Climbing-Image NEB Pathway | Live Theme & Palette Switching |
 | :---: | :---: | :---: |
