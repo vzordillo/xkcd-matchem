@@ -38,7 +38,6 @@ from xkcd_matchem.core import isosurface as isosurf_mod
 from xkcd_matchem.core import structure
 from xkcd_matchem.core import trajectory
 from xkcd_matchem.data import elements
-from xkcd_matchem.data import samples_registry
 from xkcd_matchem.io import loader
 from xkcd_matchem.plots import electronic as elec_plots
 from xkcd_matchem.plots import structure as struct_plots
@@ -405,6 +404,8 @@ def serialize_structure(
     isolevel: float | None = None,
     symmetric_iso: bool | None = None,
     iso_shade: str = "solid",
+    category: str | None = None,
+    description: str | None = None,
 ) -> dict[str, Any]:
     """Serializes an ``AtomsData``, ``Trajectory``, or cube grid for Studio."""
     atoms_obj, frames_list, auto_iso, source_sample = _coerce_interactive_input(
@@ -444,6 +445,10 @@ def serialize_structure(
             "zoom": float(cam.zoom),
         },
     }
+    if category is not None:
+        out["category"] = category
+    if description is not None:
+        out["description"] = description
     _attach_studio_extras(
         out,
         atoms_obj,
@@ -529,6 +534,8 @@ def build_interactive_html(
     isolevel: float | None = None,
     symmetric_iso: bool | None = None,
     iso_shade: str = "solid",
+    category: str | None = None,
+    description: str | None = None,
 ) -> str:
     """Builds a standalone offline HTML document for the 3D xkcd Studio."""
     active_payload = serialize_structure(
@@ -547,6 +554,8 @@ def build_interactive_html(
         isolevel=isolevel,
         symmetric_iso=symmetric_iso,
         iso_shade=iso_shade,
+        category=category,
+        description=description,
     )
     elem_table, pal_tables = _build_viewer_tables()
     payload = {
@@ -586,6 +595,140 @@ def _active_sample_filename(
     return pathlib.Path(str(src)).name if src else ""
 
 
+@dataclasses.dataclass(frozen=True)
+class _CuratedSceneSpec:
+    """Curated interactive 3D Studio sample preset entry."""
+
+    filename: str
+    title: str
+    category: str
+    description: str
+    style: str = "ball_and_stick"
+    polyhedra: tuple[str, str | None] | None = None
+    camera: geometry.Camera | None = None
+    iso_shade: str = "solid"
+    is_trajectory: bool = False
+
+
+_CURATED_PLAYGROUND_SPECS: tuple[_CuratedSceneSpec, ...] = (
+    _CuratedSceneSpec(
+        filename="water_homo.cube",
+        title="Water HOMO 3D Orbital (water_homo.cube)",
+        category="3D Orbitals",
+        description=(
+            "Cross-hatched 3D water HOMO orbital lobes from cube grid data."
+        ),
+        iso_shade="crosshatch",
+    ),
+    _CuratedSceneSpec(
+        filename="tio2_slab.poscar",
+        title="TiO2 (110) Octahedra (tio2_slab.poscar)",
+        category="Crystals & Slabs",
+        description=(
+            "Rutile TiO2 (110) surface slab with TiO6 coordination octahedra."
+        ),
+        style="polyhedra",
+        polyhedra=("Ti", "O"),
+    ),
+    _CuratedSceneSpec(
+        filename="sn2_neb.xyz",
+        title="SN2 Reaction Path (sn2_neb.xyz)",
+        category="Reactions & MD",
+        description=(
+            "9-frame Cl- + CH3Cl SN2 minimum-energy trajectory with playback."
+        ),
+        is_trajectory=True,
+    ),
+    _CuratedSceneSpec(
+        filename="aspirin.xyz",
+        title="Aspirin Molecule (aspirin.xyz)",
+        category="Molecules",
+        description=(
+            "Acetylsalicylic acid (C9H8O4) 3D ball-and-stick geometry."
+        ),
+        camera=geometry.Camera(azimuth=-125.0, elevation=42.0),
+    ),
+    _CuratedSceneSpec(
+        filename="mos2_2h.poscar",
+        title="2H-MoS2 Monolayer (mos2_2h.poscar)",
+        category="Crystals & Slabs",
+        description=(
+            "Layered hexagonal 2H-MoS2 transition-metal dichalcogenide cell."
+        ),
+    ),
+    _CuratedSceneSpec(
+        filename="si_diamond.cif",
+        title="Silicon Diamond Cell (si_diamond.cif)",
+        category="Crystals & Slabs",
+        description="Diamond-cubic silicon conventional unit cell (Fd-3m).",
+    ),
+    _CuratedSceneSpec(
+        filename="nacl.cif",
+        title="Rock-Salt NaCl (nacl.cif)",
+        category="Crystals & Slabs",
+        description="Ionic rock-salt NaCl face-centered cubic lattice (Fm-3m).",
+    ),
+    _CuratedSceneSpec(
+        filename="benzene.sdf",
+        title="Benzene Ring (benzene.sdf)",
+        category="Molecules",
+        description=(
+            "Aromatic benzene (C6H6) with explicit alternating bond orders."
+        ),
+    ),
+    _CuratedSceneSpec(
+        filename="alaninedipeptide.pdb",
+        title="Alanine Dipeptide (alaninedipeptide.pdb)",
+        category="Biomolecules",
+        description=(
+            "Blocked alanine dipeptide backbone conformation with CONECT bonds."
+        ),
+    ),
+)
+
+_CURATED_SCENE_BY_FILE: dict[str, _CuratedSceneSpec] = {
+    spec.filename: spec for spec in _CURATED_PLAYGROUND_SPECS
+}
+
+
+def build_playground_scenes(
+    exclude_filenames: Sequence[str] = (),
+) -> list[dict[str, Any]]:
+    """Builds the curated multi-scene lineup for the interactive 3D Studio.
+
+    Args:
+      exclude_filenames: Optional sample filenames to omit (e.g., when
+        deduplicating an explicit leading scene).
+
+    Returns:
+      Ordered list of serialized scene payloads with ``category`` and
+      ``description`` metadata ready for ``viewer.html``.
+    """
+    excluded = {pathlib.Path(name).name for name in exclude_filenames if name}
+    scenes: list[dict[str, Any]] = []
+    for spec in _CURATED_PLAYGROUND_SPECS:
+        if spec.filename in excluded:
+            continue
+        source: str | trajectory.Trajectory = (
+            loader.load_trajectory(spec.filename)
+            if spec.is_trajectory
+            else spec.filename
+        )
+        scene = serialize_structure(
+            source,
+            style=spec.style,
+            camera=spec.camera,
+            polyhedra=spec.polyhedra,
+            name=spec.title,
+            iso_shade=spec.iso_shade,
+            category=spec.category,
+            description=spec.description,
+        )
+        scene["source_sample"] = spec.filename
+        scenes.append(scene)
+    return scenes
+
+
 def export_interactive_html(
     atoms: (
         structure.AtomsData
@@ -621,9 +764,16 @@ def export_interactive_html(
     iso_shade: str = "solid",
 ) -> pathlib.Path:
     """Exports a standalone offline interactive 3D studio HTML file."""
+    active_fname = _active_sample_filename(atoms)
+    curated = _CURATED_SCENE_BY_FILE.get(active_fname)
+    lead_name = (
+        name if name is not None else (curated.title if curated else None)
+    )
+    lead_cat = curated.category if curated else None
+    lead_desc = curated.description if curated else None
+
     extra_samples: list[dict[str, Any]] | None = None
     if include_bundled_samples:
-        extra_samples = []
         first = serialize_structure(
             atoms,
             style=style,
@@ -633,61 +783,22 @@ def export_interactive_html(
             background=background,
             scale=scale,
             polyhedra=polyhedra,
-            name=name,
+            name=lead_name,
             vectors=vectors,
             vector_scale=vector_scale,
             isosurface=isosurface,
             isolevel=isolevel,
             symmetric_iso=symmetric_iso,
             iso_shade=iso_shade,
+            category=lead_cat,
+            description=lead_desc,
         )
-        extra_samples.append(first)
-        active_fname = _active_sample_filename(atoms)
-        for sample_name in (
-            "si_diamond.cif",
-            "tio2_slab.poscar",
-            "mos2_2h.poscar",
-            "nacl.cif",
-            "aspirin.xyz",
-            "benzene.sdf",
-            "alaninedipeptide.pdb",
-            "water_homo.cube",
-        ):
-            if sample_name == active_fname:
-                continue
-            path_obj = samples_registry.get_sample_path(sample_name)
-            loaded = loader.load(path_obj)
-            if isinstance(loaded, structure.AtomsData):
-                poly_opt: tuple[str, str | None] | None = (
-                    ("Ti", "O") if sample_name == "tio2_slab.poscar" else None
-                )
-                style_opt = (
-                    "polyhedra" if poly_opt is not None else "ball_and_stick"
-                )
-                extra_samples.append(
-                    serialize_structure(
-                        loaded,
-                        style=style_opt,
-                        name=f"{loaded.formula()} ({sample_name})",
-                        polyhedra=poly_opt,
-                    )
-                )
-            elif isinstance(loaded, electronic.VolumetricGrid):
-                extra_samples.append(
-                    serialize_structure(
-                        loaded,
-                        name="Water HOMO (Cross-Hatch, water_homo.cube)",
-                        iso_shade="crosshatch",
-                    )
-                )
-        if active_fname != "sn2_neb.xyz":
-            sn2_traj = loader.load_trajectory("sn2_neb.xyz")
-            extra_samples.append(
-                serialize_structure(
-                    sn2_traj,
-                    name="SN2 Reaction Trajectory (sn2_neb.xyz)",
-                )
-            )
+        if active_fname and first.get("source_sample") is None:
+            first["source_sample"] = active_fname
+        extra_samples = [
+            first,
+            *build_playground_scenes(exclude_filenames=(active_fname,)),
+        ]
     html_text = build_interactive_html(
         atoms,
         samples=extra_samples,
@@ -698,13 +809,15 @@ def export_interactive_html(
         background=background,
         scale=scale,
         polyhedra=polyhedra,
-        name=name,
+        name=lead_name,
         vectors=vectors,
         vector_scale=vector_scale,
         isosurface=isosurface,
         isolevel=isolevel,
         symmetric_iso=symmetric_iso,
         iso_shade=iso_shade,
+        category=lead_cat,
+        description=lead_desc,
     )
     out = pathlib.Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)

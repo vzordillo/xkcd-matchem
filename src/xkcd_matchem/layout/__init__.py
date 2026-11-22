@@ -19,6 +19,7 @@ from xkcd_matchem.layout import canvas
 from xkcd_matchem.layout import comic
 from xkcd_matchem.layout import export
 from xkcd_matchem.layout import scroll
+from xkcd_matchem.layout import templates
 
 
 __all__ = [
@@ -27,8 +28,16 @@ __all__ = [
     "Card",
     "ComicPanel",
     "ComicStrip",
+    "ConferencePosterLayout",
     "Container",
+    "GraphicalAbstractLayout",
+    "MechanismComicLayout",
     "ScrollCard",
+    "TalkSlideLayout",
+    "create_conference_poster",
+    "create_graphical_abstract",
+    "create_mechanism_comic",
+    "create_talk_slide",
     "draw_speech_bubble",
     "draw_stick_scientist",
     "mm_to_inches",
@@ -43,8 +52,16 @@ Board = canvas.Board
 Card = canvas.Card
 ComicPanel = comic.ComicPanel
 ComicStrip = comic.ComicStrip
+ConferencePosterLayout = templates.ConferencePosterLayout
 Container = canvas.Container
+GraphicalAbstractLayout = templates.GraphicalAbstractLayout
+MechanismComicLayout = templates.MechanismComicLayout
 ScrollCard = scroll.ScrollCard
+TalkSlideLayout = templates.TalkSlideLayout
+create_conference_poster = templates.create_conference_poster
+create_graphical_abstract = templates.create_graphical_abstract
+create_mechanism_comic = templates.create_mechanism_comic
+create_talk_slide = templates.create_talk_slide
 draw_speech_bubble = comic.draw_speech_bubble
 draw_stick_scientist = comic.draw_stick_scientist
 mm_to_inches = canvas.mm_to_inches
