@@ -40,9 +40,10 @@ All filenames below resolve automatically to bundled samples — swap in any pat
 ```python
 import xkcd_matchem as xm
 
-ax = xm.plot_crystal("si_diamond.cif", miller_planes=[(1, 1, 1)], crystal_axes="corner", title="Si (111)")
-xm.draw_stick_scientist(ax, xy=(0.12, 0.72), scale=0.20, character="ponytail", facing="right", pose="point", speech="Check (111)!")
-xm.save_figure(ax.figure, "si_111.png")
+with xm.xkcd_style():
+    ax = xm.plot_crystal("si_diamond.cif", miller_planes=[(1, 1, 1)], crystal_axes="corner", title="Si (111)")
+    xm.draw_stick_scientist(ax, xy=(0.12, 0.72), scale=0.20, character="ponytail", facing="right", pose="point", speech="Check (111)!")
+    xm.save_figure(ax.figure, "si_111.png")
 ```
 
 ### 2. Spin a 3D Orbital in the Offline Interactive 3D Studio
@@ -120,7 +121,7 @@ All **29 built-in readers** work with zero extra dependencies beyond NumPy, SciP
 | Domain | Built-in Zero-Dependency Formats |
 | :--- | :--- |
 | **Molecules & Biomolecules** | XYZ / extXYZ, PDB (`MODEL` + `CONECT`), SDF / MOL (V2000 + stereobonds), MOL2 |
-| **Crystals & Periodic DFT** | VASP (`POSCAR`/`CONTCAR`, `XDATCAR`, `DOSCAR`, `EIGENVAL`, `PROCAR`, `CHGCAR`/`LOCPOT`), CIF (62 ITA groups), QE (`pw.in`/`out`, `bands.dat`, `dos.dat`), LOBSTER (`COHPCAR`/`COOPCAR`), Phonopy (`band.yaml`), CP2K `.ener`, xTB `.out` |
+| **Crystals & Periodic DFT** | VASP (`POSCAR`/`CONTCAR`, `XDATCAR`, `DOSCAR`, `EIGENVAL`, `PROCAR`, `CHGCAR`/`LOCPOT`), CIF (61 ITA groups, Origin 1/2), QE (`pw.in`/`out`, `bands.dat`, `dos.dat`), LOBSTER (`COHPCAR`/`COOPCAR`), Phonopy (`band.yaml`), CP2K `.ener`, xTB `.out` |
 | **Molecular Dynamics** | LAMMPS data & `.lammpstrj` (orthogonal + triclinic), GROMACS `.gro` & `.xvg` |
 | **Quantum Chem & Grids** | Gaussian `.cube`, `.gjf`, `.log`, `.fchk`, ORCA `.inp` & `.out` |
 
