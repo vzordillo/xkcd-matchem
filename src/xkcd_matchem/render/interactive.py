@@ -23,6 +23,7 @@ import html
 import importlib.resources
 import json
 import pathlib
+import re
 import tempfile
 from typing import Any
 import webbrowser
@@ -74,7 +75,7 @@ class InteractiveView:
         return (
             f'<iframe srcdoc="{escaped}" '
             f'title="{html.escape(self.title, quote=True)}" '
-            f'style="width:100%;height:{self.height}px;'
+            f'style="width:100%;height:{int(self.height)}px;'
             'border:1px solid #d5dae4;border-radius:10px;background:#ffffff;" '
             'loading="lazy"></iframe>'
         )
@@ -463,16 +464,52 @@ def serialize_structure(
     return out
 
 
-def _build_font_css(font_family: str = "xkcd Script") -> str:
+def _safe_json_for_script(payload: Any) -> str:
+    """Serializes ``payload`` to JSON safe for embedding in HTML ``<script>``.
+
+    Escapes ``&``, ``<``, ``>``, U+2028, and U+2029 using JSON Unicode escapes
+    so user-controlled titles, element labels, or metadata cannot break out of
+    ``<script>`` (e.g. via ``</script>``) or inject HTML/XSS while remaining
+    100% valid JSON for ``JSON.parse`` / ``json.loads``.
+    """
+    raw = json.dumps(payload, separators=(",", ":"))
+    return (
+        raw.replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
+
+
+def _safe_css_font_family(font_family: str) -> str:
+    """Sanitizes a font family name for CSS, JS string, and SVG use."""
+    cleaned = re.sub(r"[^A-Za-z0-9 _.-]", "", str(font_family)).strip()
+    return cleaned or "Patrick Hand"
+
+
+def _build_page_title(active_payload: Mapping[str, Any]) -> str:
+    """Builds an HTML-escaped ``<title>`` string for the 3D Studio."""
+    raw_name = str(active_payload.get("name") or "").strip()
+    page_title = (
+        f"{raw_name} - xkcd-matchem 3D Studio"
+        if raw_name
+        else "xkcd-matchem 3D Studio"
+    )
+    return html.escape(page_title, quote=True)
+
+
+def _build_font_css(font_family: str = "Patrick Hand") -> str:
     """Embeds active bundled TTF font as base64 ``@font-face`` CSS."""
-    if font_family not in fonts.list_bundled_fonts():
+    safe_family = _safe_css_font_family(font_family)
+    if safe_family not in fonts.list_bundled_fonts():
         return ""
     try:
-        font_path = fonts.get_bundled_font_path(font_family)
+        font_path = fonts.get_bundled_font_path(safe_family)
         encoded = base64.b64encode(font_path.read_bytes()).decode("ascii")
         return (
             "@font-face {\n"
-            f"  font-family: '{font_family}';\n"
+            f"  font-family: '{safe_family}';\n"
             f"  src: url('data:font/ttf;base64,{encoded}') "
             "format('truetype');\n"
             "  font-display: swap;\n"
@@ -569,13 +606,14 @@ def build_interactive_html(
         .joinpath("templates/viewer.html")
         .read_text(encoding="utf-8")
     )
-    safe_json = json.dumps(payload, separators=(",", ":")).replace("</", "<\\/")
-    active_font = fonts.get_default_font() or "xkcd Script"
-    font_css = _build_font_css(active_font)
+    safe_font = _safe_css_font_family(
+        fonts.get_default_font() or "Patrick Hand"
+    )
     return (
-        template.replace("__XM_FONT_CSS__", font_css)
-        .replace("__XM_FONT_FAMILY__", html.escape(active_font, quote=True))
-        .replace("__XM_PAYLOAD__", safe_json)
+        template.replace("__XM_TITLE__", _build_page_title(active_payload))
+        .replace("__XM_FONT_CSS__", _build_font_css(safe_font))
+        .replace("__XM_FONT_FAMILY__", html.escape(safe_font, quote=True))
+        .replace("__XM_PAYLOAD__", _safe_json_for_script(payload))
     )
 
 

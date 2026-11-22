@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Font utilities for bundled xkcd Script and SIL OFL 1.1 comic-style fonts."""
+"""Font utilities for bundled SIL OFL 1.1 and optional xkcd Script fonts."""
 
 from __future__ import annotations
 
@@ -31,15 +31,17 @@ _FONTS_DIR = pathlib.Path(__file__).resolve().parent.parent / "data" / "fonts"
 # idempotent across repeated xkcd_style context entries.
 _REGISTERED_FONT_PATHS: set[pathlib.Path] = set()
 _DEFAULT_FONT_STATE: list[str | None] = [None]
+_XKCD_SCRIPT_WARNED: list[bool] = [False]
 
 _BUNDLED_FONT_FILES: dict[str, str] = {
-    "xkcd Script": "xkcd-script.ttf",
     "Patrick Hand": "PatrickHand-Regular.ttf",
     "Comic Neue": "ComicNeue-Regular.ttf",
     "Comic Neue Bold": "ComicNeue-Bold.ttf",
+    "xkcd Script": "xkcd-script.ttf",
 }
 
-_DEFAULT_BUNDLED_FONT = "xkcd Script"
+_DEFAULT_BUNDLED_FONT = "Patrick Hand"
+_XKCD_SCRIPT_FONT = "xkcd Script"
 _DEFAULT_FALLBACK_FONTS: tuple[str, ...] = ("DejaVu Sans",)
 
 _XKCD_SCRIPT_URL = (
@@ -48,12 +50,50 @@ _XKCD_SCRIPT_URL = (
 )
 
 _XKCD_SCRIPT_NOTICE = (
-    "Using xkcd-script.ttf at %s.\n"
-    "LICENSE NOTICE: xkcd-script (ipython/xkcd-font, from Randall Munroe) is "
-    "licensed under Creative Commons Attribution-NonCommercial 3.0 "
-    "(CC BY-NC 3.0). For commercial use, call "
+    "LICENSE NOTICE: 'xkcd Script' (xkcd-script.ttf, from ipython/xkcd-font "
+    "/ Randall Munroe) is licensed under Creative Commons "
+    "Attribution-NonCommercial 3.0 (CC BY-NC 3.0) and is restricted to "
+    "non-commercial use only. Commercial-safe SIL OFL 1.1 defaults are "
+    "'Patrick Hand' (default) and 'Comic Neue' via "
     "set_default_font('Patrick Hand') or set_default_font('Comic Neue')."
 )
+
+_XKCD_SCRIPT_COMMERCIAL_ERROR = (
+    "Cannot activate 'xkcd Script' while XM_COMMERCIAL_SAFE is enabled: "
+    "xkcd-script.ttf is licensed under CC BY-NC 3.0 (non-commercial use "
+    "only). Use the commercial-safe SIL OFL 1.1 defaults 'Patrick Hand' "
+    "or 'Comic Neue' instead."
+)
+
+def is_commercial_safe() -> bool:
+    """Returns True when ``XM_COMMERCIAL_SAFE`` forbids CC BY-NC fonts."""
+    return os.environ.get("XM_COMMERCIAL_SAFE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _is_xkcd_script_font(family: str) -> bool:
+    """Returns True if ``family`` names the CC BY-NC ``xkcd Script`` font."""
+    normalized = family.strip().lower().replace("_", " ").replace("-", " ")
+    return normalized in ("xkcd script", "xkcdscript")
+
+
+def _enforce_font_license(
+    family: str,
+    *,
+    warn: bool = True,
+    stacklevel: int = 3,
+) -> None:
+    """Blocks or warns once on activation of CC BY-NC ``xkcd Script``."""
+    if not _is_xkcd_script_font(family):
+        return
+    if is_commercial_safe():
+        raise exceptions.StyleError(_XKCD_SCRIPT_COMMERCIAL_ERROR)
+    if warn and not _XKCD_SCRIPT_WARNED[0]:
+        _XKCD_SCRIPT_WARNED[0] = True
+        warnings.warn(_XKCD_SCRIPT_NOTICE, UserWarning, stacklevel=stacklevel)
 
 
 def list_bundled_fonts() -> tuple[str, ...]:
@@ -116,6 +156,7 @@ def resolve_font_chain(preferred: str = _DEFAULT_BUNDLED_FONT) -> list[str]:
     Returns:
       Ordered list of font family names starting with ``preferred``.
     """
+    _enforce_font_license(preferred, warn=False, stacklevel=3)
     ensure_fonts_registered()
     chain = [preferred]
     for fallback in _DEFAULT_FALLBACK_FONTS:
@@ -148,13 +189,13 @@ def register_font(font_path: str | pathlib.Path) -> str:
 def get_default_font() -> str | None:
     """Returns active session font override or ``XM_COMMERCIAL_SAFE`` font."""
     if _DEFAULT_FONT_STATE[0] is not None:
+        if is_commercial_safe() and _is_xkcd_script_font(
+            _DEFAULT_FONT_STATE[0]
+        ):
+            return _DEFAULT_BUNDLED_FONT
         return _DEFAULT_FONT_STATE[0]
-    if os.environ.get("XM_COMMERCIAL_SAFE", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-    ):
-        return "Patrick Hand"
+    if is_commercial_safe():
+        return _DEFAULT_BUNDLED_FONT
     return None
 
 
@@ -162,27 +203,38 @@ def set_default_font(font: str | pathlib.Path | None) -> str:
     """Sets or resets the default font used across all ``xkcd-matchem`` plots.
 
     Args:
-      font: Font family name (for example ``"xkcd Script"``,
-        ``"Patrick Hand"``, or ``"Comic Neue"``), path to a local
-        ``.ttf``/``.otf`` file to register and activate, or ``None`` to reset
-        to the bundled ``"xkcd Script"`` default.
+      font: Font family name (for example ``"Patrick Hand"``,
+        ``"Comic Neue"``, or non-commercial opt-in ``"xkcd Script"``), path
+        to a local ``.ttf``/``.otf`` file to register and activate, or ``None``
+        to reset to the commercial-safe ``"Patrick Hand"`` default.
 
     Returns:
       The resolved active default font family name.
+
+    Raises:
+      StyleError: If ``font`` is blank, missing, or attempts to activate
+        CC BY-NC ``"xkcd Script"`` while ``XM_COMMERCIAL_SAFE`` is enabled.
     """
     if font is None:
         _DEFAULT_FONT_STATE[0] = None
+        _XKCD_SCRIPT_WARNED[0] = False
         return _DEFAULT_BUNDLED_FONT
     candidate = pathlib.Path(font).expanduser()
     if isinstance(font, pathlib.Path) or (
         candidate.suffix.lower() in (".ttf", ".otf", ".ttc")
         and candidate.is_file()
     ):
+        if (
+            is_commercial_safe()
+            and candidate.name.lower() == "xkcd-script.ttf"
+        ):
+            raise exceptions.StyleError(_XKCD_SCRIPT_COMMERCIAL_ERROR)
         family = register_font(candidate)
     else:
         family = str(font).strip()
         if not family:
             raise exceptions.StyleError("Font name cannot be empty.")
+    _enforce_font_license(family, warn=True, stacklevel=3)
     _DEFAULT_FONT_STATE[0] = family
     return family
 
@@ -194,9 +246,10 @@ def fetch_xkcd_script(
 ) -> pathlib.Path:
     """Returns the bundled ``xkcd-script.ttf`` (or fetches into ``cache_dir``).
 
-    ``xkcd-script`` is licensed under CC BY-NC 3.0 (non-commercial use) and is
-    bundled as the default typeface in ``xkcd-matchem``. Pass ``cache_dir`` to
-    explicitly download a standalone copy into a custom directory.
+    ``xkcd-script`` is licensed under CC BY-NC 3.0 (non-commercial use only)
+    and is bundled strictly as an explicit opt-in typeface. The default
+    typeface is commercial-safe SIL OFL 1.1 ``"Patrick Hand"``. Pass
+    ``cache_dir`` to download a standalone copy into a custom directory.
 
     Args:
       cache_dir: Optional directory for a standalone downloaded ``.ttf`` copy.
@@ -208,12 +261,16 @@ def fetch_xkcd_script(
       Path to ``xkcd-script.ttf`` registered in Matplotlib.
 
     Raises:
-      StyleError: If the network download fails or produces an empty file.
+      StyleError: If ``XM_COMMERCIAL_SAFE`` is enabled while ``activate=True``,
+        or if the network download fails or produces an empty file.
     """
+    if activate and is_commercial_safe():
+        raise exceptions.StyleError(_XKCD_SCRIPT_COMMERCIAL_ERROR)
     if cache_dir is None:
-        bundled = get_bundled_font_path(_DEFAULT_BUNDLED_FONT)
+        bundled = get_bundled_font_path(_XKCD_SCRIPT_FONT)
         family = register_font(bundled)
         if activate:
+            _enforce_font_license(family, warn=True, stacklevel=3)
             _DEFAULT_FONT_STATE[0] = family
         return bundled
 
@@ -237,8 +294,10 @@ def fetch_xkcd_script(
         target_file.write_bytes(payload)
     family = register_font(target_file)
     if activate:
+        _enforce_font_license(family, warn=True, stacklevel=3)
         _DEFAULT_FONT_STATE[0] = family
-    warnings.warn(_XKCD_SCRIPT_NOTICE % target_file, UserWarning, stacklevel=2)
+    else:
+        warnings.warn(_XKCD_SCRIPT_NOTICE, UserWarning, stacklevel=2)
     return target_file
 
 
@@ -246,7 +305,7 @@ def use_xkcd_script(
     font_path: str | pathlib.Path | None = None,
     cache_dir: str | pathlib.Path | None = None,
 ) -> str:
-    """Activates the bundled (or custom local) ``xkcd Script`` font.
+    """Explicitly opts into the non-commercial CC BY-NC ``xkcd Script`` font.
 
     Args:
       font_path: Optional path to a custom local ``xkcd-script.ttf`` file.
@@ -254,7 +313,12 @@ def use_xkcd_script(
 
     Returns:
       The registered font family name (``"xkcd Script"``).
+
+    Raises:
+      StyleError: If ``XM_COMMERCIAL_SAFE`` is enabled.
     """
+    if is_commercial_safe():
+        raise exceptions.StyleError(_XKCD_SCRIPT_COMMERCIAL_ERROR)
     if font_path is not None:
         return set_default_font(pathlib.Path(font_path))
     resolved = fetch_xkcd_script(cache_dir=cache_dir, activate=True)

@@ -27,6 +27,7 @@ from xkcd_matchem.core import structure
 from xkcd_matchem.data import elements
 from xkcd_matchem.data import spacegroups
 from xkcd_matchem.io import registry
+from xkcd_matchem.io.native import _limits
 
 
 def _strip_uncertainty(token: str) -> float:
@@ -130,11 +131,13 @@ def _apply_symops(
     parsed_ops: list[tuple[np.ndarray, np.ndarray]],
     cell: np.ndarray,
     site_occupancies: list[float] | None = None,
+    source: str | pathlib.Path = "",
 ) -> tuple[np.ndarray, list[str], list[str], list[float] | None]:
     """Expands asymmetric unit sites using CIF symmetry operations."""
     if not parsed_ops:
         return frac_sites, site_symbols, site_labels, site_occupancies
 
+    atom_limit = _limits.max_atoms()
     occs_in = (
         site_occupancies
         if site_occupancies is not None
@@ -163,6 +166,8 @@ def _apply_symops(
             np.isclose(wrapped, 1.0, rtol=0.0, atol=1e-5), 0.0, wrapped
         )
         if not _is_duplicate(wrapped, sym):
+            if len(expanded_frac) >= atom_limit:
+                _limits.check_atom_count(len(expanded_frac) + 1, source=source)
             expanded_frac.append(wrapped)
             by_sym_frac.setdefault(sym, []).append(wrapped)
             expanded_syms.append(sym)
@@ -178,6 +183,10 @@ def _apply_symops(
                 np.isclose(cand, 1.0, rtol=0.0, atol=1e-5), 0.0, cand
             )
             if not _is_duplicate(cand, sym):
+                if len(expanded_frac) >= atom_limit:
+                    _limits.check_atom_count(
+                        len(expanded_frac) + 1, source=source
+                    )
                 expanded_frac.append(cand)
                 by_sym_frac.setdefault(sym, []).append(cand)
                 expanded_syms.append(sym)
@@ -260,7 +269,13 @@ def _expand_sites_with_table(
     ] = []
     for cand_ops in candidates:
         exp = _apply_symops(
-            frac_arr, syms, labels, cand_ops, cell, site_occupancies=occs
+            frac_arr,
+            syms,
+            labels,
+            cand_ops,
+            cell,
+            site_occupancies=occs,
+            source=source,
         )
         if len(exp[0]) == len(frac_arr):
             return exp
@@ -329,6 +344,7 @@ def _parse_cif_occ(raw_occ: str) -> float:
 
 def _collect_cif_sites_and_symops(
     loops: list[tuple[list[str], list[list[str]]]],
+    source: str | pathlib.Path = "",
 ) -> tuple[
     list[str], list[list[float]], list[str], list[str], list[float] | None
 ]:
@@ -353,6 +369,7 @@ def _collect_cif_sites_and_symops(
             and "_atom_site_fract_z" in headers
         ):
             continue
+        _limits.check_atom_count(len(frac_list) + len(rows), source=source)
         ix = headers.index("_atom_site_fract_x")
         iy = headers.index("_atom_site_fract_y")
         iz = headers.index("_atom_site_fract_z")
@@ -409,11 +426,14 @@ def _parse_cif_block(
             f"Missing or invalid unit-cell tags in CIF: {source}"
         ) from exc
 
-    symops, frac_list, syms, labels, occs = _collect_cif_sites_and_symops(loops)
+    symops, frac_list, syms, labels, occs = _collect_cif_sites_and_symops(
+        loops, source=source
+    )
     if not frac_list:
         raise exceptions.ParseError(
             f"No _atom_site_fract_* records in CIF: {source}"
         )
+    _limits.check_atom_count(len(frac_list), source=source)
 
     cell = geometry.cell_vectors_from_parameters(a, b, c, alpha, beta, gamma)
     frac_arr = np.array(frac_list, dtype=np.float64)
@@ -426,6 +446,7 @@ def _parse_cif_block(
             parsed_ops,
             cell,
             site_occupancies=occs,
+            source=source,
         )
     else:
         exp_frac, exp_syms, exp_labels, exp_occs = _expand_sites_with_table(
@@ -460,12 +481,14 @@ def _parse_cif_block(
 def read_cif_all(path: str | pathlib.Path) -> list[structure.AtomsData]:
     """Reads all structural ``data_`` blocks from a multi-structure CIF."""
     p = pathlib.Path(path)
+    _limits.check_file_size(p)
     tokens = _tokenize_cif(p.read_text(encoding="utf-8"))
     blocks = _split_cif_data_blocks(tokens)
     structures: list[structure.AtomsData] = []
     for block_name, block_tokens in blocks:
         _, loops = _extract_loops_and_scalars(block_tokens)
         if any("_atom_site_fract_x" in hdrs for hdrs, _ in loops):
+            _limits.check_frame_count(len(structures) + 1, source=p)
             structures.append(_parse_cif_block(block_name, block_tokens, p))
     if not structures:
         raise exceptions.ParseError(
@@ -490,6 +513,7 @@ def read_cif(
       Parsed ``AtomsData`` crystal structure.
     """
     p = pathlib.Path(path)
+    _limits.check_file_size(p)
     tokens = _tokenize_cif(p.read_text(encoding="utf-8"))
     blocks = _split_cif_data_blocks(tokens)
     struct_blocks: list[tuple[str, list[str]]] = []

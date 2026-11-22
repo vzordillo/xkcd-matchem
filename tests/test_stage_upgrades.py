@@ -325,7 +325,7 @@ def test_stage3_stage4_renderers_plotters_and_engines(
     # Themes & XM_COMMERCIAL_SAFE + deprecation warning
     for p_name in ("talk_16x9", "talk_dark", "graphical_abstract"):
         assert p_name in theme.list_presets()
-        assert theme.get_preset(p_name).font == "xkcd Script"
+        assert theme.get_preset(p_name).font == "Patrick Hand"
 
     monkeypatch.setenv("XM_COMMERCIAL_SAFE", "1")
     fonts.set_default_font(None)

@@ -51,7 +51,7 @@ def test_bundled_fonts_and_no_rcparams_leak() -> None:
 def test_all_theme_presets_and_scientific_glyphs() -> None:
     matplotlib.use("Agg")
     for preset_name in theme.list_presets():
-        assert theme.get_preset(preset_name).font == "xkcd Script"
+        assert theme.get_preset(preset_name).font == "Patrick Hand"
         with theme.xkcd_style(preset=preset_name):
             fig, ax = plt.subplots()
             ax.plot([0.0, 1.0], [1.0, 2.0])
@@ -130,7 +130,7 @@ def test_custom_presets_palettes_and_existing_axes() -> None:
         with theme.xkcd_style("classic"):
             assert matplotlib.rcParams["font.family"][0] == "Comic Neue"
     finally:
-        assert fonts.set_default_font(None) == "xkcd Script"
+        assert fonts.set_default_font(None) == "Patrick Hand"
         assert fonts.get_default_font() is None
 
 
@@ -149,7 +149,8 @@ def test_fonts_palettes_and_patterns_complete_coverage(
         fonts.set_default_font("   ")
 
     try:
-        bundled = fonts.fetch_xkcd_script(cache_dir=None, activate=True)
+        with pytest.warns(UserWarning, match="CC BY-NC 3.0"):
+            bundled = fonts.fetch_xkcd_script(cache_dir=None, activate=True)
         assert bundled.is_file()
         assert fonts.use_xkcd_script(font_path=bundled) == "xkcd Script"
     finally:

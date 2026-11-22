@@ -26,6 +26,7 @@ from xkcd_matchem.core import structure
 from xkcd_matchem.core import trajectory
 from xkcd_matchem.data import elements
 from xkcd_matchem.io import registry
+from xkcd_matchem.io.native import _limits
 
 
 _KEYVAL_PATTERN = re.compile(r'(\w+)=(?:"([^"]*)"|(\S+))')
@@ -44,6 +45,7 @@ def _parse_extxyz_comment(comment: str) -> dict[str, Any]:
 def _parse_single_frame(
     lines: list[str],
     start: int,
+    source: str | pathlib.Path = "",
 ) -> tuple[structure.AtomsData, int]:
     """Parses one XYZ or extXYZ frame starting at ``lines[start]``."""
     while start < len(lines) and not lines[start].strip():
@@ -56,6 +58,7 @@ def _parse_single_frame(
         raise exceptions.ParseError(
             f"Invalid XYZ atom count line at line {start + 1}: {lines[start]!r}"
         ) from exc
+    _limits.check_atom_count(n_atoms, source=source)
     if start + 1 + n_atoms >= len(lines):
         raise exceptions.ParseError(
             "Truncated XYZ frame before all atoms read."
@@ -129,6 +132,7 @@ def _parse_single_frame(
 def read_xyz_trajectory(path: str | pathlib.Path) -> trajectory.Trajectory:
     """Reads all frames from an XYZ or extended XYZ file into ``Trajectory``."""
     p = pathlib.Path(path)
+    _limits.check_file_size(p)
     lines = p.read_text(encoding="utf-8").splitlines()
     frames: list[structure.AtomsData] = []
     cursor = 0
@@ -137,7 +141,8 @@ def read_xyz_trajectory(path: str | pathlib.Path) -> trajectory.Trajectory:
             cursor += 1
         if cursor >= len(lines):
             break
-        frame, cursor = _parse_single_frame(lines, cursor)
+        _limits.check_frame_count(len(frames) + 1, source=p)
+        frame, cursor = _parse_single_frame(lines, cursor, source=p)
         frames.append(frame)
     if not frames:
         raise exceptions.ParseError(f"No XYZ frames found in {p}.")
@@ -170,13 +175,14 @@ def read_xyz_trajectory(path: str | pathlib.Path) -> trajectory.Trajectory:
 def read_xyz(path: str | pathlib.Path) -> structure.AtomsData:
     """Reads only the first structure frame from an XYZ/extXYZ file."""
     p = pathlib.Path(path)
+    _limits.check_file_size(p)
     lines = p.read_text(encoding="utf-8").splitlines()
     cursor = 0
     while cursor < len(lines) and not lines[cursor].strip():
         cursor += 1
     if cursor >= len(lines):
         raise exceptions.ParseError(f"No XYZ frames found in {p}.")
-    frame, _ = _parse_single_frame(lines, cursor)
+    frame, _ = _parse_single_frame(lines, cursor, source=p)
     frame.metadata.setdefault("source", str(p))
     return frame
 
