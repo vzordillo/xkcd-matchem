@@ -1,0 +1,59 @@
+name: Feature Request
+description: Suggest a new chemistry/materials plotter, file reader, SciComm template, or 3D Studio capability.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea that would make **`xkcd-matchem`** even better for chemistry and materials science communication? Tell us about your use case!
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feature Category
+      options:
+        - Chemistry or Materials Science Plotter
+        - Native File Format Reader or Ecosystem Adapter
+        - SciComm Layout Template, Poster Board, or Comic Strip
+        - Theme Preset, Color Palette, or Pen-and-Ink Shading Style
+        - Interactive 3D Studio Feature
+        - CLI Subcommand
+        - Documentation, Gallery, or Tutorial Notebook
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Scientific / Communication Motivation
+      description: What figure, dataset, talk slide, poster, or classroom explanation are you trying to build?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API or Behavior
+      description: Sketch how you would like to call this feature in Python or the CLI.
+      render: python
+      placeholder: |
+        import xkcd_matchem as xm
+
+        # Example desired call:
+        # ax = xm.plot_...(...)
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: Scientific Conventions & Primary References (Optional)
+      description: If this feature involves physical constants, sign conventions (e.g., IUPAC vs. US, binding energy axis direction), or standard formulas, please list primary papers or textbook conventions.
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution Interest
+      options:
+        - label: I would be interested in helping implement or test a PR for this feature.

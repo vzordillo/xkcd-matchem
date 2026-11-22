@@ -1,0 +1,82 @@
+name: Bug Report
+description: Report a plotting defect, file parser error, visual overlap, or Interactive 3D Studio issue.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug in **`xkcd-matchem`**!
+        For security vulnerabilities, please use [Private Vulnerability Reporting](https://github.com/vzordillo/xkcd-matchem/security/advisories/new) instead of opening a public issue.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Briefly describe the bug, visual glitch, or unexpected physical/numerical result.
+      placeholder: e.g., `plot_xrd()` misplaces peak labels when `preset="dark_chalk"` is active...
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal Reproducible Example
+      description: Paste the smallest self-contained Python snippet or CLI command that reproduces the issue (using a bundled sample file like `"si_diamond.cif"` if possible).
+      render: python
+      placeholder: |
+        import xkcd_matchem as xm
+
+        ax = xm.plot_crystal("si_diamond.cif")
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to see (or what scientific/visual convention should hold)?
+    validations:
+      required: true
+
+  - type: textarea
+    id: traceback
+    attributes:
+      label: Error Traceback or Screenshot
+      description: Paste any full Python traceback, or drag-and-drop the rendered PNG/SVG screenshot showing the visual issue.
+      render: shell
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      options:
+        - High-level plotter (`plots/`)
+        - 3D/2D renderer or shading (`render/`)
+        - File reader or adapter (`io/`)
+        - Core physics / geometry / data (`core/`, `data/`)
+        - Themes, palettes, fonts, or grids (`style/`)
+        - Poster boards, comics, or SciComm layouts (`layout/`)
+        - Interactive 3D Studio (`viewer.html` / `view_structure`)
+        - CLI (`xkcd-matchem`)
+        - Documentation / Tutorial notebook (`book/`)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: "`xkcd-matchem` Version"
+      description: Run `xkcd-matchem --version` or `python -c "import xkcd_matchem as xm; print(xm.__version__)"`.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment Details
+      description: OS, Python version (3.10 / 3.11 / 3.12), NumPy, SciPy, Matplotlib versions, and any optional extras (`ase`, `pymatgen`, `rdkit`, etc.).
+      placeholder: "Ubuntu 24.04, Python 3.12, matplotlib 3.9, numpy 2.1, scipy 1.14"
+    validations:
+      required: true
