@@ -24,6 +24,7 @@ parts:
       - file: tutorials/12_isosurfaces_phonons_wulff_and_comics
       - file: tutorials/13_brillouin_volcano_defects_and_cohp
       - file: tutorials/14_crystalfield_electrochem_nmr_and_templates
+      - file: tutorials/15_animations_md_orbits_and_isosurfaces
   - caption: Reference
     chapters:
       - file: reference/supported_formats

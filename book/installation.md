@@ -38,7 +38,7 @@ Already using ASE, pymatgen, RDKit, cclib, or MDAnalysis? Install only the bridg
 | `rdkit` | `rdkit>=2023.9` | Generate 3D conformers directly from SMILES strings (`xm.from_smiles`, `xm.from_rdkit`) |
 | `qm` | `cclib>=1.8` | Parse quantum chemistry logfiles beyond native Gaussian/ORCA subsets (`xm.from_cclib`, `xm.io.read_via_cclib`) |
 | `md` | `MDAnalysis>=2.6`, `mdtraj>=1.9` | Import MDAnalysis `Universe` or MDTraj `Trajectory` objects (`xm.from_mdanalysis`, `xm.from_mdtraj`) |
-| `animation` | `pillow>=10.0` | Export looping trajectory animations as GIFs via `xm.animate_trajectory()` |
+| `animation` | `pillow>=10.0` | Export looping GIF animations via `xm.animate_trajectory()`, `xm.animate_orbit()`, and `xm.animate_isosurface()` |
 
 For example, to add ASE, pymatgen, RDKit, and GIF animation support together from GitHub:
 

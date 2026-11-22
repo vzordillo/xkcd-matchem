@@ -29,6 +29,7 @@ from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import geometry
 from xkcd_matchem.core import structure
 from xkcd_matchem.core import trajectory
+from xkcd_matchem.io import loader
 from xkcd_matchem.render import structure3d
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import theme
@@ -247,48 +248,111 @@ def _trajectory_viewport(
     )
 
 
+def _resolve_animation_frames(
+    traj: trajectory.Trajectory | str | pathlib.Path,
+    stride: int,
+    ping_pong: bool,
+) -> tuple[list[structure.AtomsData], list[int]]:
+    """Coerces a trajectory source and builds playback frame indices."""
+    traj_obj = (
+        traj
+        if isinstance(traj, trajectory.Trajectory)
+        else loader.load_trajectory(traj)
+    )
+    selected = list(traj_obj.frames[:: max(1, stride)])
+    if not selected or all(len(frame) == 0 for frame in selected):
+        raise exceptions.StructureError("Trajectory has no frames to animate.")
+    seq_indices = list(range(len(selected)))
+    if ping_pong and len(selected) > 2:
+        seq_indices.extend(range(len(selected) - 2, 0, -1))
+    return selected, seq_indices
+
+
 def animate_trajectory(
-    traj: trajectory.Trajectory,
+    traj: trajectory.Trajectory | str | pathlib.Path,
     out_path: str | pathlib.Path,
     fps: int = 8,
     stride: int = 1,
     camera: geometry.Camera | str | None = None,
     palette: str | Mapping[str, str] = "xkcd",
     preset: str | theme.ThemePreset = "classic",
+    *,
+    ping_pong: bool = False,
+    show_cell: bool = True,
+    figsize: tuple[float, float] = (4.8, 4.2),
+    dpi: int = 110,
+    title: str | None = None,
 ) -> pathlib.Path:
-    """Renders an xkcd-styled animated GIF across ``Trajectory`` frames."""
+    """Renders an xkcd-styled animated GIF across ``Trajectory`` frames.
+
+    Args:
+      traj: ``Trajectory`` object, file path, or bundled sample filename (for
+        example, ``"sn2_neb.xyz"`` or ``"cu_md.lammpstrj"``).
+      out_path: Destination ``.gif`` file path.
+      fps: Playback speed in frames per second.
+      stride: Frame subsampling stride (``1`` keeps every frame).
+      camera: ``Camera`` instance or preset string.
+      palette: Element color palette name or ``{symbol: hex}`` mapping.
+      preset: Visual theme preset name or ``ThemePreset``.
+      ping_pong: If ``True``, appends reversed interior frames for seamless
+        forward-and-back looping (ideal for NEB reaction paths).
+      show_cell: Whether to render the periodic unit cell when present.
+      figsize: Matplotlib figure size ``(width, height)`` in inches.
+      dpi: Frame rasterization resolution in dots per inch.
+      title: Optional heading prefix (frame counter is appended automatically).
+
+    Returns:
+      ``pathlib.Path`` pointing to the saved looping GIF file.
+    """
     if util.find_spec("PIL") is None:
         raise exceptions.OptionalDependencyError(
             "GIF animation requires 'pillow'. Install via: "
             "pip install 'xkcd-matchem[animation]'"
         )
 
-    selected = traj.frames[:: max(1, stride)]
-    if not selected or all(len(frame) == 0 for frame in selected):
-        raise exceptions.StructureError("Trajectory has no frames to animate.")
+    selected, seq_indices = _resolve_animation_frames(traj, stride, ping_pong)
     out = pathlib.Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    ref_cell = selected[0].cell
-    cam = geometry.resolve_camera(camera, cell=ref_cell)
+    cam = geometry.resolve_camera(camera, cell=selected[0].cell)
     x_lo, x_hi, y_lo, y_hi = _trajectory_viewport(selected, cam)
+    preset_obj = theme.get_preset(preset)
+    prefix = f"{title} — " if title else ""
     with theme.xkcd_style(preset=preset):
-        fig, ax = plt.subplots(figsize=(4.8, 4.2))
+        fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+        try:
+            fig.patch.set_facecolor(preset_obj.figure_facecolor)
+            fig.patch.set_edgecolor(preset_obj.figure_facecolor)
+            fig.patch.set_sketch_params(0.0, 0.0, 0.0)
 
-        def _update(frame_idx: int) -> tuple[()]:
-            ax.clear()
-            atoms = selected[frame_idx]
-            structure3d.render_structure_3d(
-                atoms, ax=ax, camera=cam, palette=palette
+            def _update(seq_pos: int) -> tuple[()]:
+                frame_idx = seq_indices[seq_pos]
+                ax.clear()
+                ax.set_facecolor(preset_obj.axes_facecolor)
+                ax.patch.set_sketch_params(0.0, 0.0, 0.0)
+                structure3d.render_structure_3d(
+                    selected[frame_idx],
+                    ax=ax,
+                    camera=cam,
+                    palette=palette,
+                    show_cell=show_cell,
+                )
+                ax.set_xlim(x_lo, x_hi)
+                ax.set_ylim(y_lo, y_hi)
+                ax.set_aspect("equal", adjustable="box")
+                ax.set_title(
+                    f"{prefix}Frame {frame_idx + 1}/{len(selected)}",
+                    color=preset_obj.ink_color,
+                )
+                return ()
+
+            anim = animation.FuncAnimation(
+                fig,
+                _update,
+                frames=len(seq_indices),
+                interval=int(1000 / max(1, fps)),
             )
-            ax.set_xlim(x_lo, x_hi)
-            ax.set_ylim(y_lo, y_hi)
-            ax.set_title(f"Frame {frame_idx + 1}/{len(selected)}")
-            return ()
-
-        anim = animation.FuncAnimation(
-            fig, _update, frames=len(selected), interval=int(1000 / max(1, fps))
-        )
-        writer = animation.PillowWriter(fps=fps)
-        anim.save(str(out), writer=writer)
-        plt.close(fig)
+            writer = animation.PillowWriter(fps=fps)
+            anim.save(str(out), writer=writer, dpi=dpi)
+        finally:
+            plt.close(fig)
     return out

@@ -4,7 +4,7 @@ Every figure and animated GIF below is generated automatically by `scripts/gener
 
 ## Animated Motion & Theme Explorer
 
-Looping GIFs are rendered with `xm.animate_trajectory()` (requires the `animation` extra: `pip install "xkcd-matchem[animation] @ git+https://github.com/vzordillo/xkcd-matchem.git"`, or `pip install -e ".[animation]"` from a local clone) or custom camera/preset loops:
+Looping GIFs are rendered with `xm.animate_trajectory()`, `xm.animate_orbit()`, and `xm.animate_isosurface()` (requires the `animation` extra: `pip install "xkcd-matchem[animation] @ git+https://github.com/vzordillo/xkcd-matchem.git"`, or `pip install -e ".[animation]"` from a local clone) — see [Tutorial 15: Animated GIFs (MD, NEB, Crystal Orbits & 3D Isosurfaces)](tutorials/15_animations_md_orbits_and_isosurfaces.ipynb):
 
 | 3D Coordination Polyhedra Orbit | Climbing-Image NEB Pathway | Live Theme & Palette Switching |
 | :---: | :---: | :---: |
@@ -130,7 +130,8 @@ See [Tutorial 12: 3D Isosurfaces, Phonons, Wulff Shapes & Comic Strips](tutorial
 
 ### Orthographic Isometric 360° Orbit Comparison
 
-Evaluate how shading styles, 3D axis contours, surface-anchored stippling/scumbling, and atom-sphere depth occlusion behave across a full 360° orthographic isometric rotation (`elevation = 35.3°`, `perspective = 0.0`):
+Evaluate how shading styles, 3D axis contours, surface-anchored stippling/scumbling, and atom-sphere depth occlusion behave across a full 360° orthographic isometric rotation (`elevation = 35.3°`, `perspective = 0.0`).
+See [Tutorial 15: Animated GIFs (MD, NEB, Crystal Orbits & 3D Isosurfaces)](tutorials/15_animations_md_orbits_and_isosurfaces.ipynb) to generate single-orbital orbit GIFs with `xm.animate_isosurface()`.
 
 ![3D isosurface orthographic isometric orbit](_static/gallery/isosurface_shading_orbit.gif)
 

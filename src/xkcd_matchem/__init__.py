@@ -83,6 +83,8 @@ if TYPE_CHECKING:
     VolumetricGrid = core.VolumetricGrid
     WulffFacet = core.WulffFacet
     WulffShape = core.WulffShape
+    animate_isosurface = plots.animate_isosurface
+    animate_orbit = plots.animate_orbit
     animate_trajectory = plots.animate_trajectory
     annotate_angle = render.annotate_angle
     annotate_distance = render.annotate_distance
@@ -268,6 +270,8 @@ __all__ = [
     "WulffFacet",
     "WulffShape",
     "__version__",
+    "animate_isosurface",
+    "animate_orbit",
     "animate_trajectory",
     "annotate_angle",
     "annotate_distance",
@@ -474,6 +478,8 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "VolumetricGrid": (_CORE, "VolumetricGrid"),
     "WulffFacet": (_CORE, "WulffFacet"),
     "WulffShape": (_CORE, "WulffShape"),
+    "animate_isosurface": (_PLOTS, "animate_isosurface"),
+    "animate_orbit": (_PLOTS, "animate_orbit"),
     "animate_trajectory": (_PLOTS, "animate_trajectory"),
     "annotate_angle": (_RENDER, "annotate_angle"),
     "annotate_distance": (_RENDER, "annotate_distance"),

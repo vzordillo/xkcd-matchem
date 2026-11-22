@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+from xkcd_matchem.plots import animations
 from xkcd_matchem.plots import charts
 from xkcd_matchem.plots import crystalfield
 from xkcd_matchem.plots import electrochem
@@ -30,6 +31,8 @@ from xkcd_matchem.plots import trajectory
 
 
 __all__ = [
+    "animate_isosurface",
+    "animate_orbit",
     "animate_trajectory",
     "plot_bands",
     "plot_bands_dos",
@@ -77,6 +80,8 @@ __all__ = [
     "spacegroup_to_crystal_system",
 ]
 
+animate_isosurface = animations.animate_isosurface
+animate_orbit = animations.animate_orbit
 animate_trajectory = trajectory.animate_trajectory
 plot_bands = electronic.plot_bands
 plot_bands_dos = electronic.plot_bands_dos

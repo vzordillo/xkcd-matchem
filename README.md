@@ -12,7 +12,7 @@
   <a href="https://vzordillo.github.io/xkcd-matchem/">Documentation</a> &middot;
   <a href="https://vzordillo.github.io/xkcd-matchem/playground.html">Live 3D Studio</a> &middot;
   <a href="https://vzordillo.github.io/xkcd-matchem/gallery.html">Visual Gallery</a> &middot;
-  <a href="https://vzordillo.github.io/xkcd-matchem/tutorials/01_quickstart_and_themes.html">Tutorials (01&ndash;14)</a> &middot;
+  <a href="https://vzordillo.github.io/xkcd-matchem/tutorials/01_quickstart_and_themes.html">Tutorials (01&ndash;15)</a> &middot;
   <a href="https://vzordillo.github.io/xkcd-matchem/reference/api.html">API Reference</a>
 </p>
 
@@ -110,7 +110,7 @@ Explore all 21 figures & 4 animations in the **[Visual Gallery](https://vzordill
 | **Crystal-Field & Electrochemistry** | *d*-orbital splitting diagrams, cyclic voltammetry, Tafel kinetics, battery cycles, and `dQ/dV` | `plot_crystal_field`, `plot_cyclic_voltammetry`, `plot_tafel`, `plot_battery_profile`, `plot_dqdv` |
 | **Reactions, MD & Thermodynamics** | Reaction schemes, NEB barriers, MD RMSD/RDF, convex hulls, EOS, Pourbaix, volcanos, and defects | `plot_reaction_scheme`, `plot_neb`, `plot_rdf`, `plot_eos`, `plot_volcano`, `plot_defect_formation` |
 | **Informatics & Crystal Graphs** | 118-element periodic tables, ternary hulls, space-group sunbursts, KDE histograms, and GNN graphs | `plot_periodic_table`, `plot_ternary_phase_diagram`, `plot_spacegroup_distribution`, `plot_structure_graph` |
-| **3D Studio, Layouts & Comics** | Offline 3D viewer, looping GIFs, SciComm templates, millimeter poster boards, scrolls, and stick scientists | `view_structure`, `animate_trajectory`, `create_graphical_abstract`, `Board`, `draw_stick_scientist` |
+| **3D Studio, Layouts & Comics** | Offline 3D viewer, looping GIFs, SciComm templates, millimeter poster boards, scrolls, and stick scientists | `view_structure`, `animate_trajectory`, `animate_orbit`, `animate_isosurface`, `create_graphical_abstract`, `Board`, `draw_stick_scientist` |
 
 ---
 
