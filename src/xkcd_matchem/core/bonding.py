@@ -146,7 +146,11 @@ def infer_bond_orders(
     degrees = [0] * n_atoms
     has_non_organic = [False] * n_atoms
     orders = [float(b.order) for b in bonds]
-    dists: list[float] = []
+    i_indices = np.array([b.i for b in bonds], dtype=np.int64)
+    j_indices = np.array([b.j for b in bonds], dtype=np.int64)
+    dists = np.linalg.norm(
+        atoms.positions[j_indices] - atoms.positions[i_indices], axis=1
+    )
 
     for b in bonds:
         degrees[b.i] += 1
@@ -157,9 +161,6 @@ def infer_bond_orders(
         if atoms.symbols[b.j] not in _ORGANIC_VALENCE:
             has_non_organic[b.i] = True
             has_non_organic[b.j] = True
-        dists.append(
-            float(np.linalg.norm(atoms.positions[b.j] - atoms.positions[b.i]))
-        )
 
     deficits = [
         max(0, _ORGANIC_VALENCE.get(atoms.symbols[i], 0) - degrees[i])
@@ -178,7 +179,7 @@ def infer_bond_orders(
         if has_non_organic[b.i] or has_non_organic[b.j]:
             continue
         key = _pair_key(atoms.symbols[b.i], atoms.symbols[b.j])
-        dist = dists[b_idx]
+        dist = float(dists[b_idx])
         t_lim = _TRIPLE_MAX_DIST.get(key)
         if t_lim is not None and dist <= t_lim:
             if key == ("C", "O") and not (
@@ -264,6 +265,24 @@ def infer_bonds(
     return bonds
 
 
+def _oriented_hull_faces(
+    verts: np.ndarray,
+    simplices: np.ndarray,
+) -> tuple[tuple[int, int, int], ...]:
+    """Orients convex-hull simplices with outward CCW vertex winding."""
+    hull_center = np.mean(verts, axis=0)
+    faces: list[tuple[int, int, int]] = []
+    for tri in simplices:
+        i0, i1, i2 = int(tri[0]), int(tri[1]), int(tri[2])
+        v0 = verts[i0]
+        cross = np.cross(verts[i1] - v0, verts[i2] - v0)
+        if float(np.dot(cross, v0 - hull_center)) < 0.0:
+            faces.append((i0, i2, i1))
+        else:
+            faces.append((i0, i1, i2))
+    return tuple(faces)
+
+
 def find_coordination_polyhedra(
     atoms: structure.AtomsData,
     center_symbol: str,
@@ -336,16 +355,13 @@ def find_coordination_polyhedra(
             hull = spatial.ConvexHull(verts)
         except spatial.QhullError:
             continue
-        faces = tuple(
-            (int(tri[0]), int(tri[1]), int(tri[2])) for tri in hull.simplices
-        )
         polyhedra.append(
             CoordinationPolyhedron(
                 center_index=idx,
                 center_symbol=center_canon,
                 ligand_indices=vert_indices,
                 vertices_3d=verts,
-                faces=faces,
+                faces=_oriented_hull_faces(verts, hull.simplices),
             )
         )
     return polyhedra

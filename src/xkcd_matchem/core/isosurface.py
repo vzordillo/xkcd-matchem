@@ -81,29 +81,30 @@ def _active_tetrahedra(
     level: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Enumerates crossing Kuhn tetrahedra grid coords, flat ids, & values."""
-    nx, ny, nz = data.shape
-    ii, jj, kk = np.meshgrid(
-        np.arange(nx - 1, dtype=np.int64),
-        np.arange(ny - 1, dtype=np.int64),
-        np.arange(nz - 1, dtype=np.int64),
-        indexing="ij",
+    _, ny, nz = data.shape
+    inside = data >= level
+    n_in = (
+        inside[:-1, :-1, :-1].astype(np.uint8)
+        + inside[1:, :-1, :-1]
+        + inside[1:, 1:, :-1]
+        + inside[:-1, 1:, :-1]
+        + inside[:-1, :-1, 1:]
+        + inside[1:, :-1, 1:]
+        + inside[1:, 1:, 1:]
+        + inside[:-1, 1:, 1:]
     )
-    origins = np.column_stack([ii.ravel(), jj.ravel(), kk.ravel()])
-    cube_coords = origins[:, None, :] + _CUBE_OFFSETS[None, :, :]
-    cube_vals = data[
-        cube_coords[:, :, 0], cube_coords[:, :, 1], cube_coords[:, :, 2]
-    ]
-    cube_inside = cube_vals >= level
-    active_cubes = np.any(cube_inside, axis=1) & (~np.all(cube_inside, axis=1))
-    if not np.any(active_cubes):
+    origins = np.argwhere((n_in > 0) & (n_in < 8))
+    if len(origins) == 0:
         empty_i = np.zeros((0, 4), dtype=np.int64)
         return (
             np.zeros((0, 4, 3), dtype=np.int64),
             empty_i,
             np.zeros((0, 4), dtype=np.float64),
         )
-    cube_coords = cube_coords[active_cubes]
-    cube_vals = cube_vals[active_cubes]
+    cube_coords = origins[:, None, :] + _CUBE_OFFSETS[None, :, :]
+    cube_vals = data[
+        cube_coords[:, :, 0], cube_coords[:, :, 1], cube_coords[:, :, 2]
+    ]
     cube_flat = (
         cube_coords[:, :, 0] * (ny * nz)
         + cube_coords[:, :, 1] * nz
@@ -375,4 +376,6 @@ def upsample_coarse_grid(
         origin=grid.origin.copy(),
         voxel_vectors=grid.voxel_vectors * scales[:, None],
         atoms=grid.atoms,
+        units=grid.units,
+        metadata=dict(grid.metadata),
     )

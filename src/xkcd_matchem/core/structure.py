@@ -278,6 +278,10 @@ class AtomsData:
             raise exceptions.StructureError(
                 "Cannot compute fractional positions without a unit cell."
             )
+        if abs(float(np.linalg.det(self.cell))) < 1e-12:
+            raise exceptions.StructureError(
+                "Unit cell matrix is singular (zero volume)."
+            )
         return self.positions @ np.linalg.inv(self.cell)
 
     def wrap_positions(self, tol: float = 1e-9) -> AtomsData:
@@ -293,8 +297,12 @@ class AtomsData:
         for axis, periodic in enumerate(self.pbc):
             if periodic:
                 wrapped_ax = np.mod(frac[:, axis], 1.0)
-                wrapped_ax[np.isclose(wrapped_ax, 1.0, atol=tol)] = 0.0
-                wrapped_ax[np.isclose(wrapped_ax, 0.0, atol=tol)] = 0.0
+                wrapped_ax[
+                    np.isclose(wrapped_ax, 1.0, rtol=0.0, atol=tol)
+                ] = 0.0
+                wrapped_ax[
+                    np.isclose(wrapped_ax, 0.0, rtol=0.0, atol=tol)
+                ] = 0.0
                 frac[:, axis] = wrapped_ax
         wrapped = self.copy()
         wrapped.positions = frac @ self.cell
@@ -324,7 +332,7 @@ class AtomsData:
         shift = geometry.best_fractional_shift(frac, axes=active_axes)
         for ax in active_axes:
             shifted = np.mod(frac[:, ax] + shift[ax], 1.0)
-            shifted[np.isclose(shifted, 1.0, atol=1e-9)] = 0.0
+            shifted[np.isclose(shifted, 1.0, rtol=0.0, atol=1e-9)] = 0.0
             frac[:, ax] = shifted
         centered = self.copy()
         centered.positions = frac @ self.cell
@@ -356,7 +364,7 @@ class AtomsData:
         for axis, periodic in enumerate(self.pbc):
             if periodic:
                 wrapped = np.mod(frac[:, axis], 1.0)
-                wrapped[np.isclose(wrapped, 1.0, atol=tol)] = 0.0
+                wrapped[np.isclose(wrapped, 1.0, rtol=0.0, atol=tol)] = 0.0
                 frac[:, axis] = wrapped
         syms: list[str] = []
         frac_out: list[tuple[float, float, float]] = []
@@ -380,6 +388,14 @@ class AtomsData:
         meta = copy.deepcopy(self.metadata)
         meta["source_indices"] = src_indices
         meta["is_boundary_image"] = is_image
+        chg_out = (
+            self.charges[src_indices] if self.charges is not None else None
+        )
+        lbl_out = (
+            [self.atom_labels[i] for i in src_indices]
+            if self.atom_labels is not None
+            else None
+        )
         occ_out = (
             self.occupancies[src_indices]
             if self.occupancies is not None
@@ -403,8 +419,10 @@ class AtomsData:
             positions=pos,
             cell=self.cell.copy(),
             pbc=self.pbc,
+            charges=chg_out,
             velocities=vel_out,
             forces=forces_out,
+            atom_labels=lbl_out,
             metadata=meta,
             occupancies=occ_out,
             magnetic_moments=mag_out,
@@ -433,39 +451,43 @@ class AtomsData:
             return self.copy()
         n_base = len(self.symbols)
         n_cells = na * nb * nc
-        pos_chunks: list[np.ndarray] = []
-        new_bonds: list[Bond] = []
-
-        for ia in range(na):
-            for ib in range(nb):
-                for ic in range(nc):
-                    shift = (
-                        ia * self.cell[0]
-                        + ib * self.cell[1]
-                        + ic * self.cell[2]
-                    )
-                    base_idx = ((ia * nb + ib) * nc + ic) * n_base
-                    pos_chunks.append(self.positions + shift)
-                    for b in self.bonds:
-                        sa, rem_a = divmod(ia + b.shift[0], na)
-                        sb, rem_b = divmod(ib + b.shift[1], nb)
-                        sc, rem_c = divmod(ic + b.shift[2], nc)
-                        dst_base = ((rem_a * nb + rem_b) * nc + rem_c) * n_base
-                        new_bonds.append(
-                            Bond(
-                                i=base_idx + b.i,
-                                j=dst_base + b.j,
-                                order=b.order,
-                                shift=(int(sa), int(sb), int(sc)),
-                                stereo=b.stereo,
-                            )
-                        )
-
-        new_pos = (
-            np.vstack(pos_chunks)
-            if pos_chunks
-            else np.zeros((0, 3), dtype=np.float64)
+        ga, gb, gc = np.meshgrid(
+            np.arange(na, dtype=np.int64),
+            np.arange(nb, dtype=np.int64),
+            np.arange(nc, dtype=np.int64),
+            indexing="ij",
         )
+        grid_ijk = np.column_stack([ga.ravel(), gb.ravel(), gc.ravel()])
+        cell_shifts = grid_ijk.astype(np.float64) @ self.cell
+        if n_base > 0:
+            new_pos = (
+                self.positions[None, :, :] + cell_shifts[:, None, :]
+            ).reshape(n_cells * n_base, 3)
+        else:
+            new_pos = np.zeros((0, 3), dtype=np.float64)
+
+        new_bonds: list[Bond] = []
+        if self.bonds:
+            base_offsets = np.arange(n_cells, dtype=np.int64) * n_base
+            rep_vec = np.array([na, nb, nc], dtype=np.int64)
+            for b in self.bonds:
+                shifted_ijk = grid_ijk + np.array(b.shift, dtype=np.int64)
+                s_quo = np.floor_divide(shifted_ijk, rep_vec)
+                rem = np.mod(shifted_ijk, rep_vec)
+                dst_offsets = (
+                    (rem[:, 0] * nb + rem[:, 1]) * nc + rem[:, 2]
+                ) * n_base
+                for cell_k in range(n_cells):
+                    sq = s_quo[cell_k]
+                    new_bonds.append(
+                        Bond(
+                            i=int(base_offsets[cell_k]) + b.i,
+                            j=int(dst_offsets[cell_k]) + b.j,
+                            order=b.order,
+                            shift=(int(sq[0]), int(sq[1]), int(sq[2])),
+                            stereo=b.stereo,
+                        )
+                    )
         new_cell = np.vstack(
             [self.cell[0] * na, self.cell[1] * nb, self.cell[2] * nc]
         )

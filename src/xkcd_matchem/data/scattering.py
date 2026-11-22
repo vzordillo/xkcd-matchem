@@ -790,7 +790,7 @@ def atomic_form_factor(
     if coeffs is None:
         coeffs = CROMER_MANN_TABLE["Lr"]
         scale = float(rec.atomic_number) / 103.0
-    total = np.full_like(s2, coeffs.c, dtype=np.float64)
-    for a_k, b_k in zip(coeffs.a, coeffs.b, strict=True):
-        total = total + a_k * np.exp(-b_k * s2)
-    return total * scale
+    a_vec = np.asarray(coeffs.a, dtype=np.float64)
+    b_vec = np.asarray(coeffs.b, dtype=np.float64)
+    gauss_sum = np.sum(a_vec * np.exp(-b_vec * s2[..., None]), axis=-1)
+    return np.asarray((coeffs.c + gauss_sum) * scale, dtype=np.float64)

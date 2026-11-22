@@ -38,6 +38,7 @@ __all__ = [
     "CohpData",
     "CoordinationPolyhedron",
     "DensityOfStates",
+    "EOSFitResult",
     "IsosurfaceMesh",
     "MatchemError",
     "MolecularOrbitals",
@@ -54,6 +55,8 @@ __all__ = [
     "VolumetricGrid",
     "WulffFacet",
     "WulffShape",
+    "birch_murnaghan_energy",
+    "birch_murnaghan_pressure",
     "broaden_peaks",
     "cell_vectors_from_parameters",
     "compute_brillouin_zone",
@@ -62,6 +65,7 @@ __all__ = [
     "extract_isosurface",
     "find_coordination_polyhedra",
     "find_periodic_neighbors",
+    "fit_birch_murnaghan",
     "infer_bond_orders",
     "infer_bonds",
     "miller_plane_polygon",
@@ -80,6 +84,7 @@ Camera = geometry.Camera
 CohpData = electronic.CohpData
 CoordinationPolyhedron = bonding.CoordinationPolyhedron
 DensityOfStates = electronic.DensityOfStates
+EOSFitResult = wulff.EOSFitResult
 IsosurfaceMesh = isosurface.IsosurfaceMesh
 MatchemError = exceptions.MatchemError
 MolecularOrbitals = electronic.MolecularOrbitals
@@ -96,6 +101,8 @@ UnsupportedFormatError = exceptions.UnsupportedFormatError
 VolumetricGrid = electronic.VolumetricGrid
 WulffFacet = wulff.WulffFacet
 WulffShape = wulff.WulffShape
+birch_murnaghan_energy = wulff.birch_murnaghan_energy
+birch_murnaghan_pressure = wulff.birch_murnaghan_pressure
 broaden_peaks = spectroscopy.broaden_peaks
 cell_vectors_from_parameters = geometry.cell_vectors_from_parameters
 compute_brillouin_zone = brillouin.compute_brillouin_zone
@@ -104,6 +111,7 @@ compute_xrd = spectroscopy.compute_xrd
 extract_isosurface = isosurface.extract_isosurface
 find_coordination_polyhedra = bonding.find_coordination_polyhedra
 find_periodic_neighbors = neighbors.find_periodic_neighbors
+fit_birch_murnaghan = wulff.fit_birch_murnaghan
 infer_bond_orders = bonding.infer_bond_orders
 infer_bonds = bonding.infer_bonds
 miller_plane_polygon = geometry.miller_plane_polygon

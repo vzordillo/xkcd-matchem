@@ -55,6 +55,10 @@ def _parse_poscar_header(
             "VASP POSCAR lattice matrix has zero determinant."
         )
     if len(scale_tokens) >= 3:
+        if any(v <= 0.0 for v in scale_tokens[:3]):
+            raise exceptions.ParseError(
+                "VASP 3-component scaling factors must all be positive."
+            )
         scale_vec = np.asarray(scale_tokens[:3], dtype=np.float64)
         cell = raw_cell * scale_vec[None, :]
     else:
@@ -81,14 +85,20 @@ def _parse_poscar_header(
         counts = [int(tok) for tok in lines[6].split()]
         idx = 7
 
-    if len(species) != len(counts):
-        raise exceptions.ParseError("Mismatch between VASP species and counts.")
+    if len(species) != len(counts) or any(c < 0 for c in counts):
+        raise exceptions.ParseError("Mismatch or negative VASP atom counts.")
     symbols: list[str] = []
     for sym, cnt in zip(species, counts, strict=True):
         symbols.extend([sym] * cnt)
+    if not symbols:
+        raise exceptions.ParseError("VASP POSCAR contains zero atoms.")
 
+    if idx >= len(lines):
+        raise exceptions.ParseError("Truncated VASP coordinate mode line.")
     if lines[idx].strip().lower().startswith("s"):
         idx += 1
+    if idx >= len(lines):
+        raise exceptions.ParseError("Truncated VASP coordinate mode line.")
     mode = lines[idx].strip().lower()
     is_cartesian = mode.startswith(("c", "k"))
     return comment, cell, scale_vec, symbols, is_cartesian, idx + 1
@@ -157,36 +167,67 @@ def write_poscar(
     p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _is_xdatcar_coord_header(line: str) -> tuple[bool, bool]:
+    """Detects ``Direct`` or ``Cartesian``/``Kartesian`` XDATCAR frame lines."""
+    low = line.strip().lower()
+    if low.startswith("direct"):
+        return True, False
+    if low.startswith(("cartesian", "kartesian")):
+        return True, True
+    return False, False
+
+
 def read_xdatcar(path: str | pathlib.Path) -> trajectory.Trajectory:
     """Reads a multi-configuration VASP ``XDATCAR`` MD/relaxation trajectory."""
     p = pathlib.Path(path)
     lines = p.read_text(encoding="utf-8").splitlines()
-    comment, cell, _, symbols, _, cursor = _parse_poscar_header(lines)
+    comment, cell, scale_vec, symbols, _, cursor = _parse_poscar_header(lines)
     n_atoms = len(symbols)
     frames: list[structure.AtomsData] = []
     idx = cursor - 1
     while idx < len(lines):
-        line = lines[idx].strip().lower()
-        if line.startswith("direct"):
+        if not lines[idx].strip():
+            idx += 1
+            continue
+        is_hdr, is_cart = _is_xdatcar_coord_header(lines[idx])
+        if not is_hdr and idx + 7 < len(lines):
+            sub_hdr, _ = _is_xdatcar_coord_header(lines[idx + 7])
+            if sub_hdr:
+                comment, cell, scale_vec, symbols, is_cart, rel_cur = (
+                    _parse_poscar_header(lines[idx:])
+                )
+                n_atoms = len(symbols)
+                idx += rel_cur - 1
+                is_hdr = True
+        if is_hdr:
             idx += 1
             if idx + n_atoms > len(lines):
                 break
-            frac = np.array(
+            coords = np.array(
                 [
                     [float(x) for x in lines[idx + k].split()[:3]]
                     for k in range(n_atoms)
                 ],
                 dtype=np.float64,
             )
-            frames.append(
-                structure.AtomsData.from_fractional(
+            frame = (
+                structure.AtomsData(
                     symbols=symbols,
-                    frac_positions=frac,
+                    positions=coords * scale_vec[None, :],
+                    cell=cell,
+                    pbc=(True, True, True),
+                    metadata={"comment": comment, "source": str(p)},
+                )
+                if is_cart
+                else structure.AtomsData.from_fractional(
+                    symbols=symbols,
+                    frac_positions=coords,
                     cell=cell,
                     pbc=(True, True, True),
                     metadata={"comment": comment, "source": str(p)},
                 )
             )
+            frames.append(frame)
             idx += n_atoms
         else:
             idx += 1
@@ -207,7 +248,10 @@ def read_doscar(path: str | pathlib.Path) -> electronic.DensityOfStates:
     data_rows = [
         [float(x) for x in _split_touching_floats(line).split()]
         for line in lines[6 : 6 + nedos]
+        if line.strip()
     ]
+    if not data_rows:
+        raise exceptions.ParseError(f"No DOS rows found in VASP DOSCAR: {p}")
     arr = np.array(data_rows, dtype=np.float64)
     if arr.shape[1] >= 5:
         return electronic.DensityOfStates(
@@ -251,16 +295,29 @@ def read_eigenval(
     cursor = 6
     k_coords = np.zeros((n_k, 3), dtype=np.float64)
     eig = np.zeros((n_spin, n_k, n_bands), dtype=np.float64)
+    occ = np.zeros((n_spin, n_k, n_bands), dtype=np.float64)
+    has_occ = True
     for ik in range(n_k):
         while cursor < len(lines) and not lines[cursor].strip():
             cursor += 1
+        if cursor >= len(lines):
+            raise exceptions.ParseError(f"Truncated EIGENVAL k-points in {p}.")
         k_coords[ik] = [float(x) for x in lines[cursor].split()[:3]]
         cursor += 1
         for ib in range(n_bands):
+            if cursor >= len(lines):
+                raise exceptions.ParseError(f"Truncated EIGENVAL bands in {p}.")
             vals = [float(x) for x in lines[cursor].split()]
             eig[0, ik, ib] = vals[1]
             if n_spin == 2 and len(vals) >= 3:
                 eig[1, ik, ib] = vals[2]
+            if n_spin == 1 and len(vals) >= 3:
+                occ[0, ik, ib] = vals[2]
+            elif n_spin == 2 and len(vals) >= 5:
+                occ[0, ik, ib] = vals[3]
+                occ[1, ik, ib] = vals[4]
+            else:
+                has_occ = False
             cursor += 1
     diffs = np.diff(k_coords, axis=0)
     if cell is not None:
@@ -275,18 +332,21 @@ def read_eigenval(
     return electronic.BandStructure(
         k_distances=k_dist,
         eigenvalues=eig,
+        occupations=occ if has_occ else None,
         metadata={"source": str(p), "k_coordinate_mode": k_mode},
     )
 
 
 def read_chgcar(path: str | pathlib.Path) -> electronic.VolumetricGrid:
-    """Reads a VASP ``CHGCAR`` or ``LOCPOT`` 3D volumetric grid file."""
+    """Reads a VASP ``CHGCAR``, ``AECCAR*``, or ``LOCPOT`` 3D grid file."""
     p = pathlib.Path(path)
     lines = p.read_text(encoding="utf-8").splitlines()
     comment, cell, scale_vec, symbols, is_cart, start_row = (
         _parse_poscar_header(lines)
     )
     n_atoms = len(symbols)
+    if start_row + n_atoms > len(lines):
+        raise exceptions.ParseError(f"Truncated VASP structure block in {p}.")
     coords = np.array(
         [
             [float(x) for x in lines[start_row + k].split()[:3]]
@@ -309,23 +369,23 @@ def read_chgcar(path: str | pathlib.Path) -> electronic.VolumetricGrid:
     cursor = start_row + n_atoms
     while cursor < len(lines) and not lines[cursor].strip():
         cursor += 1
+    if cursor >= len(lines):
+        raise exceptions.ParseError(f"Missing FFT grid dimensions in {p}.")
     dims = [int(x) for x in lines[cursor].split()[:3]]
     nx, ny, nz = dims[0], dims[1], dims[2]
     n_vals = nx * ny * nz
-    vals: list[float] = []
-    cursor += 1
-    while cursor < len(lines) and len(vals) < n_vals:
-        row = lines[cursor].strip()
-        if row:
-            vals.extend(float(tok) for tok in row.split())
-        cursor += 1
-    if len(vals) < n_vals:
-        raise exceptions.ParseError(f"Incomplete VASP grid data in {p}.")
-    data = np.array(vals[:n_vals], dtype=np.float64).reshape(
-        (nx, ny, nz), order="F"
+    vals = np.fromstring(
+        " ".join(lines[cursor + 1 :]), sep=" ", dtype=np.float64, count=n_vals
     )
-    vol = max(atoms.volume(), 1.0)
-    if "CHGCAR" in p.name.upper():
+    if vals.size < n_vals:
+        raise exceptions.ParseError(f"Incomplete VASP grid data in {p}.")
+    data = vals.reshape((nx, ny, nz), order="F")
+    upper_name = p.name.upper()
+    is_potential = "LOCPOT" in upper_name or p.suffix.lower() == ".locpot"
+    if not is_potential:
+        vol = atoms.volume()
+        if vol <= 1e-12:
+            raise exceptions.ParseError(f"Singular cell volume in {p}.")
         data = data / vol
     voxel = np.vstack([cell[0] / nx, cell[1] / ny, cell[2] / nz])
     return electronic.VolumetricGrid(
@@ -333,7 +393,7 @@ def read_chgcar(path: str | pathlib.Path) -> electronic.VolumetricGrid:
         voxel_vectors=voxel,
         data=data,
         atoms=atoms,
-        units="e/A^3" if "CHGCAR" in p.name.upper() else "eV",
+        units="eV" if is_potential else "e/A^3",
         metadata={"comment": comment, "source": str(p)},
     )
 

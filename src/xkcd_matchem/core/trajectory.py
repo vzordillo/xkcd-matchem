@@ -95,6 +95,42 @@ class Trajectory:
             unwrapped.append(unwrapped[-1] + delta)
         return unwrapped
 
+    def _resolve_selection(
+        self,
+        ref_index: int,
+        indices: Sequence[int] | None,
+    ) -> tuple[int, np.ndarray]:
+        """Validates ``ref_index`` and atom selection ``indices``."""
+        n_frames = len(self.frames)
+        ref_idx = ref_index if ref_index >= 0 else n_frames + ref_index
+        if not 0 <= ref_idx < n_frames:
+            raise exceptions.StructureError(
+                f"Reference frame index {ref_index} out of range."
+            )
+        n_atoms = len(self.frames[ref_idx])
+        if indices is None:
+            if n_atoms == 0:
+                raise exceptions.StructureError(
+                    "Reference frame contains zero atoms."
+                )
+            idx_arr = np.arange(n_atoms, dtype=np.int64)
+        else:
+            idx_arr = np.asarray(list(indices), dtype=np.int64)
+            if (
+                idx_arr.size == 0
+                or np.any(idx_arr < 0)
+                or np.any(idx_arr >= n_atoms)
+            ):
+                raise exceptions.StructureError(
+                    "Invalid atom selection indices for trajectory analysis."
+                )
+        max_sel = int(np.max(idx_arr))
+        if any(len(frame) <= max_sel for frame in self.frames):
+            raise exceptions.StructureError(
+                "Atom count changes across trajectory frames for selection."
+            )
+        return ref_idx, idx_arr
+
     def rmsd(
         self,
         ref_index: int = 0,
@@ -113,39 +149,70 @@ class Trajectory:
         """
         if not self.frames:
             return np.zeros((0,), dtype=np.float64)
-        n_atoms = len(self.frames[ref_index])
-        if indices is None:
-            idx_arr = np.arange(n_atoms, dtype=np.int64)
+        ref_idx, idx_arr = self._resolve_selection(ref_index, indices)
+        n_ref = len(self.frames[ref_idx])
+        if unwrap and all(len(f) == n_ref for f in self.frames):
+            coords = np.stack(self._unwrapped_positions(idx_arr), axis=0)
         else:
-            idx_arr = np.asarray(list(indices), dtype=np.int64)
-            if (
-                idx_arr.size == 0
-                or np.any(idx_arr < 0)
-                or np.any(idx_arr >= n_atoms)
-            ):
-                raise exceptions.StructureError(
-                    "Invalid atom selection indices for RMSD."
-                )
+            coords = np.stack(
+                [f.positions[idx_arr] for f in self.frames], axis=0
+            )
 
-        if unwrap and all(len(f) == n_atoms for f in self.frames):
-            coords_list = self._unwrapped_positions(idx_arr)
+        centered = coords - np.mean(coords, axis=1, keepdims=True)
+        ref_centered = centered[ref_idx]
+        covs = np.einsum("fni,nj->fij", centered, ref_centered)
+        u_all, _, vt_all = np.linalg.svd(covs)
+        det_signs = np.where(np.linalg.det(u_all @ vt_all) >= 0.0, 1.0, -1.0)
+        u_scaled = u_all.copy()
+        u_scaled[:, :, 2] *= det_signs[:, None]
+        rots = u_scaled @ vt_all
+        aligned = np.einsum("fni,fij->fnj", centered, rots)
+        diffs = aligned - ref_centered[None, :, :]
+        return np.sqrt(np.mean(np.sum(diffs * diffs, axis=2), axis=1))
+
+    def msd(
+        self,
+        ref_index: int = 0,
+        indices: Sequence[int] | None = None,
+        unwrap: bool = True,
+        remove_com: bool = False,
+    ) -> np.ndarray:
+        """Computes periodic-unwrapped mean-squared displacement (MSD).
+
+        Args:
+          ref_index: Reference frame index ``t_0``.
+          indices: Optional atom indices to include in the MSD average.
+          unwrap: Whether to unwrap periodic boundary jumps cumulatively first.
+          remove_com: Subtract overall center-of-mass drift before MSD.
+
+        Returns:
+          1D float64 MSD array in squared Angstrom of shape ``(n_frames,)``.
+        """
+        if not self.frames:
+            return np.zeros((0,), dtype=np.float64)
+        ref_idx, idx_arr = self._resolve_selection(ref_index, indices)
+        n_ref = len(self.frames[ref_idx])
+        if remove_com and all(len(f) == n_ref for f in self.frames):
+            all_idx = np.arange(n_ref, dtype=np.int64)
+            full_coords = (
+                np.stack(self._unwrapped_positions(all_idx), axis=0)
+                if unwrap
+                else np.stack([f.positions for f in self.frames], axis=0)
+            )
+            masses = self.frames[ref_idx].atomic_masses()
+            tot_m = max(float(np.sum(masses)), 1e-12)
+            com = np.einsum("fni,n->fi", full_coords, masses) / tot_m
+            coords = (full_coords - com[:, None, :])[:, idx_arr, :]
+        elif unwrap and all(len(f) == n_ref for f in self.frames):
+            coords = np.stack(self._unwrapped_positions(idx_arr), axis=0)
         else:
-            coords_list = [f.positions[idx_arr] for f in self.frames]
-
-        ref = coords_list[ref_index]
-        ref_centered = ref - np.mean(ref, axis=0)
-        out = np.zeros(len(self.frames), dtype=np.float64)
-        for idx, cur in enumerate(coords_list):
-            cur_centered = cur - np.mean(cur, axis=0)
-            cov = cur_centered.T @ ref_centered
-            u_mat, _, vt_mat = np.linalg.svd(cov)
-            det_sign = 1.0 if np.linalg.det(u_mat @ vt_mat) >= 0.0 else -1.0
-            diag = np.diag([1.0, 1.0, det_sign])
-            rot = u_mat @ diag @ vt_mat
-            aligned = cur_centered @ rot
-            diff = aligned - ref_centered
-            out[idx] = math.sqrt(float(np.mean(np.sum(diff * diff, axis=1))))
-        return out
+            coords = np.stack(
+                [f.positions[idx_arr] for f in self.frames], axis=0
+            )
+        disp = coords - coords[ref_idx : ref_idx + 1]
+        return np.asarray(
+            np.mean(np.sum(disp * disp, axis=2), axis=1), dtype=np.float64
+        )
 
     def energy_profile(
         self,
@@ -179,30 +246,43 @@ class Trajectory:
         sym_a: str,
         sym_b: str,
         r_max: float,
-    ) -> tuple[list[float], int, float]:
+    ) -> tuple[np.ndarray, int, float]:
         """Collects periodic pair distances up to ``r_max`` using cKDTree."""
-        n_a = sum(1 for s in frame.symbols if s == sym_a)
-        n_b = sum(1 for s in frame.symbols if s == sym_b)
+        idx_ab = [
+            i for i, s in enumerate(frame.symbols) if s in (sym_a, sym_b)
+        ]
+        n_a = sum(1 for i in idx_ab if frame.symbols[i] == sym_a)
+        n_b = sum(1 for i in idx_ab if frame.symbols[i] == sym_b)
         if n_a == 0 or n_b == 0:
-            return [], 0, 0.0
-        pair_count = float(n_a * (n_b - 1 if sym_a == sym_b else n_b))
-        if pair_count <= 0.0:
-            pair_count = float(n_a)
-
+            return np.zeros((0,), dtype=np.float64), 0, 0.0
+        pair_count = float(n_a * n_b)
+        sub_frame = (
+            frame
+            if len(idx_ab) == len(frame)
+            else structure.AtomsData(
+                symbols=[frame.symbols[i] for i in idx_ab],
+                positions=frame.positions[idx_ab],
+                cell=frame.cell,
+                pbc=frame.pbc,
+            )
+        )
         hits = neighbors.find_periodic_neighbors(
-            frame,
+            sub_frame,
             max_cutoff=r_max,
             min_cutoff=1e-6,
             use_pbc=True,
             symmetric=True,
         )
-        dists = [
-            hit.distance
-            for hit in hits
-            if hit.distance < r_max
-            and frame.symbols[hit.i] == sym_a
-            and frame.symbols[hit.j] == sym_b
-        ]
+        dists = np.array(
+            [
+                hit.distance
+                for hit in hits
+                if hit.distance < r_max
+                and sub_frame.symbols[hit.i] == sym_a
+                and sub_frame.symbols[hit.j] == sym_b
+            ],
+            dtype=np.float64,
+        )
         return dists, n_a, pair_count
 
     def compute_rdf(

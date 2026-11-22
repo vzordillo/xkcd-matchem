@@ -100,9 +100,18 @@ class Camera:
             idx = axis_map[key.rstrip("*")]
             if cell is not None:
                 mat = np.asarray(cell, dtype=np.float64)
-                vec = (
-                    np.linalg.inv(mat).T[idx] if key.endswith("*") else mat[idx]
-                )
+                if key.endswith("*"):
+                    if (
+                        mat.shape != (3, 3)
+                        or abs(float(np.linalg.det(mat))) < 1e-12
+                    ):
+                        raise exceptions.StructureError(
+                            "Reciprocal camera preset requires a non-singular "
+                            "(3, 3) cell matrix."
+                        )
+                    vec = np.linalg.inv(mat).T[idx]
+                else:
+                    vec = mat[idx]
             else:
                 vec = np.eye(3, dtype=np.float64)[idx]
             norm = max(float(np.linalg.norm(vec)), 1e-12)
@@ -273,21 +282,45 @@ def cell_vectors_from_parameters(
     Returns:
       Lattice matrix of shape ``(3, 3)`` whose rows are ``v_a, v_b, v_c``.
     """
+    if (
+        a <= 0.0
+        or b <= 0.0
+        or c <= 0.0
+        or not (
+            0.0 < alpha < 180.0
+            and 0.0 < beta < 180.0
+            and 0.0 < gamma < 180.0
+        )
+    ):
+        raise exceptions.StructureError(
+            "Cell lengths must be > 0 and angles strictly within (0, 180) deg."
+        )
     al = math.radians(alpha)
     be = math.radians(beta)
     ga = math.radians(gamma)
     cos_al = 0.0 if abs(math.cos(al)) < 1e-14 else math.cos(al)
     cos_be = 0.0 if abs(math.cos(be)) < 1e-14 else math.cos(be)
     cos_ga = 0.0 if abs(math.cos(ga)) < 1e-14 else math.cos(ga)
+    vol_factor = (
+        1.0
+        - cos_al * cos_al
+        - cos_be * cos_be
+        - cos_ga * cos_ga
+        + 2.0 * cos_al * cos_be * cos_ga
+    )
+    if vol_factor <= 1e-12:
+        raise exceptions.StructureError(
+            "Cell angles do not form a valid 3D parallelepiped (zero volume)."
+        )
     sin_ga = math.sin(ga)
     va = np.array([a, 0.0, 0.0], dtype=np.float64)
     vb = np.array([b * cos_ga, b * sin_ga, 0.0], dtype=np.float64)
     cx = c * cos_be
-    cy = c * (cos_al - cos_be * cos_ga) / max(sin_ga, 1e-12)
+    cy = c * (cos_al - cos_be * cos_ga) / sin_ga
     if abs(cy) < 1e-14:
         cy = 0.0
-    cz_sq = max(0.0, c * c - cx * cx - cy * cy)
-    vc = np.array([cx, cy, math.sqrt(cz_sq)], dtype=np.float64)
+    cz = c * math.sqrt(vol_factor) / sin_ga
+    vc = np.array([cx, cy, cz], dtype=np.float64)
     return np.vstack([va, vb, vc])
 
 
@@ -365,6 +398,10 @@ def minimum_image_vector(
 
     basis_p = _reduce_lattice_basis(np.asarray(cell, dtype=np.float64)[active])
     gram = basis_p @ basis_p.T
+    if abs(float(np.linalg.det(gram))) <= 1e-18:
+        raise exceptions.StructureError(
+            "Periodic lattice vectors are linearly dependent (singular cell)."
+        )
     g_inv = np.linalg.inv(gram)
 
     orig_shape = arr.shape
@@ -373,20 +410,29 @@ def minimum_image_vector(
     r_frac = frac_p - np.round(frac_p)
     v_perp = flat - frac_p @ basis_p
     w0 = r_frac @ basis_p
-    r_sq_max = float(np.max(np.sum(w0 * w0, axis=1)))
+    w0_sq = np.einsum("ij,ij->i", w0, w0)
+    r_sq_max = float(np.max(w0_sq))
     diag_g = np.maximum(np.diag(g_inv), 0.0)
     bounds = [
-        min(8, int(math.ceil(0.5 + math.sqrt(float(dg) * r_sq_max) + 1e-9)))
+        int(math.ceil(0.5 + math.sqrt(float(dg) * r_sq_max) + 1e-9))
         for dg in diag_g
     ]
     shifts = _integer_shift_grid(bounds).astype(np.float64)
     shift_cart = shifts @ basis_p
+    shift_sq = np.einsum("ij,ij->i", shift_cart, shift_cart)
 
     best_in_plane = np.empty_like(w0)
-    for row_idx in range(flat.shape[0]):
-        cands = w0[row_idx : row_idx + 1] + shift_cart
-        dists_sq = np.einsum("ij,ij->i", cands, cands)
-        best_in_plane[row_idx] = cands[int(np.argmin(dists_sq))]
+    chunk_sz = 4096
+    for start in range(0, flat.shape[0], chunk_sz):
+        end = min(start + chunk_sz, flat.shape[0])
+        w_sub = w0[start:end]
+        d_sq = (
+            w0_sq[start:end, None]
+            + 2.0 * (w_sub @ shift_cart.T)
+            + shift_sq[None, :]
+        )
+        best_idx = np.argmin(d_sq, axis=1)
+        best_in_plane[start:end] = w_sub + shift_cart[best_idx]
     return np.asarray(
         (v_perp + best_in_plane).reshape(orig_shape), dtype=np.float64
     )
@@ -402,11 +448,15 @@ def max_min_image_radius(
         return float("inf")
     basis_p = _reduce_lattice_basis(np.asarray(cell, dtype=np.float64)[active])
     gram = basis_p @ basis_p.T
+    if abs(float(np.linalg.det(gram))) <= 1e-18:
+        raise exceptions.StructureError(
+            "Periodic lattice vectors are linearly dependent (singular cell)."
+        )
     g_inv = np.linalg.inv(gram)
     r_guess = float(np.min(np.linalg.norm(basis_p, axis=1)))
     diag_g = np.maximum(np.diag(g_inv), 0.0)
     bounds = [
-        min(8, int(math.ceil(math.sqrt(float(dg)) * r_guess + 1.0)))
+        int(math.ceil(math.sqrt(float(dg)) * r_guess + 1.0))
         for dg in diag_g
     ]
     shifts = _integer_shift_grid(bounds)
@@ -598,12 +648,7 @@ def miller_plane_polygon(
     ref = arr_frac[0] - centroid
     ref /= max(float(np.linalg.norm(ref)), 1e-12)
     ortho = np.cross(n_hat, ref)
-    angles = [
-        math.atan2(
-            float(np.dot(pt - centroid, ortho)),
-            float(np.dot(pt - centroid, ref)),
-        )
-        for pt in arr_frac
-    ]
+    rel = arr_frac - centroid[None, :]
+    angles = np.arctan2(rel @ ortho, rel @ ref)
     order = np.argsort(angles)
     return np.asarray(arr_frac[order] @ cell, dtype=np.float64)

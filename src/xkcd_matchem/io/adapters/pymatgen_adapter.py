@@ -35,9 +35,21 @@ def _require_pymatgen() -> Any:
     return pmg_structure
 
 
+def _site_symbol(site: Any) -> str:
+    """Extracts primary element symbol from a pymatgen site."""
+    specie = getattr(site, "specie", None)
+    if specie is not None:
+        return str(specie.symbol)
+    species_map = getattr(site, "species", None)
+    if species_map:
+        best = max(species_map, key=lambda sp: float(species_map[sp]))
+        return str(getattr(best, "symbol", best))
+    raise exceptions.ParseError(f"Cannot extract element from site {site!r}.")
+
+
 def from_pymatgen(pmg_obj: Any) -> structure.AtomsData:
     """Converts a pymatgen ``Structure`` or ``Molecule`` into ``AtomsData``."""
-    symbols = [site.specie.symbol for site in pmg_obj]
+    symbols = [_site_symbol(site) for site in pmg_obj]
     positions = np.array(pmg_obj.cart_coords, dtype=np.float64)
     lattice = getattr(pmg_obj, "lattice", None)
     if lattice is not None:

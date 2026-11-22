@@ -22,6 +22,7 @@ import numpy as np
 
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import structure
+from xkcd_matchem.data import elements
 
 
 @dataclasses.dataclass
@@ -111,11 +112,11 @@ class BandStructure:
             return max(0.0, cbm - vbm)
 
         shifted = self.shifted_eigenvalues()
-        for spin_idx in range(shifted.shape[0]):
-            for band_idx in range(shifted.shape[2]):
-                col = shifted[spin_idx, :, band_idx]
-                if np.min(col) < -1e-4 and np.max(col) > 1e-4:
-                    return 0.0
+        if shifted.size == 0 or np.any(
+            (np.min(shifted, axis=1) < -1e-4)
+            & (np.max(shifted, axis=1) > 1e-4)
+        ):
+            return 0.0
         occupied = shifted[shifted <= 1e-6]
         unoccupied = shifted[shifted > 1e-6]
         if occupied.size == 0 or unoccupied.size == 0:
@@ -156,13 +157,22 @@ class DensityOfStates:
                 "energies and total_dos must have matching shapes."
             )
         if self.spin_down_dos is not None:
-            self.spin_down_dos = np.asarray(
-                self.spin_down_dos, dtype=np.float64
-            )
-        self.projected_dos = {
-            key: np.asarray(val, dtype=np.float64)
-            for key, val in self.projected_dos.items()
-        }
+            sd = np.asarray(self.spin_down_dos, dtype=np.float64)
+            if sd.shape != self.energies.shape:
+                raise exceptions.StructureError(
+                    "spin_down_dos and energies must have matching shapes."
+                )
+            self.spin_down_dos = sd
+        norm_pdos: dict[str, np.ndarray] = {}
+        for key, val in self.projected_dos.items():
+            p_arr = np.asarray(val, dtype=np.float64)
+            if p_arr.shape != self.energies.shape:
+                raise exceptions.StructureError(
+                    f"projected_dos[{key!r}] shape {p_arr.shape} must match "
+                    f"energies shape {self.energies.shape}."
+                )
+            norm_pdos[str(key)] = p_arr
+        self.projected_dos = norm_pdos
 
 
 @dataclasses.dataclass
@@ -315,9 +325,19 @@ class VolumetricGrid:
         a1, a2 = pair_axes[0], pair_axes[1]
         v1 = self.voxel_vectors[a1]
         v2 = self.voxel_vectors[a2]
-        e_u = v1 / max(float(np.linalg.norm(v1)), 1e-12)
+        v1_norm = float(np.linalg.norm(v1))
+        if v1_norm < 1e-12:
+            raise exceptions.StructureError(
+                "Slice voxel vectors must have nonzero length."
+            )
+        e_u = v1 / v1_norm
         v2_orth = v2 - float(np.dot(v2, e_u)) * e_u
-        e_v = v2_orth / max(float(np.linalg.norm(v2_orth)), 1e-12)
+        v2_norm = float(np.linalg.norm(v2_orth))
+        if v2_norm < 1e-12:
+            raise exceptions.StructureError(
+                "Slice voxel vectors are collinear (degenerate grid)."
+            )
+        e_v = v2_orth / v2_norm
         basis = np.vstack([e_u, e_v])
 
         n1, n2 = self.data.shape[a1], self.data.shape[a2]
@@ -340,9 +360,9 @@ class VolumetricGrid:
 
 _PHONON_UNIT_FACTORS: dict[str, float] = {
     "thz": 1.0,
-    "cm-1": 33.3564095198152,
-    "cm^-1": 33.3564095198152,
-    "mev": 4.135667696,
+    "cm-1": elements.CODATA2022.thz_to_cm_inv,
+    "cm^-1": elements.CODATA2022.thz_to_cm_inv,
+    "mev": elements.CODATA2022.thz_to_mev,
 }
 
 

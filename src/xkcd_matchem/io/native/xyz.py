@@ -87,13 +87,18 @@ def _parse_single_frame(
                 f"Malformed XYZ atom line at {start + 3 + idx}: {parts!r}"
             )
         raw_sym = parts[0]
-        sym = (
-            elements.get_element(int(raw_sym)).symbol
-            if raw_sym.isdigit()
-            else elements.get_element(raw_sym).symbol
-        )
+        try:
+            sym = (
+                elements.get_element(int(raw_sym)).symbol
+                if raw_sym.strip().isdigit()
+                else elements.get_element(raw_sym).symbol
+            )
+            coords[idx] = [float(parts[1]), float(parts[2]), float(parts[3])]
+        except (exceptions.StructureError, ValueError) as exc:
+            raise exceptions.ParseError(
+                f"Invalid XYZ atom record at line {start + 3 + idx}: {parts!r}"
+            ) from exc
         symbols.append(sym)
-        coords[idx] = [float(parts[1]), float(parts[2]), float(parts[3])]
 
     energies: dict[str, float] = {}
     for ekey in ("energy", "Energy", "free_energy"):

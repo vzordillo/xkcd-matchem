@@ -103,9 +103,13 @@ def broaden_peaks(
     Raises:
       StructureError: If ``profile``/``normalize`` is unknown or ``fwhm <= 0``.
     """
-    pos = np.asarray(positions, dtype=np.float64)
-    amp = np.asarray(intensities, dtype=np.float64)
+    pos = np.asarray(positions, dtype=np.float64).ravel()
+    amp = np.asarray(intensities, dtype=np.float64).ravel()
     grid = np.asarray(x_grid, dtype=np.float64)
+    if pos.shape != amp.shape:
+        raise exceptions.StructureError(
+            "Peak positions and intensities must have identical lengths."
+        )
     if fwhm <= 0.0:
         raise exceptions.StructureError("FWHM must be strictly positive.")
     norm_mode = normalize.strip().lower()
@@ -152,6 +156,30 @@ def broaden_peaks(
     return shape @ amp
 
 
+def _structure_factors(
+    atoms: structure.AtomsData,
+    hkl_v: np.ndarray,
+    s_v: np.ndarray,
+    debye_waller_b: float,
+) -> np.ndarray:
+    """Evaluates Cromer-Mann kinematical structure factors F(hkl)."""
+    frac = atoms.fractional_positions()
+    occ = (
+        atoms.occupancies
+        if atoms.occupancies is not None
+        else np.ones(len(atoms), dtype=np.float64)
+    )
+    f_hkl = np.zeros(len(hkl_v), dtype=np.complex128)
+    for sym in sorted(set(atoms.symbols)):
+        mask = np.array([s == sym for s in atoms.symbols], dtype=bool)
+        phases = 2.0 * math.pi * (hkl_v @ frac[mask].T)
+        geom_sum = np.exp(1j * phases) @ occ[mask]
+        f_hkl += scattering.atomic_form_factor(sym, s_v) * geom_sum
+    if debye_waller_b > 0.0:
+        f_hkl = f_hkl * np.exp(-debye_waller_b * np.square(s_v))
+    return f_hkl
+
+
 def _xrd_reflections(
     atoms: structure.AtomsData,
     wavelength: float,
@@ -179,19 +207,14 @@ def _xrd_reflections(
     sin_min = math.sin(math.radians(max(0.01, tt_min) * 0.5))
     valid = (sin_th >= sin_min) & (sin_th <= min(0.9999, s_max * wavelength))
     hkl_v, s_v, sin_v = hkl_all[valid], s_vals[valid], sin_th[valid]
+    if len(hkl_v) == 0:
+        return (
+            np.zeros((0, 3), dtype=np.int64),
+            np.zeros((0,), dtype=np.float64),
+            np.zeros((0,), dtype=np.float64),
+        )
     two_thetas = 2.0 * np.degrees(np.arcsin(sin_v))
-
-    phases = 2.0 * math.pi * (hkl_v @ atoms.fractional_positions().T)
-    form_map = {
-        sym: scattering.atomic_form_factor(sym, s_v)
-        for sym in sorted(set(atoms.symbols))
-    }
-    f_mat = np.column_stack([form_map[sym] for sym in atoms.symbols])
-    if atoms.occupancies is not None:
-        f_mat = f_mat * atoms.occupancies[None, :]
-    if debye_waller_b > 0.0:
-        f_mat = f_mat * np.exp(-debye_waller_b * np.square(s_v))[:, None]
-    f_hkl = np.sum(f_mat * (np.cos(phases) + 1j * np.sin(phases)), axis=1)
+    f_hkl = _structure_factors(atoms, hkl_v, s_v, debye_waller_b)
     thetas = np.radians(two_thetas * 0.5)
     lp = (1.0 + np.cos(2.0 * thetas) ** 2) / np.maximum(
         (np.sin(thetas) ** 2) * np.cos(thetas), 1e-12
@@ -242,11 +265,16 @@ def compute_xrd(
     Raises:
       StructureError: If ``atoms`` lacks a 3D unit cell.
     """
-    if atoms.cell is None or atoms.volume() < 1e-8:
+    if len(atoms) == 0 or atoms.cell is None or atoms.volume() < 1e-8:
         raise exceptions.StructureError(
-            "Powder XRD requires a periodic structure with a nonzero unit cell."
+            "Powder XRD requires a non-empty periodic structure with a "
+            "nonzero unit cell."
         )
     tt_min, tt_max = float(two_theta_range[0]), float(two_theta_range[1])
+    if wavelength <= 0.0 or step <= 0.0 or tt_min < 0.0 or tt_max <= tt_min:
+        raise exceptions.StructureError(
+            "Invalid XRD wavelength, step, or two_theta_range bounds."
+        )
     hkl_valid, two_thetas, intensities = _xrd_reflections(
         atoms, wavelength, tt_min, tt_max, debye_waller_b
     )

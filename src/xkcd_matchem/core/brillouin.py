@@ -78,23 +78,21 @@ def _has_translation(
     if len(frac) < 2:
         return False
     sh = np.asarray(shift, dtype=np.float64)
-    for idx, f_i in enumerate(frac):
-        sym_i = symbols[idx]
-        matched = False
-        for jdx, f_j in enumerate(frac):
-            if symbols[jdx] != sym_i:
-                continue
-            diff = np.mod((f_i + sh - f_j) + 0.5, 1.0) - 0.5
-            if float(np.max(np.abs(diff))) < 1e-3:
-                matched = True
-                break
-        if not matched:
+    by_sym: dict[str, list[int]] = {}
+    for idx, sym in enumerate(symbols):
+        by_sym.setdefault(sym, []).append(idx)
+    for indices in by_sym.values():
+        sub = frac[indices]
+        shifted = sub[:, None, :] + sh[None, None, :] - sub[None, :, :]
+        diffs = np.mod(shifted + 0.5, 1.0) - 0.5
+        max_err = np.max(np.abs(diffs), axis=2)
+        if not np.all(np.any(max_err < 1e-3, axis=1)):
             return False
     return True
 
 
 def _reduce_conventional_cell(atoms: structure.AtomsData) -> np.ndarray:
-    """Reduces F/I/C conventional cells to primitive lattice vectors."""
+    """Reduces F/I/C/A/B/R conventional cells to primitive lattice vectors."""
     if atoms.cell is None:
         raise exceptions.StructureError("Crystal cell is missing.")
     cell = np.asarray(atoms.cell, dtype=np.float64)
@@ -102,22 +100,55 @@ def _reduce_conventional_cell(atoms: structure.AtomsData) -> np.ndarray:
         return cell
     frac = atoms.fractional_positions()
     f_shifts = ((0.0, 0.5, 0.5), (0.5, 0.0, 0.5), (0.5, 0.5, 0.0))
-    if all(_has_translation(frac, atoms.symbols, s) for s in f_shifts):
-        t_f = 0.5 * np.array(
-            [[0, 1, 1], [1, 0, 1], [1, 1, 0]], dtype=np.float64
-        )
-        return np.asarray(t_f @ cell, dtype=np.float64)
-    if _has_translation(frac, atoms.symbols, (0.5, 0.5, 0.5)):
-        t_i = 0.5 * np.array(
-            [[-1, 1, 1], [1, -1, 1], [1, 1, -1]], dtype=np.float64
-        )
-        return np.asarray(t_i @ cell, dtype=np.float64)
-    if _has_translation(frac, atoms.symbols, (0.5, 0.5, 0.0)):
-        t_c = np.array(
-            [[0.5, 0.5, 0.0], [-0.5, 0.5, 0.0], [0.0, 0.0, 1.0]],
-            dtype=np.float64,
-        )
-        return np.asarray(t_c @ cell, dtype=np.float64)
+    r_obv = (
+        (2.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
+        (1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0),
+    )
+    r_rev = (
+        (1.0 / 3.0, 2.0 / 3.0, 1.0 / 3.0),
+        (2.0 / 3.0, 1.0 / 3.0, 2.0 / 3.0),
+    )
+    candidates: tuple[
+        tuple[tuple[tuple[float, float, float], ...], np.ndarray], ...
+    ] = (
+        (
+            f_shifts,
+            0.5
+            * np.array([[0, 1, 1], [1, 0, 1], [1, 1, 0]], dtype=np.float64),
+        ),
+        (
+            ((0.5, 0.5, 0.5),),
+            0.5
+            * np.array(
+                [[-1, 1, 1], [1, -1, 1], [1, 1, -1]], dtype=np.float64
+            ),
+        ),
+        (
+            ((0.5, 0.5, 0.0),),
+            np.array([[0.5, 0.5, 0.0], [-0.5, 0.5, 0.0], [0.0, 0.0, 1.0]]),
+        ),
+        (
+            ((0.0, 0.5, 0.5),),
+            np.array([[1.0, 0.0, 0.0], [0.0, 0.5, -0.5], [0.0, 0.5, 0.5]]),
+        ),
+        (
+            ((0.5, 0.0, 0.5),),
+            np.array([[0.5, 0.0, -0.5], [0.0, 1.0, 0.0], [0.5, 0.0, 0.5]]),
+        ),
+        (
+            r_obv,
+            np.array([[2, 1, 1], [-1, 1, 1], [-1, -2, 1]], dtype=np.float64)
+            / 3.0,
+        ),
+        (
+            r_rev,
+            np.array([[1, -1, 1], [1, 2, 1], [-2, -1, 1]], dtype=np.float64)
+            / 3.0,
+        ),
+    )
+    for shifts, t_mat in candidates:
+        if all(_has_translation(frac, atoms.symbols, s) for s in shifts):
+            return np.asarray(t_mat @ cell, dtype=np.float64)
     return cell
 
 
@@ -240,6 +271,21 @@ def _classify_bravais(
     return sys_name, cart_pts, path
 
 
+def _deduplicate_points_3d(pts: np.ndarray, tol: float) -> np.ndarray:
+    """Merges coincident 3D polyhedron intersections within ``tol``."""
+    if len(pts) <= 1:
+        return pts
+    uniq: list[np.ndarray] = [pts[0]]
+    tol_sq = tol * tol
+    for idx in range(1, len(pts)):
+        cand = pts[idx]
+        arr_u = np.vstack(uniq)
+        diffs = arr_u - cand[None, :]
+        if float(np.min(np.einsum("ij,ij->i", diffs, diffs))) > tol_sq:
+            uniq.append(cand)
+    return np.vstack(uniq)
+
+
 def _order_ccw_and_area(
     pts: np.ndarray,
     normal: np.ndarray,
@@ -257,10 +303,13 @@ def _order_ccw_and_area(
     rel = pts - center[None, :]
     angles = np.arctan2(rel @ e_v, rel @ e_u)
     ordered = pts[np.argsort(angles)]
+    if len(ordered) < 3:
+        return ordered, 0.0
     p0 = ordered[0]
-    total = np.zeros(3, dtype=np.float64)
-    for idx in range(1, len(ordered) - 1):
-        total += np.cross(ordered[idx] - p0, ordered[idx + 1] - p0)
+    total = np.sum(
+        np.cross(ordered[1:-1] - p0[None, :], ordered[2:] - p0[None, :]),
+        axis=0,
+    )
     area = abs(0.5 * float(np.dot(total, normal)))
     return ordered, area
 
@@ -271,39 +320,29 @@ def _enumerate_brillouin_planes(
 ) -> list[tuple[tuple[int, int, int], np.ndarray, float]]:
     """Enumerates shortest unique Bragg bisectors from LLL-reduced basis."""
     reduced_b = _lll_reduce_rows(recip)
-    shortest: dict[
-        tuple[int, int, int], tuple[float, np.ndarray, np.ndarray]
-    ] = {}
-    for n1 in range(-3, 4):
-        for n2 in range(-3, 4):
-            for n3 in range(-3, 4):
-                if n1 == 0 and n2 == 0 and n3 == 0:
-                    continue
-                g_vec = (
-                    n1 * reduced_b[0] + n2 * reduced_b[1] + n3 * reduced_b[2]
-                )
-                g_norm = float(np.linalg.norm(g_vec))
-                if g_norm < 1e-12:
-                    continue
-                unit_n = g_vec / g_norm
-                key = (
-                    int(round(float(unit_n[0]) * 1_000_000)),
-                    int(round(float(unit_n[1]) * 1_000_000)),
-                    int(round(float(unit_n[2]) * 1_000_000)),
-                )
-                prev = shortest.get(key)
-                if prev is None or g_norm < prev[0]:
-                    shortest[key] = (g_norm, unit_n, g_vec)
+    rng = np.arange(-3, 4, dtype=np.int64)
+    g1, g2, g3 = np.meshgrid(rng, rng, rng, indexing="ij")
+    grid = np.column_stack([g1.ravel(), g2.ravel(), g3.ravel()])
+    abs_grid = np.abs(grid)
+    gcd_vals = np.gcd(np.gcd(abs_grid[:, 0], abs_grid[:, 1]), abs_grid[:, 2])
+    prim_rays = grid[gcd_vals == 1]
+
+    g_vecs = prim_rays.astype(np.float64) @ reduced_b
+    g_norms = np.linalg.norm(g_vecs, axis=1)
+    valid = g_norms > 1e-12
+    g_vecs = g_vecs[valid]
+    g_norms = g_norms[valid]
+    unit_normals = g_vecs / g_norms[:, None]
+    hkl_arr = np.rint((g_vecs @ prim.T) / (2.0 * math.pi)).astype(np.int64)
 
     plane_entries: list[tuple[tuple[int, int, int], np.ndarray, float]] = []
-    for g_norm, unit_n, g_vec in shortest.values():
-        hkl_f = (g_vec @ prim.T) / (2.0 * math.pi)
+    for idx, g_norm in enumerate(g_norms):
         hkl: tuple[int, int, int] = (
-            int(round(float(hkl_f[0]))),
-            int(round(float(hkl_f[1]))),
-            int(round(float(hkl_f[2]))),
+            int(hkl_arr[idx, 0]),
+            int(hkl_arr[idx, 1]),
+            int(hkl_arr[idx, 2]),
         )
-        plane_entries.append((hkl, unit_n, 0.5 * g_norm))
+        plane_entries.append((hkl, unit_normals[idx], 0.5 * float(g_norm)))
     return plane_entries
 
 
@@ -358,7 +397,11 @@ def compute_brillouin_zone(
     hs = spatial.HalfspaceIntersection(
         halfspaces, np.zeros(3, dtype=np.float64)
     )
-    verts = np.asarray(hs.intersections, dtype=np.float64)
+    raw_verts = np.asarray(hs.intersections, dtype=np.float64)
+    v_scale = (
+        max(float(np.max(np.abs(raw_verts))), 1.0) if raw_verts.size else 1.0
+    )
+    verts = _deduplicate_points_3d(raw_verts, tol=1e-7 * v_scale)
 
     facets: list[BrillouinFacet] = []
     for hkl_v, n_v, d_v in plane_entries:

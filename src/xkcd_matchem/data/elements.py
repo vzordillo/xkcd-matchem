@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import dataclasses
+import numbers
 
 from xkcd_matchem import _exceptions
 
@@ -32,13 +33,17 @@ class CodataConstants:
 
     bohr_to_angstrom: float = 0.529177210544
     hartree_to_ev: float = 27.211386245981
+    rydberg_to_ev: float = 13.6056931229905
     ev_to_joule: float = 1.602176634e-19
     avogadro: float = 6.02214076e23
     ev_to_kj_mol: float = 96.48533212331002
     ev_to_kcal_mol: float = 23.06054783061903
-    ev_to_cm_inv: float = 8065.543937
+    ev_to_cm_inv: float = 8065.543937349212
     hartree_to_cm_inv: float = 219474.63136314
-    boltzmann_ev_k: float = 8.617333262e-5
+    thz_to_cm_inv: float = 33.3564095198152
+    thz_to_mev: float = 4.135667696923859
+    ev_per_a3_to_gpa: float = 160.2176634
+    boltzmann_ev_k: float = 8.617333262145179e-5
     cu_kalpha1_angstrom: float = 1.54059313
 
 
@@ -1739,12 +1744,15 @@ def get_element(identifier: int | str) -> ElementRecord:
     Raises:
       StructureError: If the atomic number or symbol is unknown.
     """
-    if isinstance(identifier, int):
-        if identifier not in ELEMENTS_BY_Z:
-            raise _exceptions.StructureError(
-                f"Unknown atomic number: {identifier}"
-            )
-        return ELEMENTS_BY_Z[identifier]
+    if isinstance(identifier, bool):
+        raise _exceptions.StructureError(
+            f"Boolean is not a valid element identifier: {identifier!r}"
+        )
+    if isinstance(identifier, numbers.Integral):
+        z_val = int(identifier)
+        if z_val not in ELEMENTS_BY_Z:
+            raise _exceptions.StructureError(f"Unknown atomic number: {z_val}")
+        return ELEMENTS_BY_Z[z_val]
     key = str(identifier).strip().lower()
     if key not in _ELEMENTS_BY_SYMBOL_LOWER:
         raise _exceptions.StructureError(

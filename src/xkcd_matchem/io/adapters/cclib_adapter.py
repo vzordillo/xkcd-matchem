@@ -40,9 +40,13 @@ def _require_cclib() -> Any:
 
 def from_cclib(ccdata: Any) -> structure.AtomsData:
     """Converts a ``cclib`` parsed ``ccData`` object into ``AtomsData``."""
-    atomnos = np.asarray(ccdata.atomnos, dtype=int)
+    raw_atomnos = getattr(ccdata, "atomnos", None)
+    raw_coords = getattr(ccdata, "atomcoords", None)
+    if raw_atomnos is None or raw_coords is None or len(raw_coords) == 0:
+        raise exceptions.ParseError("cclib data lacks atomic coordinates.")
+    atomnos = np.asarray(raw_atomnos, dtype=int)
     symbols = [elements.get_element(int(z)).symbol for z in atomnos]
-    coords = np.asarray(ccdata.atomcoords[-1], dtype=np.float64)
+    coords = np.asarray(raw_coords[-1], dtype=np.float64)
     energies: dict[str, float] = {}
     scf = getattr(ccdata, "scfenergies", None)
     if scf is not None and len(scf) > 0:
@@ -50,13 +54,34 @@ def from_cclib(ccdata: Any) -> structure.AtomsData:
     meta: dict[str, Any] = {}
     moenergies = getattr(ccdata, "moenergies", None)
     homos = getattr(ccdata, "homos", None)
-    if moenergies and homos is not None:
-        mo_vals = np.asarray(moenergies[0], dtype=np.float64)
-        occ = np.zeros_like(mo_vals)
-        occ[: int(homos[0]) + 1] = 2.0
-        meta["orbitals"] = electronic.MolecularOrbitals(
-            energies=mo_vals, occupations=occ
-        )
+    if (
+        moenergies is not None
+        and len(moenergies) > 0
+        and homos is not None
+        and len(homos) > 0
+    ):
+        if len(moenergies) >= 2 and len(homos) >= 2:
+            e_a = np.asarray(moenergies[0], dtype=np.float64)
+            e_b = np.asarray(moenergies[1], dtype=np.float64)
+            occ_a = np.zeros_like(e_a)
+            occ_b = np.zeros_like(e_b)
+            if int(homos[0]) >= 0:
+                occ_a[: int(homos[0]) + 1] = 1.0
+            if int(homos[1]) >= 0:
+                occ_b[: int(homos[1]) + 1] = 1.0
+            meta["orbitals"] = electronic.MolecularOrbitals(
+                energies=np.concatenate([e_a, e_b]),
+                occupations=np.concatenate([occ_a, occ_b]),
+                spin=["alpha"] * len(e_a) + ["beta"] * len(e_b),
+            )
+        else:
+            mo_vals = np.asarray(moenergies[0], dtype=np.float64)
+            occ = np.zeros_like(mo_vals)
+            if int(homos[0]) >= 0:
+                occ[: int(homos[0]) + 1] = 2.0
+            meta["orbitals"] = electronic.MolecularOrbitals(
+                energies=mo_vals, occupations=occ
+            )
     return structure.AtomsData(
         symbols=symbols,
         positions=coords,

@@ -131,14 +131,19 @@ def read_phonopy_bands(
             continue
         if cur_freqs is None:
             continue
-        if stripped.startswith("distance:"):
-            q_dists.append(float(stripped.split(":", 1)[1].strip()))
-        elif stripped.startswith("label:"):
-            inline_labels[len(q_dists) - 1] = _clean_q_label(
-                stripped.split(":", 1)[1]
-            )
-        elif stripped.startswith("frequency:"):
-            cur_freqs.append(float(stripped.split(":", 1)[1].strip()))
+        try:
+            if stripped.startswith("distance:"):
+                q_dists.append(float(stripped.split(":", 1)[1].strip()))
+            elif stripped.startswith("label:"):
+                inline_labels[len(q_dists) - 1] = _clean_q_label(
+                    stripped.split(":", 1)[1]
+                )
+            elif stripped.startswith("frequency:"):
+                cur_freqs.append(float(stripped.split(":", 1)[1].strip()))
+        except ValueError as exc:
+            raise exceptions.ParseError(
+                f"Malformed numeric value in Phonopy YAML {p}: {stripped!r}"
+            ) from exc
 
     if cur_freqs is not None:
         branches.append(cur_freqs)
@@ -165,7 +170,7 @@ registry.register_format(
     registry.FormatSpec(
         name="phonopy_bands",
         extensions=(".band.yaml",),
-        filenames=("band.yaml",),
+        filenames=("band.yaml", "phonopy_bands.yaml"),
         reader=read_phonopy_bands,
         description="Phonopy band.yaml phonon dispersion branches (THz)",
     )

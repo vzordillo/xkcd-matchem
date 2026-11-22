@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import numpy as np
@@ -23,6 +24,7 @@ from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import geometry
 from xkcd_matchem.core import structure
 from xkcd_matchem.core import trajectory
+from xkcd_matchem.data import elements
 
 
 def _require_mdanalysis() -> Any:
@@ -49,6 +51,20 @@ def _require_mdtraj() -> Any:
     return mdtraj
 
 
+def _infer_mda_symbol(raw_name: str) -> str:
+    """Infers an element symbol from an MDAnalysis atom name."""
+    cleaned = re.sub(r"[^A-Za-z]", "", str(raw_name).strip())
+    if len(cleaned) >= 2:
+        cand2 = cleaned[:2].capitalize()
+        if cand2 in ("Na", "Cl", "Mg", "Fe", "Zn", "Cu", "Br", "Si", "Li", "K"):
+            return cand2
+    if cleaned:
+        return elements.get_element(cleaned[0].upper()).symbol
+    raise exceptions.ParseError(
+        f"Cannot infer element symbol from MDAnalysis atom name {raw_name!r}."
+    )
+
+
 def from_mdanalysis(
     universe: Any,
     stride: int = 1,
@@ -60,10 +76,11 @@ def from_mdanalysis(
         raise exceptions.ParseError("Expected an MDAnalysis.Universe instance.")
     elements_attr = getattr(universe.atoms, "elements", None)
     symbols = (
-        [str(el).capitalize() for el in elements_attr]
+        [elements.get_element(str(el)).symbol for el in elements_attr]
         if elements_attr is not None
         and len(elements_attr) == len(universe.atoms)
-        else [str(name)[0].upper() for name in universe.atoms.names]
+        and all(str(el).strip() for el in elements_attr)
+        else [_infer_mda_symbol(name) for name in universe.atoms.names]
     )
     frames: list[structure.AtomsData] = []
     times: list[float] = []

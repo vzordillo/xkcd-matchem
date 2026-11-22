@@ -144,25 +144,27 @@ def _apply_symops(
     expanded_syms: list[str] = []
     expanded_lbls: list[str] = []
     expanded_occs: list[float] = []
+    by_sym_frac: dict[str, list[np.ndarray]] = {}
 
     def _is_duplicate(cand: np.ndarray, sym: str) -> bool:
-        for existing, existing_sym in zip(
-            expanded_frac, expanded_syms, strict=True
-        ):
-            if existing_sym != sym:
-                continue
-            df = np.mod(cand - existing + 0.5, 1.0) - 0.5
-            if float(np.linalg.norm(df @ cell)) < 1e-2:
-                return True
-        return False
+        bucket = by_sym_frac.get(sym)
+        if not bucket:
+            return False
+        existing_arr = np.vstack(bucket)
+        df = np.mod(cand[None, :] - existing_arr + 0.5, 1.0) - 0.5
+        dists_sq = np.einsum("ij,ij->i", df @ cell, df @ cell)
+        return bool(np.any(dists_sq < 1e-4))
 
     for pos, sym, lbl, occ in zip(
         frac_sites, site_symbols, site_labels, occs_in, strict=True
     ):
         wrapped = np.mod(pos, 1.0)
-        wrapped = np.where(np.isclose(wrapped, 1.0, atol=1e-5), 0.0, wrapped)
+        wrapped = np.where(
+            np.isclose(wrapped, 1.0, rtol=0.0, atol=1e-5), 0.0, wrapped
+        )
         if not _is_duplicate(wrapped, sym):
             expanded_frac.append(wrapped)
+            by_sym_frac.setdefault(sym, []).append(wrapped)
             expanded_syms.append(sym)
             expanded_lbls.append(lbl)
             expanded_occs.append(occ)
@@ -172,9 +174,12 @@ def _apply_symops(
     ):
         for rot, trans in parsed_ops:
             cand = np.mod(rot @ pos + trans, 1.0)
-            cand = np.where(np.isclose(cand, 1.0, atol=1e-5), 0.0, cand)
+            cand = np.where(
+                np.isclose(cand, 1.0, rtol=0.0, atol=1e-5), 0.0, cand
+            )
             if not _is_duplicate(cand, sym):
                 expanded_frac.append(cand)
+                by_sym_frac.setdefault(sym, []).append(cand)
                 expanded_syms.append(sym)
                 expanded_lbls.append(lbl)
                 expanded_occs.append(occ)
@@ -193,20 +198,16 @@ def _min_new_site_distance(
 ) -> float:
     """Returns min periodic Cartesian distance involving generated sites."""
     n_tot = len(expanded_frac)
-    if n_tot <= 1:
+    if n_tot <= 1 or n_tot <= n_input:
         return float("inf")
-    d_min = float("inf")
-    for idx_i in range(n_tot):
-        for idx_j in range(idx_i + 1, n_tot):
-            if idx_i < n_input and idx_j < n_input:
-                continue
-            df = (
-                np.mod(expanded_frac[idx_i] - expanded_frac[idx_j] + 0.5, 1.0)
-                - 0.5
-            )
-            dist = float(np.linalg.norm(df @ cell))
-            d_min = min(d_min, dist)
-    return d_min
+    new_frac = expanded_frac[n_input:]
+    raw_df = new_frac[:, None, :] - expanded_frac[None, :, :]
+    df = np.mod(raw_df + 0.5, 1.0) - 0.5
+    cart_df = df.reshape(-1, 3) @ cell
+    dists = np.linalg.norm(cart_df, axis=1).reshape(len(new_frac), n_tot)
+    for k in range(len(new_frac)):
+        dists[k, n_input + k] = float("inf")
+    return float(np.min(dists))
 
 
 def _expand_sites_with_table(

@@ -223,7 +223,10 @@ def parse_affine_term(expr: str) -> tuple[np.ndarray, float]:
             coeff[axis] += sign * factor
         elif "/" in body:
             num_s, den_s = body.split("/", maxsplit=1)
-            shift += sign * (float(num_s) / float(den_s))
+            denom = float(den_s)
+            if abs(denom) < 1e-12:
+                raise ValueError(f"Zero denominator in symop term {expr!r}")
+            shift += sign * (float(num_s) / denom)
         else:
             shift += sign * float(body)
     return coeff, shift
@@ -236,10 +239,13 @@ def parse_symop_string(op_str: str) -> tuple[np.ndarray, np.ndarray] | None:
         return None
     rot = np.zeros((3, 3), dtype=np.float64)
     trans = np.zeros(3, dtype=np.float64)
-    for row_idx, expr in enumerate(parts):
-        c, s = parse_affine_term(expr)
-        rot[row_idx] = c
-        trans[row_idx] = s
+    try:
+        for row_idx, expr in enumerate(parts):
+            c, s = parse_affine_term(expr)
+            rot[row_idx] = c
+            trans[row_idx] = s
+    except ValueError:
+        return None
     return rot, np.mod(trans, 1.0)
 
 
@@ -247,7 +253,9 @@ def _op_signature(rot: np.ndarray, trans: np.ndarray) -> tuple[int, ...]:
     """Returns exact quantized hash key for a crystallographic symop."""
     r_int = tuple(int(round(v)) for v in rot.ravel())
     t_wrapped = np.mod(trans, 1.0)
-    t_wrapped = np.where(np.isclose(t_wrapped, 1.0, atol=1e-6), 0.0, t_wrapped)
+    t_wrapped = np.where(
+        np.isclose(t_wrapped, 1.0, rtol=0.0, atol=1e-6), 0.0, t_wrapped
+    )
     t_int = tuple(int(round(float(v) * 24.0)) % 24 for v in t_wrapped)
     return r_int + t_int
 
@@ -262,7 +270,9 @@ def expand_generators(
 
     def _add(rot: np.ndarray, trans: np.ndarray) -> None:
         t_mod = np.mod(trans, 1.0)
-        t_mod = np.where(np.isclose(t_mod, 1.0, atol=1e-6), 0.0, t_mod)
+        t_mod = np.where(
+            np.isclose(t_mod, 1.0, rtol=0.0, atol=1e-6), 0.0, t_mod
+        )
         sig = _op_signature(rot, t_mod)
         if sig not in seen and len(ops) < 192:
             seen.add(sig)

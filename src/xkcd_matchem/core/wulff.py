@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Thermodynamic equilibrium Wulff crystal shape solver."""
+"""Thermodynamic equilibrium Wulff crystal shapes and Birch-Murnaghan EOS."""
 
 from __future__ import annotations
 
@@ -20,11 +20,14 @@ from collections.abc import Sequence
 import dataclasses
 import functools
 import itertools
+import math
 
 import numpy as np
+from scipy import optimize
 from scipy import spatial
 
 from xkcd_matchem.core import exceptions
+from xkcd_matchem.data import elements
 from xkcd_matchem.data import spacegroups
 
 
@@ -137,8 +140,33 @@ def _resolve_point_rotations(
             )
         out = [np.linalg.inv(rot).T for rot, _ in ops]
     else:
-        out = [np.linalg.inv(rot).T for rot, _ in symops]
+        out = []
+        for rot, _ in symops:
+            r_arr = np.asarray(rot, dtype=np.float64)
+            if (
+                r_arr.shape != (3, 3)
+                or abs(float(np.linalg.det(r_arr))) < 1e-12
+            ):
+                raise exceptions.StructureError(
+                    "Symmetry rotation matrix must be non-singular (3, 3)."
+                )
+            out.append(np.linalg.inv(r_arr).T)
     return out
+
+
+def _deduplicate_points_3d(pts: np.ndarray, tol: float) -> np.ndarray:
+    """Merges coincident 3D polyhedron intersections within ``tol``."""
+    if len(pts) <= 1:
+        return pts
+    uniq: list[np.ndarray] = [pts[0]]
+    tol_sq = tol * tol
+    for idx in range(1, len(pts)):
+        cand = pts[idx]
+        arr_u = np.vstack(uniq)
+        diffs = arr_u - cand[None, :]
+        if float(np.min(np.einsum("ij,ij->i", diffs, diffs))) > tol_sq:
+            uniq.append(cand)
+    return np.vstack(uniq)
 
 
 def _expand_symmetry_planes(
@@ -148,10 +176,9 @@ def _expand_symmetry_planes(
 ) -> tuple[list[tuple[int, int, int]], np.ndarray, np.ndarray]:
     """Expands Miller families into unique oriented halfspace planes."""
     recip = np.linalg.inv(cell_arr).T
-    planes: dict[
-        tuple[int, int, int],
-        tuple[tuple[int, int, int], np.ndarray, float],
-    ] = {}
+    hkls: list[tuple[int, int, int]] = []
+    normals_list: list[np.ndarray] = []
+    gammas_list: list[float] = []
     for raw_hkl, raw_gamma in surface_energies.items():
         if len(raw_hkl) != 3:
             raise exceptions.StructureError(
@@ -180,18 +207,28 @@ def _expand_symmetry_planes(
             if n_norm < 1e-12:
                 continue
             unit_n = cart_n / n_norm
-            n_key = (
-                int(round(float(unit_n[0]) * 1_000_000)),
-                int(round(float(unit_n[1]) * 1_000_000)),
-                int(round(float(unit_n[2]) * 1_000_000)),
-            )
-            prev = planes.get(n_key)
-            if prev is None or gamma < prev[2]:
-                planes[n_key] = (sym_int, unit_n, gamma)
+            matched_idx = -1
+            for existing_idx, prev_n in enumerate(normals_list):
+                if float(np.linalg.norm(unit_n - prev_n)) < 1e-5:
+                    matched_idx = existing_idx
+                    break
+            if matched_idx < 0:
+                hkls.append(sym_int)
+                normals_list.append(unit_n)
+                gammas_list.append(gamma)
+            elif gamma < gammas_list[matched_idx]:
+                hkls[matched_idx] = sym_int
+                normals_list[matched_idx] = unit_n
+                gammas_list[matched_idx] = gamma
 
-    hkls = [entry[0] for entry in planes.values()]
-    normals = np.vstack([entry[1] for entry in planes.values()])
-    gammas = np.array([entry[2] for entry in planes.values()], dtype=np.float64)
+    if not normals_list:
+        return (
+            [],
+            np.zeros((0, 3), dtype=np.float64),
+            np.zeros(0, dtype=np.float64),
+        )
+    normals = np.vstack(normals_list)
+    gammas = np.array(gammas_list, dtype=np.float64)
     return hkls, normals, gammas
 
 
@@ -213,10 +250,15 @@ def _order_polygon_ccw(pts: np.ndarray, normal: np.ndarray) -> np.ndarray:
 
 def _polygon_area_3d(ordered_pts: np.ndarray, normal: np.ndarray) -> float:
     """Computes signed magnitude area of an ordered planar 3D polygon."""
+    if len(ordered_pts) < 3:
+        return 0.0
     p0 = ordered_pts[0]
-    total = np.zeros(3, dtype=np.float64)
-    for k in range(1, len(ordered_pts) - 1):
-        total += np.cross(ordered_pts[k] - p0, ordered_pts[k + 1] - p0)
+    total = np.sum(
+        np.cross(
+            ordered_pts[1:-1] - p0[None, :], ordered_pts[2:] - p0[None, :]
+        ),
+        axis=0,
+    )
     return abs(0.5 * float(np.dot(total, normal)))
 
 
@@ -270,7 +312,11 @@ def compute_wulff_shape(
             "Surface planes do not bound a finite closed Wulff polyhedron."
         ) from exc
 
-    verts = np.asarray(hs.intersections, dtype=np.float64)
+    raw_verts = np.asarray(hs.intersections, dtype=np.float64)
+    v_scale = (
+        max(float(np.max(np.abs(raw_verts))), 1.0) if raw_verts.size else 1.0
+    )
+    verts = _deduplicate_points_3d(raw_verts, tol=1e-7 * v_scale)
     raw_facets: list[
         tuple[tuple[int, int, int], np.ndarray, float, np.ndarray, float]
     ] = []
@@ -308,4 +354,175 @@ def compute_wulff_shape(
         facets=facets,
         volume=volume,
         total_area=total_area,
+    )
+
+
+@dataclasses.dataclass(frozen=True)
+class EOSFitResult:
+    """Fitted third-order Birch-Murnaghan equation-of-state parameters.
+
+    Attributes:
+      e0: Equilibrium ground-state energy ``E_0`` in eV.
+      v0: Equilibrium volume ``V_0`` in cubic Angstrom.
+      b0_ev_a3: Equilibrium isothermal bulk modulus ``B_0`` in eV/A^3.
+      b0_gpa: Equilibrium isothermal bulk modulus ``B_0`` in GPa.
+      b0_prime: Pressure derivative ``B_0' = (dB/dP)_0`` (dimensionless).
+      rms_residual: Root-mean-square energy residual in eV.
+    """
+
+    e0: float
+    v0: float
+    b0_ev_a3: float
+    b0_gpa: float
+    b0_prime: float
+    rms_residual: float
+
+
+def _validate_eos_inputs(
+    volume: Sequence[float] | np.ndarray | float,
+    v0: float,
+    b0_ev_a3: float,
+    b0_prime: float,
+) -> np.ndarray:
+    """Validates positive volumes, equilibrium volume, and bulk modulus."""
+    vol = np.asarray(volume, dtype=np.float64)
+    if vol.size == 0 or not np.all(np.isfinite(vol)) or np.any(vol <= 0.0):
+        raise exceptions.StructureError(
+            "EOS volume values must be finite and strictly positive."
+        )
+    if (
+        not math.isfinite(v0)
+        or v0 <= 0.0
+        or not math.isfinite(b0_ev_a3)
+        or b0_ev_a3 <= 0.0
+        or not math.isfinite(b0_prime)
+    ):
+        raise exceptions.StructureError(
+            "EOS parameters require finite v0 > 0, b0_ev_a3 > 0, and b0_prime."
+        )
+    return vol
+
+
+def birch_murnaghan_energy(
+    volume: Sequence[float] | np.ndarray | float,
+    e0: float,
+    v0: float,
+    b0_ev_a3: float,
+    b0_prime: float = 4.0,
+) -> np.ndarray:
+    """Evaluates the 3rd-order Birch-Murnaghan energy ``E(V)`` in eV."""
+    vol = _validate_eos_inputs(volume, v0, b0_ev_a3, b0_prime)
+    if not math.isfinite(e0):
+        raise exceptions.StructureError("Equilibrium energy e0 must be finite.")
+    eta = np.power(v0 / vol, 2.0 / 3.0)
+    f2 = eta - 1.0
+    energy = e0 + (9.0 * v0 * b0_ev_a3 / 16.0) * (
+        (f2**3) * b0_prime + (f2**2) * (6.0 - 4.0 * eta)
+    )
+    return np.asarray(energy, dtype=np.float64)
+
+
+def birch_murnaghan_pressure(
+    volume: Sequence[float] | np.ndarray | float,
+    v0: float,
+    b0_ev_a3: float,
+    b0_prime: float = 4.0,
+    *,
+    unit: str = "GPa",
+) -> np.ndarray:
+    """Evaluates the 3rd-order Birch-Murnaghan pressure ``P(V) = -dE/dV``."""
+    vol = _validate_eos_inputs(volume, v0, b0_ev_a3, b0_prime)
+    u_key = unit.strip().lower()
+    if u_key == "gpa":
+        scale = elements.CODATA2022.ev_per_a3_to_gpa
+    elif u_key in ("ev/a^3", "ev/a3"):
+        scale = 1.0
+    else:
+        raise exceptions.StructureError(
+            f"Unsupported pressure unit {unit!r}; use 'GPa' or 'eV/A^3'."
+        )
+    ratio = v0 / vol
+    eta = np.power(ratio, 2.0 / 3.0)
+    p_ev = (
+        1.5
+        * b0_ev_a3
+        * (np.power(ratio, 7.0 / 3.0) - np.power(ratio, 5.0 / 3.0))
+        * (1.0 + 0.75 * (b0_prime - 4.0) * (eta - 1.0))
+    )
+    return np.asarray(p_ev * scale, dtype=np.float64)
+
+
+def _validate_eos_fit_arrays(
+    volumes: Sequence[float] | np.ndarray,
+    energies: Sequence[float] | np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Validates matching 1D positive volume and finite energy arrays."""
+    vs = np.asarray(volumes, dtype=np.float64)
+    es = np.asarray(energies, dtype=np.float64)
+    shape_bad = vs.ndim != 1 or es.ndim != 1 or vs.shape != es.shape
+    if shape_bad or vs.size < 4:
+        raise exceptions.StructureError(
+            "Birch-Murnaghan fit requires >= 4 matching 1D E(V) points."
+        )
+    vals_bad = not (np.all(np.isfinite(vs)) and np.all(np.isfinite(es)))
+    if vals_bad or np.any(vs <= 0.0) or float(np.ptp(vs)) < 1e-9:
+        raise exceptions.StructureError(
+            "Birch-Murnaghan fit requires distinct finite positive volumes."
+        )
+    return vs, es
+
+
+def fit_birch_murnaghan(
+    volumes: Sequence[float] | np.ndarray,
+    energies: Sequence[float] | np.ndarray,
+) -> EOSFitResult:
+    """Fits the 3rd-order Birch-Murnaghan EOS via Eulerian-strain OLS + NLS."""
+    vs, es = _validate_eos_fit_arrays(volumes, energies)
+    v_min, v_max = float(np.min(vs)), float(np.max(vs))
+    min_idx = int(np.argmin(es))
+    v0_g, e0_g, b0_g, bp_g = float(vs[min_idx]), float(es[min_idx]), 0.5, 4.0
+    quad = np.polyfit(vs, es, 2)
+    if quad[0] > 1e-12:
+        v0_g = float(
+            np.clip(-quad[1] / (2.0 * quad[0]), 0.75 * v_min, 1.25 * v_max)
+        )
+        b0_g = float(np.clip(2.0 * quad[0] * v0_g, 1e-4, 25.0))
+        e0_g = float(np.polyval(quad, v0_g))
+    fe = 0.5 * (np.power(v0_g / vs, 2.0 / 3.0) - 1.0)
+    c_ols, _, _, _ = np.linalg.lstsq(
+        np.column_stack([np.ones_like(fe), fe**2, fe**3]), es, rcond=None
+    )
+    if float(c_ols[1]) > 1e-9:
+        e0_g = float(c_ols[0])
+        b0_g = float(np.clip(2.0 * float(c_ols[1]) / (9.0 * v0_g), 1e-4, 25.0))
+        bp_g = float(
+            np.clip(4.0 + float(c_ols[2]) / float(c_ols[1]), 0.5, 12.0)
+        )
+    p0 = [
+        e0_g,
+        float(np.clip(v0_g, 0.55 * v_min, 1.9 * v_max)),
+        float(np.clip(b0_g, 1e-5, 25.0)),
+        float(np.clip(bp_g, -1.5, 20.0)),
+    ]
+    bounds = (
+        [-np.inf, 0.5 * v_min, 1e-6, -2.0],
+        [np.inf, 2.0 * v_max, 50.0, 25.0],
+    )
+    popt, _ = optimize.curve_fit(
+        birch_murnaghan_energy,
+        vs,
+        es,
+        p0=p0,
+        bounds=bounds,
+        maxfev=12000,
+    )
+    e0_f, v0_f, b0_f, bp_f = (float(v) for v in popt)
+    pred = birch_murnaghan_energy(vs, e0_f, v0_f, b0_f, bp_f)
+    return EOSFitResult(
+        e0=e0_f,
+        v0=v0_f,
+        b0_ev_a3=b0_f,
+        b0_gpa=b0_f * elements.CODATA2022.ev_per_a3_to_gpa,
+        b0_prime=bp_f,
+        rms_residual=math.sqrt(float(np.mean(np.square(es - pred)))),
     )

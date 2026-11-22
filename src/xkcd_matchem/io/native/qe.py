@@ -27,7 +27,7 @@ from xkcd_matchem.data import elements
 from xkcd_matchem.io import registry
 
 
-_RY_TO_EV = 0.5 * elements.CODATA2022.hartree_to_ev
+_RY_TO_EV = elements.CODATA2022.rydberg_to_ev
 
 
 def _clean_qe_symbol(label: str) -> str:
@@ -140,7 +140,7 @@ def read_qe_in(path: str | pathlib.Path) -> structure.AtomsData:
     if cell is None and ibrav != 0:
         raise exceptions.ParseError(
             f"QE input specifies ibrav={ibrav} without CELL_PARAMETERS; use "
-            "explicit CELL_PARAMETERS or xm.read_via_ase(...)."
+            "explicit CELL_PARAMETERS or xm.io.read_via_ase(...)."
         )
     if not syms:
         raise exceptions.ParseError(
@@ -173,6 +173,46 @@ def read_qe_in(path: str | pathlib.Path) -> structure.AtomsData:
         pbc=(cell is not None, cell is not None, cell is not None),
         metadata={"source": str(p)},
     )
+
+
+def _parse_qe_atomic_positions(
+    lines: list[str],
+    idx: int,
+    alat_bohr: float,
+    cell: np.ndarray | None,
+) -> tuple[list[str], list[list[float]]]:
+    """Parses an ``ATOMIC_POSITIONS`` block in a QE ``pw.out`` file."""
+    bohr = elements.CODATA2022.bohr_to_angstrom
+    hdr = lines[idx].lower()
+    scale = (
+        bohr
+        if "bohr" in hdr
+        else (1.0 if "angstrom" in hdr else alat_bohr * bohr)
+    )
+    is_crys = "crystal" in hdr
+    k = idx + 1
+    tmp_s: list[str] = []
+    tmp_c: list[list[float]] = []
+    while (
+        k < len(lines)
+        and lines[k].strip()
+        and not lines[k].strip().startswith("End")
+    ):
+        parts = lines[k].split()
+        if len(parts) < 4:
+            break
+        tmp_s.append(_clean_qe_symbol(parts[0]))
+        tmp_c.append([float(parts[1]), float(parts[2]), float(parts[3])])
+        k += 1
+    if not tmp_s:
+        return [], []
+    arr_tmp = np.array(tmp_c, dtype=np.float64)
+    coords = (
+        (arr_tmp @ cell).tolist()
+        if (is_crys and cell is not None)
+        else (arr_tmp * scale).tolist()
+    )
+    return tmp_s, coords
 
 
 def read_qe_out(path: str | pathlib.Path) -> structure.AtomsData:
@@ -233,40 +273,19 @@ def read_qe_out(path: str | pathlib.Path) -> structure.AtomsData:
                     np.array(tmp_c, dtype=np.float64) * alat_bohr * bohr
                 ).tolist()
         elif "ATOMIC_POSITIONS" in line:
-            scale = (
-                bohr
-                if "bohr" in line.lower()
-                else (1.0 if "angstrom" in line.lower() else alat_bohr * bohr)
+            tmp_s, tmp_c_ang = _parse_qe_atomic_positions(
+                lines, idx, alat_bohr, cell
             )
-            is_crys = "crystal" in line.lower()
-            k = idx + 1
-            tmp_s = []
-            tmp_c = []
-            while (
-                k < len(lines)
-                and lines[k].strip()
-                and not lines[k].strip().startswith("End")
-            ):
-                parts = lines[k].split()
-                if len(parts) < 4:
-                    break
-                tmp_s.append(_clean_qe_symbol(parts[0]))
-                tmp_c.append(
-                    [float(parts[1]), float(parts[2]), float(parts[3])]
-                )
-                k += 1
             if tmp_s:
-                syms = tmp_s
-                arr_tmp = np.array(tmp_c, dtype=np.float64)
-                coords = (
-                    (arr_tmp @ cell).tolist()
-                    if (is_crys and cell is not None)
-                    else (arr_tmp * scale).tolist()
-                )
+                syms, coords = tmp_s, tmp_c_ang
         elif "!" in line and "total energy" in line:
             last_energy = float(line.split("=")[1].split()[0]) * _RY_TO_EV
         elif "the Fermi energy is" in line:
             fermi = float(line.split("is")[1].split()[0])
+        elif "highest occupied" in line and ":" in line and fermi is None:
+            rhs_toks = line.split(":", 1)[1].split()
+            if rhs_toks:
+                fermi = float(rhs_toks[0])
         idx += 1
 
     if not syms:
@@ -296,6 +315,8 @@ def read_qe_bands(path: str | pathlib.Path) -> electronic.BandStructure:
     """Reads a Quantum ESPRESSO ``bands.x`` plain-text output file."""
     p = pathlib.Path(path)
     lines = p.read_text(encoding="utf-8").splitlines()
+    if not lines:
+        raise exceptions.ParseError(f"Empty QE bands file: {p}")
     header = lines[0]
     m_nb = re.search(r"nbnd\s*=\s*(\d+)", header)
     m_nk = re.search(r"nks\s*=\s*(\d+)", header)
@@ -304,15 +325,15 @@ def read_qe_bands(path: str | pathlib.Path) -> electronic.BandStructure:
     nbnd = int(m_nb.group(1))
     nks = int(m_nk.group(1))
     body = _split_touching_floats(" ".join(lines[1:]).replace("/", " "))
-    tokens = body.split()
-    k_coords = np.zeros((nks, 3), dtype=np.float64)
-    eig = np.zeros((1, nks, nbnd), dtype=np.float64)
-    cursor = 0
-    for ik in range(nks):
-        k_coords[ik] = [float(tokens[cursor + j]) for j in range(3)]
-        cursor += 3
-        eig[0, ik, :] = [float(tokens[cursor + j]) for j in range(nbnd)]
-        cursor += nbnd
+    n_needed = nks * (3 + nbnd)
+    arr = np.fromstring(body, sep=" ", dtype=np.float64, count=n_needed)
+    if arr.size < n_needed:
+        raise exceptions.ParseError(
+            f"Truncated QE bands data in {p}: expected {n_needed} values."
+        )
+    block = arr.reshape((nks, 3 + nbnd))
+    k_coords = block[:, :3]
+    eig = block[:, 3:][None, :, :]
     diffs = np.diff(k_coords, axis=0)
     k_dist = np.concatenate([[0.0], np.cumsum(np.linalg.norm(diffs, axis=1))])
     return electronic.BandStructure(
@@ -338,6 +359,8 @@ def read_qe_dos(path: str | pathlib.Path) -> electronic.DensityOfStates:
         rows.append(
             [float(tok) for tok in _split_touching_floats(stripped).split()]
         )
+    if not rows:
+        raise exceptions.ParseError(f"No DOS rows found in QE dos.dat: {p}")
     arr = np.array(rows, dtype=np.float64)
     if arr.shape[1] >= 4:
         return electronic.DensityOfStates(

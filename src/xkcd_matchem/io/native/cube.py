@@ -26,6 +26,25 @@ from xkcd_matchem.data import elements
 from xkcd_matchem.io import registry
 
 
+def _consume_cube_mo_header(
+    lines: list[str],
+    cursor: int,
+    has_mo_line: bool,
+) -> tuple[int, int]:
+    """Consumes optional multi-orbital CUBE header lines."""
+    if not has_mo_line or cursor >= len(lines):
+        return cursor, 1
+    mo_toks = [int(t) for t in lines[cursor].split()]
+    cursor += 1
+    if not mo_toks:
+        return cursor, 1
+    n_mo = max(1, mo_toks[0])
+    while len(mo_toks) < 1 + n_mo and cursor < len(lines):
+        mo_toks.extend(int(t) for t in lines[cursor].split())
+        cursor += 1
+    return cursor, n_mo
+
+
 def read_cube(path: str | pathlib.Path) -> electronic.VolumetricGrid:
     """Reads a Gaussian ``.cube`` file, converting Bohr coordinates to Angstrom.
 
@@ -44,50 +63,54 @@ def read_cube(path: str | pathlib.Path) -> electronic.VolumetricGrid:
     if len(lines) < 7:
         raise exceptions.ParseError(f"Truncated Gaussian CUBE file: {p}")
     bohr = elements.CODATA2022.bohr_to_angstrom
-    line3 = lines[2].split()
-    n_raw = int(line3[0])
-    has_mo_line = n_raw < 0
-    n_atoms = abs(n_raw)
-    origin = np.array([float(x) for x in line3[1:4]], dtype=np.float64) * bohr
-
-    dims: list[int] = []
-    voxels = np.zeros((3, 3), dtype=np.float64)
-    for axis_idx in range(3):
-        parts = lines[3 + axis_idx].split()
-        n_pts = int(parts[0])
-        step_sign = -1.0 if n_pts < 0 else 1.0
-        dims.append(abs(n_pts))
-        scale = 1.0 if step_sign < 0.0 else bohr
-        voxels[axis_idx] = (
-            np.array([float(x) for x in parts[1:4]], dtype=np.float64) * scale
+    try:
+        line3 = lines[2].split()
+        n_raw = int(line3[0])
+        has_mo_line = n_raw < 0
+        n_atoms = abs(n_raw)
+        origin = (
+            np.array([float(x) for x in line3[1:4]], dtype=np.float64) * bohr
         )
 
-    symbols: list[str] = []
-    coords = np.zeros((n_atoms, 3), dtype=np.float64)
-    for k in range(n_atoms):
-        parts = lines[6 + k].split()
-        atomic_num = int(parts[0])
-        symbols.append(elements.get_element(atomic_num).symbol)
-        coords[k] = (
-            np.array([float(x) for x in parts[2:5]], dtype=np.float64) * bohr
-        )
+        dims: list[int] = []
+        voxels = np.zeros((3, 3), dtype=np.float64)
+        for axis_idx in range(3):
+            parts = lines[3 + axis_idx].split()
+            n_pts = int(parts[0])
+            step_sign = -1.0 if n_pts < 0 else 1.0
+            dims.append(abs(n_pts))
+            scale = 1.0 if step_sign < 0.0 else bohr
+            voxels[axis_idx] = (
+                np.array([float(x) for x in parts[1:4]], dtype=np.float64)
+                * scale
+            )
 
-    cursor = 6 + n_atoms + (1 if has_mo_line else 0)
-    values: list[float] = []
-    n_total = dims[0] * dims[1] * dims[2]
-    while cursor < len(lines) and len(values) < n_total:
-        row = lines[cursor].strip()
-        if row:
-            values.extend(float(tok) for tok in row.split())
-        cursor += 1
-    if len(values) < n_total:
+        if len(lines) < 6 + n_atoms:
+            raise exceptions.ParseError(f"Truncated CUBE atom table in {p}")
+        symbols: list[str] = []
+        coords = np.zeros((n_atoms, 3), dtype=np.float64)
+        for k in range(n_atoms):
+            parts = lines[6 + k].split()
+            atomic_num = int(parts[0])
+            symbols.append(elements.get_element(atomic_num).symbol)
+            coords[k] = (
+                np.array([float(x) for x in parts[2:5]], dtype=np.float64)
+                * bohr
+            )
+    except (IndexError, ValueError) as exc:
+        raise exceptions.ParseError(f"Malformed CUBE header in {p}") from exc
+
+    cursor, n_mo = _consume_cube_mo_header(lines, 6 + n_atoms, has_mo_line)
+    n_read = dims[0] * dims[1] * dims[2] * n_mo
+    values = np.fromstring(
+        " ".join(lines[cursor:]), sep=" ", dtype=np.float64, count=n_read
+    )
+    if values.size < n_read:
         raise exceptions.ParseError(
             f"Truncated volumetric data in CUBE file: {p}"
         )
 
-    grid_data = np.array(values[:n_total], dtype=np.float64).reshape(
-        tuple(dims)
-    )
+    grid_data = values[:n_read:n_mo].reshape(tuple(dims))
     atoms = structure.AtomsData(
         symbols=symbols,
         positions=coords,

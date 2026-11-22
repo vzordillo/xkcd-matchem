@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy import spatial
 
+from xkcd_matchem.core import exceptions
+
 
 if TYPE_CHECKING:
     from xkcd_matchem.core import structure
@@ -126,19 +128,27 @@ def _aperiodic_neighbors(
     """Finds neighbor hits without periodic boundary conditions."""
     tree = spatial.cKDTree(positions)
     pairs = tree.query_pairs(r=max_cutoff, output_type="ndarray")
+    if len(pairs) == 0:
+        return []
+    vecs = positions[pairs[:, 1]] - positions[pairs[:, 0]]
+    dists = np.linalg.norm(vecs, axis=1)
+    keep = dists >= min_cutoff
+    pairs = pairs[keep]
+    vecs = vecs[keep]
+    dists = dists[keep]
     hits: list[NeighborHit] = []
-    for row in pairs:
-        i_idx = int(row[0])
-        j_idx = int(row[1])
-        vec = positions[j_idx] - positions[i_idx]
-        dist = float(np.linalg.norm(vec))
-        if dist < min_cutoff:
-            continue
+    for k in range(len(pairs)):
+        i_idx = int(pairs[k, 0])
+        j_idx = int(pairs[k, 1])
+        dist = float(dists[k])
+        vec = vecs[k]
         hits.append(NeighborHit(i=i_idx, j=j_idx, distance=dist, vector=vec))
         if symmetric:
             hits.append(
                 NeighborHit(i=j_idx, j=i_idx, distance=dist, vector=-vec)
             )
+    if symmetric:
+        hits.sort(key=lambda h: (h.i, h.j, h.shift))
     return hits
 
 
@@ -150,16 +160,36 @@ def _wrap_onto_reduced_basis(
     """Wraps Cartesian coordinates into ``[0, 1)`` of the LLL-reduced cell."""
     frac_r = (positions @ red_basis.T) @ g_inv
     f_wrap = np.mod(frac_r, 1.0)
-    f_wrap[np.isclose(f_wrap, 1.0, atol=1e-9)] = 0.0
-    f_wrap[np.isclose(f_wrap, 0.0, atol=1e-9)] = 0.0
+    f_wrap[np.isclose(f_wrap, 1.0, rtol=0.0, atol=1e-12)] = 0.0
+    f_wrap[np.isclose(f_wrap, 0.0, rtol=0.0, atol=1e-12)] = 0.0
     c_red = np.round(frac_r - f_wrap).astype(np.int64)
     wrapped = positions - c_red @ red_basis
     return wrapped, c_red
 
 
+def _filter_shifts_by_aabb(
+    w_pos: np.ndarray,
+    shifts_red: np.ndarray,
+    red_basis: np.ndarray,
+    max_cutoff: float,
+) -> np.ndarray:
+    """Filters reduced lattice shifts whose AABB exceeds ``max_cutoff``."""
+    w_min = np.min(w_pos, axis=0)
+    w_max = np.max(w_pos, axis=0)
+    shift_vecs = shifts_red.astype(np.float64) @ red_basis
+    gap_lo = w_min[None, :] - (w_max[None, :] + shift_vecs)
+    gap_hi = (w_min[None, :] + shift_vecs) - w_max[None, :]
+    gap = np.maximum(0.0, np.maximum(gap_lo, gap_hi))
+    dist_sq = np.einsum("ij,ij->i", gap, gap)
+    return np.asarray(
+        shifts_red[dist_sq <= max_cutoff * max_cutoff + 1e-7], dtype=np.int64
+    )
+
+
 def _record_periodic_hit(
     i_idx: int,
     j_idx: int,
+    dist: float,
     vec: np.ndarray,
     shift: tuple[int, int, int],
     symmetric: bool,
@@ -167,7 +197,6 @@ def _record_periodic_hit(
     hits: list[NeighborHit],
 ) -> None:
     """Appends one directed or canonicalized undirected NeighborHit."""
-    dist = float(np.linalg.norm(vec))
     if symmetric:
         key = (i_idx, j_idx, shift)
         if key not in seen:
@@ -189,39 +218,74 @@ def _record_periodic_hit(
         )
 
 
-def _append_periodic_shift_hits(
+def _emit_chunk_hits(
+    pair_indices: tuple[np.ndarray, np.ndarray],
+    dists: np.ndarray,
+    vecs: np.ndarray,
+    full_shifts: np.ndarray,
+    symmetric: bool,
+    seen: set[tuple[int, int, tuple[int, int, int]]],
+    hits: list[NeighborHit],
+) -> None:
+    """Appends filtered COO neighbor hits into ``hits``."""
+    i_arr, j_arr = pair_indices
+    for i_val, j_val, d_val, vec, sh_row in zip(
+        i_arr, j_arr, dists, vecs, full_shifts, strict=True
+    ):
+        sh = (int(sh_row[0]), int(sh_row[1]), int(sh_row[2]))
+        if int(i_val) == int(j_val) and sh == (0, 0, 0):
+            continue
+        _record_periodic_hit(
+            int(i_val), int(j_val), float(d_val), vec, sh, symmetric, seen, hits
+        )
+
+
+def _collect_chunk_hits(
     w_pos: np.ndarray,
     tree_base: spatial.cKDTree,
     c_red: np.ndarray,
     basis_cfg: tuple[np.ndarray, np.ndarray, list[int]],
-    s_red: np.ndarray,
+    chunk_shifts: np.ndarray,
     cutoffs: tuple[float, float, bool],
     seen: set[tuple[int, int, tuple[int, int, int]]],
     hits: list[NeighborHit],
 ) -> None:
-    """Queries one LLL-reduced integer lattice shift and appends hits."""
+    """Queries a batch of LLL-reduced shifts with a single cKDTree."""
     red_basis, u_mat, active = basis_cfg
     min_cutoff, max_cutoff, symmetric = cutoffs
-    shifted = w_pos + s_red.astype(np.float64) @ red_basis
-    tree_sh = spatial.cKDTree(shifted)
-    for i_idx, nbrs in enumerate(
-        tree_base.query_ball_tree(tree_sh, r=max_cutoff)
-    ):
-        for j_idx in nbrs:
-            vec = shifted[j_idx] - w_pos[i_idx]
-            dist = float(np.linalg.norm(vec))
-            if dist < min_cutoff or dist > max_cutoff:
-                continue
-            net_active = (s_red + c_red[i_idx] - c_red[j_idx]) @ u_mat
-            shift_arr = [0, 0, 0]
-            for pos_a, ax_idx in enumerate(active):
-                shift_arr[ax_idx] = int(net_active[pos_a])
-            shift = (shift_arr[0], shift_arr[1], shift_arr[2])
-            if i_idx == j_idx and shift == (0, 0, 0):
-                continue
-            _record_periodic_hit(
-                i_idx, j_idx, vec, shift, symmetric, seen, hits
-            )
+    chunk_pts = (
+        w_pos[None, :, :]
+        + (chunk_shifts.astype(np.float64) @ red_basis)[:, None, :]
+    ).reshape(-1, 3)
+    coo = tree_base.sparse_distance_matrix(
+        spatial.cKDTree(chunk_pts), max_cutoff, output_type="coo_matrix"
+    )
+    if coo.nnz == 0:
+        return
+    i_arr = np.asarray(coo.row, dtype=np.int64)
+    col_arr = np.asarray(coo.col, dtype=np.int64)
+    vecs = chunk_pts[col_arr] - w_pos[i_arr]
+    dists = np.linalg.norm(vecs, axis=1)
+    keep = (dists >= min_cutoff) & (dists <= max_cutoff)
+    if not np.any(keep):
+        return
+    i_arr, col_arr = i_arr[keep], col_arr[keep]
+    j_arr = col_arr % len(w_pos)
+    net_active = (
+        chunk_shifts[col_arr // len(w_pos)] + c_red[i_arr] - c_red[j_arr]
+    ) @ u_mat
+    full_shifts = np.zeros((len(i_arr), 3), dtype=np.int64)
+    for pos_a, ax_idx in enumerate(active):
+        full_shifts[:, ax_idx] = net_active[:, pos_a]
+    _emit_chunk_hits(
+        (i_arr, j_arr),
+        dists[keep],
+        vecs[keep],
+        full_shifts,
+        symmetric,
+        seen,
+        hits,
+    )
 
 
 def find_periodic_neighbors(
@@ -250,7 +314,7 @@ def find_periodic_neighbors(
     Returns:
       List of ``NeighborHit`` records sorted by ``(i, j, shift)``.
     """
-    if len(atoms) == 0 or max_cutoff <= 0.0:
+    if len(atoms) == 0 or max_cutoff <= 0.0 or max_cutoff < min_cutoff:
         return []
     active = [ax for ax, flag in enumerate(atoms.pbc) if flag]
     if not use_pbc or atoms.cell is None or not active:
@@ -260,28 +324,44 @@ def find_periodic_neighbors(
 
     red_basis, u_mat = _lll_reduce_with_transform(atoms.cell[active])
     gram = red_basis @ red_basis.T
+    if abs(float(np.linalg.det(gram))) <= 1e-18:
+        raise exceptions.StructureError(
+            "Periodic lattice vectors are linearly dependent (singular cell)."
+        )
     g_inv = np.linalg.inv(gram)
     w_pos, c_red = _wrap_onto_reduced_basis(atoms.positions, red_basis, g_inv)
     diag_g = np.maximum(np.diag(g_inv), 0.0)
     bounds = [
-        min(
-            12,
-            int(math.ceil(max_cutoff * math.sqrt(float(dg)) + 1.0 + 1e-9)),
-        )
+        int(math.ceil(max_cutoff * math.sqrt(float(dg)) + 1.0 + 1e-9))
         for dg in diag_g
     ]
     ranges = [np.arange(-b, b + 1, dtype=np.int64) for b in bounds]
     grids = np.meshgrid(*ranges, indexing="ij")
-    shifts_red = np.column_stack([g.ravel() for g in grids])
+    shifts_red = _filter_shifts_by_aabb(
+        w_pos,
+        np.column_stack([g.ravel() for g in grids]),
+        red_basis,
+        max_cutoff,
+    )
+    if len(shifts_red) == 0:
+        return []
 
     tree_base = spatial.cKDTree(w_pos)
     seen: set[tuple[int, int, tuple[int, int, int]]] = set()
     hits: list[NeighborHit] = []
     basis_cfg = (red_basis, u_mat, active)
     cutoffs = (min_cutoff, max_cutoff, symmetric)
-    for s_red in shifts_red:
-        _append_periodic_shift_hits(
-            w_pos, tree_base, c_red, basis_cfg, s_red, cutoffs, seen, hits
+    batch_size = max(1, 65536 // max(len(w_pos), 1))
+    for start in range(0, len(shifts_red), batch_size):
+        _collect_chunk_hits(
+            w_pos,
+            tree_base,
+            c_red,
+            basis_cfg,
+            shifts_red[start : start + batch_size],
+            cutoffs,
+            seen,
+            hits,
         )
     hits.sort(key=lambda h: (h.i, h.j, h.shift))
     return hits

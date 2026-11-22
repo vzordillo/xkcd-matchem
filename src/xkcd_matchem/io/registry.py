@@ -99,14 +99,19 @@ _CONTENT_SIGNATURES: tuple[tuple[tuple[str, ...], str], ...] = (
 def _match_by_name_or_suffix(p: pathlib.Path) -> FormatSpec | None:
     """Matches exact filename, extension suffix, or basename prefix."""
     upper_name = p.name.upper()
+    lower_name = p.name.lower()
     for spec in _FORMAT_REGISTRY.values():
         if any(upper_name == fname.upper() for fname in spec.filenames):
             return spec
-    suffix = p.suffix.lower()
-    if suffix:
-        for spec in _FORMAT_REGISTRY.values():
-            if suffix in spec.extensions:
-                return spec
+    ext_matches: list[tuple[int, FormatSpec]] = []
+    for spec in _FORMAT_REGISTRY.values():
+        for ext in spec.extensions:
+            ext_low = ext.lower()
+            if lower_name.endswith(ext_low) and len(lower_name) > len(ext_low):
+                ext_matches.append((len(ext_low), spec))
+    if ext_matches:
+        ext_matches.sort(key=lambda item: -item[0])
+        return ext_matches[0][1]
     for spec in _FORMAT_REGISTRY.values():
         if any(
             upper_name.startswith(fname.upper()) for fname in spec.filenames

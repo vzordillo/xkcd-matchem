@@ -110,9 +110,12 @@ def read_gaussian_log_full(path: str | pathlib.Path) -> dict[str, object]:
                     metadata={"source": str(p)},
                 )
         elif "SCF Done:" in line:
-            match = re.search(r"=\s*([-+]?\d+\.\d+)", line)
+            match = re.search(
+                r"=\s*([-+]?\d+(?:\.\d+)?(?:[eEdD][-+]?\d+)?)", line
+            )
             if match:
-                scf_energies.append(float(match.group(1)) * ha_to_ev)
+                raw_e = match.group(1).replace("D", "E").replace("d", "e")
+                scf_energies.append(float(raw_e) * ha_to_ev)
         elif "Alpha  occ. eigenvalues --" in line:
             if prev_was_virt:
                 occ_ev.clear()
@@ -199,13 +202,46 @@ def _read_fchk_array(lines: list[str], start: int, count: int) -> list[float]:
     return vals[:count]
 
 
+def _build_fchk_orbitals(
+    alpha_ha: list[float],
+    beta_ha: list[float],
+    n_alpha: int | None,
+    n_beta: int | None,
+    z_sum: int,
+) -> electronic.MolecularOrbitals:
+    """Constructs ``MolecularOrbitals`` from FCHK orbital energy blocks."""
+    ha_to_ev = elements.CODATA2022.hartree_to_ev
+    na = n_alpha if n_alpha is not None else (z_sum // 2)
+    if beta_ha:
+        nb = n_beta if n_beta is not None else max(0, z_sum - na)
+        e_arr = np.array(alpha_ha + beta_ha, dtype=np.float64) * ha_to_ev
+        occ_a = [1.0 if i < na else 0.0 for i in range(len(alpha_ha))]
+        occ_b = [1.0 if i < nb else 0.0 for i in range(len(beta_ha))]
+        spins = ["alpha"] * len(alpha_ha) + ["beta"] * len(beta_ha)
+        return electronic.MolecularOrbitals(
+            energies=e_arr,
+            occupations=np.array(occ_a + occ_b, dtype=np.float64),
+            spin=spins,
+        )
+    e_arr = np.array(alpha_ha, dtype=np.float64) * ha_to_ev
+    occ = np.array(
+        [2.0 if i < na else 0.0 for i in range(len(alpha_ha))],
+        dtype=np.float64,
+    )
+    return electronic.MolecularOrbitals(energies=e_arr, occupations=occ)
+
+
 def read_gaussian_fchk(path: str | pathlib.Path) -> structure.AtomsData:
-    """Reads atomic numbers and Cartesian coordinates from a ``.fchk`` file."""
+    """Reads geometry, total energy, and orbitals from a ``.fchk`` file."""
     p = pathlib.Path(path)
     lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
     bohr = elements.CODATA2022.bohr_to_angstrom
     z_nums: list[int] = []
     coords_bohr: list[float] = []
+    alpha_ha: list[float] = []
+    beta_ha: list[float] = []
+    n_alpha: int | None = None
+    n_beta: int | None = None
     total_e: float | None = None
     for idx, line in enumerate(lines):
         if line.startswith("Atomic numbers"):
@@ -216,9 +252,19 @@ def read_gaussian_fchk(path: str | pathlib.Path) -> structure.AtomsData:
                 raw.extend(int(t) for t in lines[k].split())
                 k += 1
             z_nums = raw[:cnt]
+        elif line.startswith("Number of alpha electrons"):
+            n_alpha = int(line.split()[-1])
+        elif line.startswith("Number of beta electrons"):
+            n_beta = int(line.split()[-1])
         elif line.startswith("Current cartesian coordinates"):
             cnt = int(line.split()[-1])
             coords_bohr = _read_fchk_array(lines, idx + 1, cnt)
+        elif line.startswith("Alpha Orbital Energies"):
+            cnt = int(line.split()[-1])
+            alpha_ha = _read_fchk_array(lines, idx + 1, cnt)
+        elif line.startswith("Beta Orbital Energies"):
+            cnt = int(line.split()[-1])
+            beta_ha = _read_fchk_array(lines, idx + 1, cnt)
         elif line.startswith("Total Energy"):
             total_e = (
                 float(line.split()[-1]) * elements.CODATA2022.hartree_to_ev
@@ -228,11 +274,16 @@ def read_gaussian_fchk(path: str | pathlib.Path) -> structure.AtomsData:
     syms = [elements.get_element(z).symbol for z in z_nums]
     pos = np.array(coords_bohr, dtype=np.float64).reshape((-1, 3)) * bohr
     energies = {"total": total_e} if total_e is not None else {}
+    meta: dict[str, object] = {"source": str(p)}
+    if alpha_ha:
+        meta["orbitals"] = _build_fchk_orbitals(
+            alpha_ha, beta_ha, n_alpha, n_beta, sum(z_nums)
+        )
     return structure.AtomsData(
         symbols=syms,
         positions=pos,
         energies=energies,
-        metadata={"source": str(p)},
+        metadata=meta,
     )
 
 
