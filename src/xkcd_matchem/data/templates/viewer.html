@@ -802,7 +802,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
 
   function wiggledSegment(p0, p1, amp, seed) {
     if (amp <= 0.02) return [p0, p1];
-    const steps = 10;
+    const steps = 12;
     const dx = p1[0] - p0[0], dy = p1[1] - p0[1];
     const len = Math.hypot(dx, dy) || 1;
     const nx = -dy / len, ny = dx / len;
@@ -810,7 +810,8 @@ canvas#xm-canvas:active { cursor: grabbing; }
     for (let k = 0; k <= steps; k++) {
       const t = k / steps;
       const env = Math.sin(Math.PI * t);
-      const off = amp * env * Math.sin(t * 9.5 + seed * 3.17);
+      const wave = 0.75 * Math.sin(t * 4.2 + seed * 3.17) + 0.25 * Math.sin(t * 7.8 + seed * 5.13);
+      const off = amp * env * wave;
       pts.push([p0[0] + dx * t + nx * off, p0[1] + dy * t + ny * off]);
     }
     return pts;
@@ -986,8 +987,12 @@ canvas#xm-canvas:active { cursor: grabbing; }
     }
 
   function collectIsoLobeArt(iso, pivot, basis, sceneSpan, toScreen) {
-    const lDir = [-0.45, 0.55, 0.70];
+    const lDir = [-0.52, 0.58, 0.63];
     const lNorm = Math.hypot(...lDir) || 1;
+    const lu = [lDir[0] / lNorm, lDir[1] / lNorm, lDir[2] / lNorm];
+    const hRaw = [lu[0], lu[1], lu[2] + 1];
+    const hNorm = Math.hypot(...hRaw) || 1;
+    const hu = [hRaw[0] / hNorm, hRaw[1] / hNorm, hRaw[2] / hNorm];
     const vProj = projectList(iso.vertices, pivot, basis, sceneSpan);
     const frontFlags = new Array(iso.faces.length).fill(false);
     const triItems = [];
@@ -1008,10 +1013,13 @@ canvas#xm-canvas:active { cursor: grabbing; }
       const nRot = [dot3(wn, basis[0]) / wnn, dot3(wn, basis[1]) / wnn, dot3(wn, basis[2]) / wnn];
       if (nRot[2] < -0.02) continue;
       frontFlags[fIdx] = true;
-      const nd = Math.max(0, dot3(nRot, [lDir[0] / lNorm, lDir[1] / lNorm, lDir[2] / lNorm]));
-      const tone = 0.68 * nd + 0.32 * Math.max(0, nRot[2]);
+      const nd = Math.max(0, dot3(nRot, lu));
+      const spec = Math.pow(Math.max(0, dot3(nRot, hu)), 12);
+      const nzF = Math.max(0, nRot[2]);
+      const rimBounce = 0.22 * Math.pow(1 - nzF, 2.2) * (1 - nd);
+      const tone = 0.10 + 0.74 * nd + 0.22 * spec + rimBounce;
       const md = (pA[2] + pB[2] + pC[2]) / 3 - 0.12;
-      triItems.push({ depth: md, kind: "iso_tri", pts: [pA, pB, pC], col: iso.color, shade: 0.68 + 0.32 * nd, nz: nRot[2] });
+      triItems.push({ depth: md, kind: "iso_tri", pts: [pA, pB, pC], col: iso.color, shade: Math.min(1.3, 0.58 + 0.42 * nd + 0.35 * spec + 0.16 * rimBounce), nz: nRot[2] });
 
       const sp = [toScreen(pA), toScreen(pB), toScreen(pC)];
       for (const pt of sp) {
@@ -1021,8 +1029,8 @@ canvas#xm-canvas:active { cursor: grabbing; }
         if (pt[1] > maxY) maxY = pt[1];
       }
       frontPolys.push(sp);
-      if (tone < 0.58) shadowPolys.push(sp);
-      if (tone < 0.38) corePolys.push(sp);
+      if (tone < 0.52) shadowPolys.push(sp);
+      if (tone < 0.32) corePolys.push(sp);
       dSum += md; dCnt += 1;
     }
 
@@ -1071,7 +1079,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     }
   }
 
-  function drawClippedHatchCanvas(polys, bbox, angleDeg, spacing, offset, inkCol, lw, wAmp) {
+  function drawClippedHatchCanvas(polys, bbox, angleDeg, spacing, offset, inkCol, lw, wAmp, bowAmp) {
     if (!polys.length) return;
     const [x0, y0, x1, y1] = bbox;
     const rad = (angleDeg * Math.PI) / 180;
@@ -1082,6 +1090,8 @@ canvas#xm-canvas:active { cursor: grabbing; }
     const vs = corners.map((c) => c[0] * ev[0] + c[1] * ev[1]);
     const uMin = Math.min(...us) - 4, uMax = Math.max(...us) + 4;
     const vMin = Math.min(...vs) + offset, vMax = Math.max(...vs);
+    const vMid = 0.5 * (vMin + vMax);
+    const vHalf = Math.max(0.5 * (vMax - vMin), 1);
 
     ctx.save();
     tracePolyBatch(polys);
@@ -1090,41 +1100,80 @@ canvas#xm-canvas:active { cursor: grabbing; }
     for (let vk = vMin; vk <= vMax; vk += spacing) {
       const p0 = [uMin * eu[0] + vk * ev[0], uMin * eu[1] + vk * ev[1]];
       const p1 = [uMax * eu[0] + vk * ev[0], uMax * eu[1] + vk * ev[1]];
-      drawStrokeWiggle(p0, p1, inkCol, lw, false, Math.max(wAmp * 0.75, 0.55), seed++);
+      const bow = bowAmp * ((vk - vMid) / vHalf);
+      const pts = [];
+      const steps = 18;
+      for (let k = 0; k <= steps; k++) {
+        const t = k / steps;
+        const arch = bow * Math.sin(Math.PI * t);
+        const sq = 0.45 * Math.max(wAmp, 0.8) * Math.sin(Math.PI * t) * Math.sin(t * 4.5 + seed * 3.1);
+        const px = p0[0] + (p1[0] - p0[0]) * t + ev[0] * (arch + sq);
+        const py = p0[1] + (p1[1] - p0[1]) * t + ev[1] * (arch + sq);
+        pts.push([px, py]);
+      }
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+      ctx.strokeStyle = inkCol;
+      ctx.lineWidth = lw;
+      ctx.lineCap = "round";
+      ctx.stroke();
+      seed++;
     }
     ctx.restore();
   }
 
+  function _isoHash(n) {
+    const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  }
+
   function drawIsoArtCanvas(item) {
     const shade = state.isoShade;
-    const ink = shadeHexRgba(item.col, 0.78, 0.68);
+    const ink = shadeHexRgba(item.col, 0.38, 0.96);
     if (item.frontPolys.length) {
+      const [bx0, by0, bx1, by1] = item.bbox;
+      const gcx = 0.5 * (bx0 + bx1), gcy = 0.5 * (by0 + by1);
+      const gRad = Math.max(0.55 * Math.hypot(bx1 - bx0, by1 - by0), 4);
       tracePolyBatch(item.frontPolys);
-      ctx.fillStyle = shadeHexRgba(item.col, shade === "outline" ? 0.04 : 0.11, 1.15);
+      if (shade === "outline") {
+        ctx.fillStyle = shadeHexRgba(item.col, 0.04, 1.12);
+      } else {
+        const grad = ctx.createRadialGradient(
+          gcx - 0.28 * gRad, gcy - 0.28 * gRad, gRad * 0.06, gcx, gcy, gRad
+        );
+        grad.addColorStop(0.0, "rgba(255,255,255,0.26)");
+        grad.addColorStop(0.38, hexToRgba(item.col, 0.09));
+        grad.addColorStop(0.78, shadeHexRgba(item.col, 0.20, 0.85));
+        grad.addColorStop(1.0, hexToRgba(item.col, 0.10));
+        ctx.fillStyle = grad;
+      }
       ctx.fill();
     }
     if (shade === "hatch") {
-      drawClippedHatchCanvas(item.shadowPolys, item.bbox, 40, 8.5, 0, ink, 1.15, state.wiggle);
-      drawClippedHatchCanvas(item.corePolys, item.bbox, 40, 8.5, 4.25, ink, 1.0, state.wiggle);
+      drawClippedHatchCanvas(item.shadowPolys, item.bbox, 40, 8.5, 0, ink, 0.68, state.wiggle, 7.5);
+      drawClippedHatchCanvas(item.corePolys, item.bbox, 40, 8.5, 4.25, ink, 0.62, state.wiggle, 7.5);
     } else if (shade === "crosshatch") {
-      drawClippedHatchCanvas(item.shadowPolys, item.bbox, 40, 9.0, 0, ink, 1.15, state.wiggle);
-      drawClippedHatchCanvas(item.corePolys, item.bbox, -48, 9.0, 0, ink, 1.1, state.wiggle);
+      drawClippedHatchCanvas(item.shadowPolys, item.bbox, 40, 9.0, 0, ink, 0.68, state.wiggle, 7.5);
+      drawClippedHatchCanvas(item.corePolys, item.bbox, -48, 9.0, 0, ink, 0.64, state.wiggle, -7.5);
     } else if (shade === "contour") {
-      drawClippedHatchCanvas(item.shadowPolys, item.bbox, 66, 9.5, 0, ink, 1.15, Math.max(state.wiggle * 1.4, 1.2));
+      drawClippedHatchCanvas(item.shadowPolys, item.bbox, 52, 9.0, 0, ink, 0.70, Math.max(state.wiggle * 0.95, 0.9), 15.0);
     } else if (shade === "stipple" && item.shadowPolys.length) {
       const [x0, y0, x1, y1] = item.bbox;
+      const bw = Math.max(x1 - x0, 1), bh = Math.max(y1 - y0, 1);
+      const count = Math.min(720, Math.max(90, Math.round((bw * bh) / 22)));
       ctx.save();
       tracePolyBatch(item.shadowPolys);
       ctx.clip();
-      ctx.fillStyle = ink;
-      for (let x = x0 + 3, ix = 0; x <= x1; x += 6.0, ix++) {
-        for (let y = y0 + 3, iy = 0; y <= y1; y += 6.0, iy++) {
-          const jx = Math.sin(ix * 12.9 + iy * 78.2) * 1.8;
-          const jy = Math.cos(ix * 39.3 + iy * 19.7) * 1.8;
-          ctx.beginPath();
-          ctx.arc(x + jx, y + jy, 1.35, 0, Math.PI * 2);
-          ctx.fill();
-        }
+      for (let k = 0; k < count; k++) {
+        const px = x0 + _isoHash(k * 4 + 1) * bw;
+        const py = y0 + _isoHash(k * 4 + 2) * bh;
+        const rr = 0.55 + 1.45 * Math.pow(_isoHash(k * 4 + 3), 1.55);
+        const aa = 0.24 + 0.22 * _isoHash(k * 4 + 4);
+        ctx.fillStyle = shadeHexRgba(item.col, aa, 0.96);
+        ctx.beginPath();
+        ctx.arc(px, py, rr, 0, Math.PI * 2);
+        ctx.fill();
       }
       ctx.restore();
     } else if (shade === "scumble" && item.shadowPolys.length) {
@@ -1132,14 +1181,14 @@ canvas#xm-canvas:active { cursor: grabbing; }
       ctx.save();
       tracePolyBatch(item.shadowPolys);
       ctx.clip();
-      ctx.strokeStyle = ink;
-      ctx.lineWidth = 1.0;
-      for (let y = y0 + 5, row = 0; y <= y1; y += 10.0, row++) {
+      ctx.strokeStyle = shadeHexRgba(item.col, 0.30, 0.96);
+      ctx.lineWidth = 0.62;
+      for (let y = y0 + 5, row = 0; y <= y1; y += 11.0, row++) {
         ctx.beginPath();
         for (let x = x0; x <= x1; x += 3.5) {
           const t = x * 0.35 + row * 1.3;
-          const px = x + 3.2 * Math.sin(t);
-          const py = y + 4.0 * Math.cos(t * 1.17);
+          const px = x + 3.0 * Math.sin(t);
+          const py = y + 3.8 * Math.cos(t * 1.17);
           if (x === x0) ctx.moveTo(px, py);
           else ctx.lineTo(px, py);
         }
@@ -1147,8 +1196,9 @@ canvas#xm-canvas:active { cursor: grabbing; }
       }
       ctx.restore();
     }
+    const rimCol = shadeHexRgba(item.col, 0.58, 0.96);
     item.rimSegs.forEach((seg, idx) => {
-      drawStrokeWiggle(seg[0], seg[1], item.col, 1.75, false, Math.max(state.wiggle * 0.65, 0.35), idx + 1);
+      drawStrokeWiggle(seg[0], seg[1], rimCol, 1.35, false, Math.max(state.wiggle * 0.65, 0.35), idx + 1);
     });
   }
 
@@ -1199,12 +1249,15 @@ canvas#xm-canvas:active { cursor: grabbing; }
         ctx.lineTo(s[1][0], s[1][1]);
         ctx.lineTo(s[2][0], s[2][1]);
         ctx.closePath();
-        ctx.fillStyle = shadeHexRgba(item.col, 0.24, item.shade);
+        const fAlpha = state.isoShade === "solid" ? 0.24 : 0.12;
+        ctx.fillStyle = shadeHexRgba(item.col, fAlpha, item.shade);
         ctx.fill();
-        const isRim = item.nz < 0.26;
-        ctx.strokeStyle = shadeHexRgba(item.col, isRim ? 0.45 : 0.12, item.shade * 0.9);
-        ctx.lineWidth = isRim ? 0.9 : 0.25;
-        ctx.stroke();
+        if (state.isoShade === "solid") {
+          const isRim = item.nz < 0.26;
+          ctx.strokeStyle = shadeHexRgba(item.col, isRim ? 0.42 : 0.10, item.shade * 0.9);
+          ctx.lineWidth = isRim ? 0.9 : 0.25;
+          ctx.stroke();
+        }
       } else if (item.kind === "vec") {
         drawVectorArrowCanvas(toScreen(item.p0), toScreen(item.p1), item.col, ink);
       } else if (item.kind === "tri") {
@@ -1331,6 +1384,16 @@ canvas#xm-canvas:active { cursor: grabbing; }
     ctx.restore();
   }
 
+  function _traceCanvasPolyline(pts) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+  }
+
+  function _svgPolylinePoints(pts) {
+    return pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+  }
+
   function drawTwoToneBond(s0, s1, c0, c1, ink, halfPx, order, seed) {
     const dx = s1[0] - s0[0], dy = s1[1] - s0[1];
     const len = Math.hypot(dx, dy);
@@ -1340,16 +1403,15 @@ canvas#xm-canvas:active { cursor: grabbing; }
     const scaleW = order >= 2.5 ? 0.42 : order >= 1.5 ? 0.52 : 1.0;
     const outerW = 2 * halfPx * scaleW + 2.2;
     const innerW = Math.max(1.5, 2 * halfPx * scaleW - 0.8);
+    const wAmp = Math.max(state.wiggle * 0.42, 0.0);
     for (const off of offsets) {
       const ox = nx * off * halfPx, oy = ny * off * halfPx;
       const a = [s0[0] + ox, s0[1] + oy], b = [s1[0] + ox, s1[1] + oy];
-      const mid = [0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1])];
-      const ov = [a[0] + 0.52 * (b[0] - a[0]), a[1] + 0.52 * (b[1] - a[1])];
+      const pts = wiggledSegment(a, b, wAmp, seed);
       ctx.save();
       ctx.lineCap = "butt";
-      ctx.beginPath();
-      ctx.moveTo(a[0], a[1]);
-      ctx.lineTo(b[0], b[1]);
+      ctx.lineJoin = "round";
+      _traceCanvasPolyline(pts);
       ctx.strokeStyle = ink;
       ctx.lineWidth = outerW;
       ctx.stroke();
@@ -1358,15 +1420,13 @@ canvas#xm-canvas:active { cursor: grabbing; }
         ctx.lineWidth = innerW;
         ctx.stroke();
       } else {
-        ctx.beginPath();
-        ctx.moveTo(a[0], a[1]);
-        ctx.lineTo(ov[0], ov[1]);
+        const nLast = pts.length - 1;
+        const midIdx = Math.max(1, Math.min(nLast - 1, Math.round(0.5 * nLast)));
+        _traceCanvasPolyline(pts.slice(0, Math.min(pts.length, midIdx + 2)));
         ctx.strokeStyle = c0;
         ctx.lineWidth = innerW;
         ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(mid[0], mid[1]);
-        ctx.lineTo(b[0], b[1]);
+        _traceCanvasPolyline(pts.slice(midIdx));
         ctx.strokeStyle = c1;
         ctx.lineWidth = innerW;
         ctx.stroke();
@@ -1382,14 +1442,15 @@ canvas#xm-canvas:active { cursor: grabbing; }
     const offsets = order >= 2.5 ? [-1.05, 0, 1.05] : order >= 1.5 ? [-0.78, 0.78] : [0];
     const nx = -dy / len, ny = dx / len;
     const scaleW = order >= 2.5 ? 0.42 : order >= 1.5 ? 0.52 : 1.0;
+    const wAmp = Math.max(state.wiggle * 0.42, 0.0);
     for (const off of offsets) {
       const ox = nx * off * halfPx, oy = ny * off * halfPx;
       const a = [s0[0] + ox, s0[1] + oy], b = [s1[0] + ox, s1[1] + oy];
+      const pts = wiggledSegment(a, b, wAmp, seed);
       ctx.save();
       ctx.lineCap = "butt";
-      ctx.beginPath();
-      ctx.moveTo(a[0], a[1]);
-      ctx.lineTo(b[0], b[1]);
+      ctx.lineJoin = "round";
+      _traceCanvasPolyline(pts);
       ctx.strokeStyle = ink;
       ctx.lineWidth = 2 * halfPx * scaleW + 2.2;
       ctx.stroke();
@@ -1691,7 +1752,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     const stickW = Math.max(2, Math.min(6, 0.095 * pxPerA)) * 2;
     const q = [];
     if (state.showBonds && state.style !== "spacefill" && state.style !== "polyhedra") {
-      bonds.forEach(([i, j, order, shift]) => {
+      bonds.forEach(([i, j, order, shift], idx) => {
         if (i >= proj.length || j >= proj.length) return;
         const isInternal = shift[0] === 0 && shift[1] === 0 && shift[2] === 0;
         if (isInternal || !cell) {
@@ -1699,7 +1760,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
           const iFront = iBack === i ? j : i;
           const dz = proj[iFront][2] - proj[iBack][2];
           const bd = dz < 0.25 ? proj[iBack][2] - 0.04 : 0.5 * (proj[iBack][2] + proj[iFront][2]) - 0.02;
-          q.push({ d: bd, t: "b2", a: sc(proj[iBack]), b: sc(proj[iFront]), c0: elementColor(symbols[iBack]), c1: elementColor(symbols[iFront]), order });
+          q.push({ d: bd, t: "b2", a: sc(proj[iBack]), b: sc(proj[iFront]), c0: elementColor(symbols[iBack]), c1: elementColor(symbols[iFront]), order, seed: idx + 1 });
         } else {
           const sv = [
             shift[0] * cell[0][0] + shift[1] * cell[1][0] + shift[2] * cell[2][0],
@@ -1711,8 +1772,8 @@ canvas#xm-canvas:active { cursor: grabbing; }
             [pi[0] + 0.42 * (pj[0] + sv[0] - pi[0]), pi[1] + 0.42 * (pj[1] + sv[1] - pi[1]), pi[2] + 0.42 * (pj[2] + sv[2] - pi[2])],
             [pj[0] + 0.42 * (pi[0] - sv[0] - pj[0]), pj[1] + 0.42 * (pi[1] - sv[1] - pj[1]), pj[2] + 0.42 * (pi[2] - sv[2] - pj[2])],
           ], pivot, basis, sceneSpan);
-          q.push({ d: proj[i][2] - 0.06, t: "b", a: sc(proj[i]), b: sc(sProj[0]), c: elementColor(symbols[i]), order });
-          q.push({ d: proj[j][2] - 0.06, t: "b", a: sc(proj[j]), b: sc(sProj[1]), c: elementColor(symbols[j]), order });
+          q.push({ d: proj[i][2] - 0.06, t: "b", a: sc(proj[i]), b: sc(sProj[0]), c: elementColor(symbols[i]), order, seed: idx + 1 });
+          q.push({ d: proj[j][2] - 0.06, t: "b", a: sc(proj[j]), b: sc(sProj[1]), c: elementColor(symbols[j]), order, seed: idx + 100 });
         }
       });
     }
@@ -1761,30 +1822,50 @@ canvas#xm-canvas:active { cursor: grabbing; }
         const cid = `xm-iso-clip-${++isoClipCounter}`;
         if (art.frontPolys.length) {
           const dPath = art.frontPolys.map((p) => `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}L${p[1][0].toFixed(1)},${p[1][1].toFixed(1)}L${p[2][0].toFixed(1)},${p[2][1].toFixed(1)}Z`).join("");
-          parts.push(`<path d="${dPath}" fill="${art.col}" fill-opacity="${state.isoShade === "outline" ? "0.04" : "0.11"}"/>`);
+          parts.push(`<path d="${dPath}" fill="${art.col}" fill-opacity="${state.isoShade === "outline" ? "0.04" : "0.14"}"/>`);
         }
         if (state.isoShade !== "outline" && art.shadowPolys.length) {
           const sPath = art.shadowPolys.map((p) => `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}L${p[1][0].toFixed(1)},${p[1][1].toFixed(1)}L${p[2][0].toFixed(1)},${p[2][1].toFixed(1)}Z`).join("");
           parts.push(`<defs><clipPath id="${cid}"><path d="${sPath}"/></clipPath></defs>`);
           const [bx0, by0, bx1, by1] = art.bbox;
-          const diag = Math.hypot(bx1 - bx0, by1 - by0);
-          parts.push(`<g clip-path="url(#${cid})" stroke="${art.col}" stroke-opacity="0.72" stroke-width="1.05" stroke-linecap="round">`);
-          for (let d = -diag; d <= diag; d += 9.0) {
-            parts.push(`<line x1="${(bx0 + d).toFixed(1)}" y1="${by1.toFixed(1)}" x2="${(bx0 + d + diag * 0.84).toFixed(1)}" y2="${(by1 - diag).toFixed(1)}"/>`);
-            if (state.isoShade === "crosshatch") {
-              parts.push(`<line x1="${(bx0 + d).toFixed(1)}" y1="${by0.toFixed(1)}" x2="${(bx0 + d + diag * 0.90).toFixed(1)}" y2="${(by0 + diag).toFixed(1)}"/>`);
+          if (state.isoShade === "stipple") {
+            const bw = Math.max(bx1 - bx0, 1), bh = Math.max(by1 - by0, 1);
+            const cnt = Math.min(540, Math.max(80, Math.round((bw * bh) / 26)));
+            parts.push(`<g clip-path="url(#${cid})" fill="${art.col}">`);
+            for (let k = 0; k < cnt; k++) {
+              const px = bx0 + _isoHash(k * 4 + 1) * bw;
+              const py = by0 + _isoHash(k * 4 + 2) * bh;
+              const rr = 0.55 + 1.45 * Math.pow(_isoHash(k * 4 + 3), 1.55);
+              const aa = 0.24 + 0.22 * _isoHash(k * 4 + 4);
+              parts.push(`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${rr.toFixed(2)}" fill-opacity="${aa.toFixed(2)}"/>`);
             }
+            parts.push("</g>");
+          } else {
+            const diag = Math.hypot(bx1 - bx0, by1 - by0);
+            parts.push(`<g clip-path="url(#${cid})" fill="none" stroke="${art.col}" stroke-opacity="0.38" stroke-width="0.68" stroke-linecap="round">`);
+            for (let d = -diag; d <= diag; d += 9.0) {
+              const qPts = wiggledSegment([bx0 + d, by1], [bx0 + d + diag * 0.84, by1 - diag], Math.max(state.wiggle * 0.5, 0.5), Math.abs(Math.round(d)));
+              parts.push(`<polyline points="${_svgPolylinePoints(qPts)}"/>`);
+              if (state.isoShade === "crosshatch") {
+                const qPts2 = wiggledSegment([bx0 + d, by0], [bx0 + d + diag * 0.90, by0 + diag], Math.max(state.wiggle * 0.5, 0.5), Math.abs(Math.round(d)) + 13);
+                parts.push(`<polyline points="${_svgPolylinePoints(qPts2)}"/>`);
+              }
+            }
+            parts.push("</g>");
           }
-          parts.push("</g>");
         }
         for (const seg of art.rimSegs) {
-          parts.push(`<line x1="${seg[0][0].toFixed(1)}" y1="${seg[0][1].toFixed(1)}" x2="${seg[1][0].toFixed(1)}" y2="${seg[1][1].toFixed(1)}" stroke="${art.col}" stroke-width="1.75" stroke-linecap="round"/>`);
+          parts.push(`<line x1="${seg[0][0].toFixed(1)}" y1="${seg[0][1].toFixed(1)}" x2="${seg[1][0].toFixed(1)}" y2="${seg[1][1].toFixed(1)}" stroke="${art.col}" stroke-opacity="0.58" stroke-width="1.35" stroke-linecap="round"/>`);
         }
       } else if (it.t === "iso_tri") {
         const ptsStr = it.pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
-        const sw = it.rim ? "0.8" : "0.2";
-        const so = it.rim ? "0.45" : "0.14";
-        parts.push(`<polygon points="${ptsStr}" fill="${it.c}" fill-opacity="0.24" stroke="${it.c}" stroke-opacity="${so}" stroke-width="${sw}"/>`);
+        if (state.isoShade === "solid") {
+          const sw = it.rim ? "0.8" : "0.2";
+          const so = it.rim ? "0.42" : "0.10";
+          parts.push(`<polygon points="${ptsStr}" fill="${it.c}" fill-opacity="0.24" stroke="${it.c}" stroke-opacity="${so}" stroke-width="${sw}"/>`);
+        } else {
+          parts.push(`<polygon points="${ptsStr}" fill="${it.c}" fill-opacity="0.12" stroke="none"/>`);
+        }
       } else if (it.t === "vec") {
         parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${ink}" stroke-width="3.8" stroke-linecap="round"/>`);
         parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${it.c}" stroke-width="2.0" stroke-linecap="round"/>`);
@@ -1797,22 +1878,24 @@ canvas#xm-canvas:active { cursor: grabbing; }
         const offs = it.order >= 2.5 ? [-1.05, 0, 1.05] : it.order >= 1.5 ? [-0.78, 0.78] : [0];
         const sw = it.order >= 2.5 ? 0.42 : it.order >= 1.5 ? 0.52 : 1.0;
         const ow = stickW * sw + 2.2, iw = Math.max(1.5, stickW * sw - 0.8);
+        const wAmp = Math.max(state.wiggle * 0.42, 0.0);
         for (const ofst of offs) {
           const ox = nx * ofst * stickW * 0.5, oy = ny * ofst * stickW * 0.5;
-          const ax0 = it.a[0] + ox, ay0 = it.a[1] + oy, bx0 = it.b[0] + ox, by0 = it.b[1] + oy;
-          const mx = 0.5 * (ax0 + bx0), my = 0.5 * (ay0 + by0);
-          const ovx = ax0 + 0.52 * (bx0 - ax0), ovy = ay0 + 0.52 * (by0 - ay0);
-          parts.push(`<line x1="${ax0.toFixed(1)}" y1="${ay0.toFixed(1)}" x2="${bx0.toFixed(1)}" y2="${by0.toFixed(1)}" stroke="${ink}" stroke-width="${ow.toFixed(1)}" stroke-linecap="butt"/>`);
+          const bPts = wiggledSegment([it.a[0] + ox, it.a[1] + oy], [it.b[0] + ox, it.b[1] + oy], wAmp, it.seed || 1);
+          parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts)}" stroke="${ink}" stroke-width="${ow.toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
           if (it.c0 === it.c1) {
-            parts.push(`<line x1="${ax0.toFixed(1)}" y1="${ay0.toFixed(1)}" x2="${bx0.toFixed(1)}" y2="${by0.toFixed(1)}" stroke="${it.c0}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt"/>`);
+            parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts)}" stroke="${it.c0}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
           } else {
-            parts.push(`<line x1="${ax0.toFixed(1)}" y1="${ay0.toFixed(1)}" x2="${ovx.toFixed(1)}" y2="${ovy.toFixed(1)}" stroke="${it.c0}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt"/>`);
-            parts.push(`<line x1="${mx.toFixed(1)}" y1="${my.toFixed(1)}" x2="${bx0.toFixed(1)}" y2="${by0.toFixed(1)}" stroke="${it.c1}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt"/>`);
+            const nl = bPts.length - 1;
+            const mi = Math.max(1, Math.min(nl - 1, Math.round(0.5 * nl)));
+            parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts.slice(0, Math.min(bPts.length, mi + 2)))}" stroke="${it.c0}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
+            parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts.slice(mi))}" stroke="${it.c1}" stroke-width="${iw.toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
           }
         }
       } else if (it.t === "b") {
-        parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${ink}" stroke-width="${(stickW + 2.4).toFixed(1)}" stroke-linecap="butt"/>`);
-        parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${it.c}" stroke-width="${Math.max(1.5, stickW - 0.8).toFixed(1)}" stroke-linecap="butt"/>`);
+        const bPts = wiggledSegment(it.a, it.b, Math.max(state.wiggle * 0.42, 0.0), it.seed || 1);
+        parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts)}" stroke="${ink}" stroke-width="${(stickW + 2.4).toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
+        parts.push(`<polyline fill="none" points="${_svgPolylinePoints(bPts)}" stroke="${it.c}" stroke-width="${Math.max(1.5, stickW - 0.8).toFixed(1)}" stroke-linecap="butt" stroke-linejoin="round"/>`);
       } else if (it.t === "cell_edge") {
         parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${ink}" stroke-width="1.65" stroke-linecap="round"/>`);
       } else {

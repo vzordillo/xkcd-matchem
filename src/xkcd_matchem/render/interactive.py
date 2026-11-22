@@ -212,6 +212,7 @@ def _serialize_isosurface_meshes(
             raise exceptions.StructureError(
                 f"Expected VolumetricGrid, got {type(grid).__name__}."
             )
+        grid = isosurf_mod.upsample_coarse_grid(grid, min_dim=22)
         max_abs = max(float(np.max(np.abs(grid.data))), 1e-12)
         level = 0.35 * max_abs if isolevel is None else float(isolevel)
         sym_flag = (

@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 import pathlib
+from typing import Any
+from typing import cast
 
 from matplotlib import axes as maxes
 from matplotlib import figure
@@ -691,7 +693,8 @@ def _extract_isosurface_meshes(
     list[tuple[isosurface.IsosurfaceMesh, str]],
 ]:
     """Coerces grid data and extracts positive and optional negative lobes."""
-    grid = _coerce_volumetric_grid(source)
+    raw_grid = _coerce_volumetric_grid(source)
+    grid = isosurface.upsample_coarse_grid(raw_grid, min_dim=36)
     max_abs = max(float(np.max(np.abs(grid.data))), 1e-12)
     iso_level = 0.35 * max_abs if level is None else float(level)
     if abs(iso_level) < 1e-15:
@@ -717,15 +720,20 @@ def _draw_iso_art_batches(
     sketch_scale: float,
 ) -> None:
     """Draws front wash, stipple dots, comic strokes, and silhouettes."""
-    if art.front_coll is not None:
-        ax.add_collection(art.front_coll)
-    for pts, sz, col_s, al_s, z_s in art.dot_batches:
+    if art.front_rgba is not None and art.wash_extent is not None:
+        ax.imshow(
+            art.front_rgba,
+            extent=art.wash_extent,
+            origin="lower",
+            interpolation="bicubic",
+            zorder=40.0,
+        )
+    for pts, sz, rgba_s, z_s in art.dot_batches:
         ax.scatter(
             pts[:, 0],
             pts[:, 1],
             s=sz,
-            c=col_s,
-            alpha=al_s,
+            c=cast(Any, rgba_s),
             edgecolors="none",
             zorder=z_s,
         )
@@ -799,8 +807,14 @@ def plot_isosurface(
             _, ax = plt.subplots(figsize=(5.6, 4.8))
         else:
             theme.style_existing_axes(ax, preset=preset)
-        if art.back_coll is not None:
-            ax.add_collection(art.back_coll)
+        if art.back_rgba is not None and art.wash_extent is not None:
+            ax.imshow(
+                art.back_rgba,
+                extent=art.wash_extent,
+                origin="lower",
+                interpolation="bicubic",
+                zorder=1.4,
+            )
         if has_atoms and grid.atoms is not None:
             structure3d.render_structure_3d(
                 grid.atoms,

@@ -18,7 +18,6 @@ from __future__ import annotations
 import math
 import pathlib
 
-from matplotlib import collections as mcoll
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
@@ -28,10 +27,13 @@ from xkcd_matchem import cli
 from xkcd_matchem.core import brillouin
 from xkcd_matchem.core import electronic
 from xkcd_matchem.core import exceptions
+from xkcd_matchem.core import geometry
+from xkcd_matchem.core import isosurface
 from xkcd_matchem.core import structure
 from xkcd_matchem.io.native import lobster
 from xkcd_matchem.render import artistic3d
 from xkcd_matchem.render import interactive
+from xkcd_matchem.render import structure2d
 from xkcd_matchem.style import patterns
 
 
@@ -284,18 +286,13 @@ def test_studio_20_trajectory_isosurface_and_vectors(
 def test_isosurface_clarity_and_mathtext_subscripts() -> None:
     """Verifies translucent depth-split isosurfaces and mathtext subscripts."""
     ax_iso = xm.plot_isosurface("water_homo.cube")
-    polys = [
-        c for c in ax_iso.collections if isinstance(c, mcoll.PolyCollection)
-    ]
-    assert len(polys) >= 2
-    for coll in polys:
-        sp = coll.get_sketch_params()
-        assert sp is None or sp[0] == 0.0
-        alpha_val = coll.get_alpha()
-        assert alpha_val is not None
-        assert float(alpha_val) <= 0.35
-    assert any(coll.get_zorder() < 2.0 for coll in polys)
-    assert any(coll.get_zorder() >= 20.0 for coll in polys)
+    imgs = ax_iso.images
+    assert len(imgs) >= 2
+    for im in imgs:
+        arr = np.asarray(im.get_array())
+        assert float(np.max(arr[..., 3])) <= 0.52
+    assert any(im.get_zorder() < 2.0 for im in imgs)
+    assert any(im.get_zorder() >= 20.0 for im in imgs)
 
     ax_cohp = xm.plot_cohp("si_cohp.lobster")
     assert "$E - E_F$" in ax_cohp.get_ylabel()
@@ -350,6 +347,48 @@ def test_artistic_3d_isosurface_shading_modes(tmp_path: pathlib.Path) -> None:
     )
     html_text = out_html.read_text(encoding="utf-8")
     assert "xm-iso-shade" in html_text
+
+    # Verify light squiggly strokes & non-uniform small stippling directly.
+    raw_grid = xm.load("water_homo.cube")
+    assert isinstance(raw_grid, electronic.VolumetricGrid)
+    smooth = isosurface.upsample_coarse_grid(raw_grid, min_dim=36)
+    max_v = float(np.max(np.abs(smooth.data)))
+    meshes = [
+        (isosurface.extract_isosurface(smooth, 0.35 * max_v), "#0072B2"),
+        (isosurface.extract_isosurface(smooth, -0.35 * max_v), "#D55E00"),
+    ]
+    cam = geometry.resolve_camera("isometric")
+    hatch_art = artistic3d.build_isosurface_art(
+        meshes, smooth, cam, alpha=0.28, shade="crosshatch"
+    )
+    interior_lines = [b for b in hatch_art.line_batches if b[2] < 1.0]
+    assert len(interior_lines) > 0
+    for _, _, lw_b, al_b, _, _ in interior_lines:
+        assert lw_b <= 0.85
+        assert al_b <= 0.48
+
+    stipple_art = artistic3d.build_isosurface_art(
+        meshes, smooth, cam, alpha=0.28, shade="stipple"
+    )
+    assert len(stipple_art.dot_batches) > 0
+    all_sz = np.concatenate([b[1] for b in stipple_art.dot_batches])
+    assert float(np.max(all_sz)) <= 6.0
+    assert float(np.min(all_sz)) < 1.0
+    assert float(np.std(all_sz)) > 0.45
+    assert all(b[2] >= 1.2 for b in stipple_art.line_batches)
+
+    # Verify coaxial squiggly bonds in ball-and-stick 3D plots & 2D CH3 gap.
+    ax_mol = xm.plot_molecule("aspirin.xyz", style="ball_and_stick")
+    assert any(len(ln.get_xdata()) > 2 for ln in ax_mol.lines)
+
+    ax_2d = structure2d.render_structure_2d(xm.load("aspirin.xyz"))
+    ch3_txt = next(t for t in ax_2d.texts if t.get_text() == "CH3")
+    tx, ty = ch3_txt.get_position()
+    for ln in ax_2d.lines:
+        xs = np.asarray(ln.get_xdata(), dtype=np.float64)
+        ys = np.asarray(ln.get_ydata(), dtype=np.float64)
+        hit = (np.abs(xs - tx) < 0.20) & (np.abs(ys - ty) < 0.10)
+        assert not np.any(hit)
     plt.close("all")
 
 

@@ -208,6 +208,57 @@ def draw_atom_sphere(
         )
 
 
+def _active_sketch_factor() -> float:
+    """Returns active xkcd wiggle multiplier from rcParams path.sketch."""
+    sk = matplotlib.rcParams.get("path.sketch")
+    if isinstance(sk, (tuple, list)) and len(sk) >= 1:
+        scale_val = float(sk[0])
+        if scale_val > 0.0:
+            return float(np.clip(scale_val, 0.45, 1.8))
+    return 0.0
+
+
+def _bond_phases(a: np.ndarray, b: np.ndarray) -> tuple[float, float]:
+    """Computes deterministic wiggle phases from unshifted bond endpoints."""
+    seed_f = (
+        997.0 * float(a[0])
+        + 613.0 * float(a[1])
+        + 353.0 * float(b[0])
+        + 179.0 * float(b[1])
+    )
+    two_pi = 2.0 * math.pi
+    return (
+        math.fmod(abs(seed_f), two_pi),
+        math.fmod(abs(seed_f * 1.6180339), two_pi),
+    )
+
+
+def _wiggled_bond_curve(
+    p_start: np.ndarray,
+    p_end: np.ndarray,
+    phases: tuple[float, float],
+) -> np.ndarray:
+    """Builds coaxial endpoint-pinned squiggly centerline points for xkcd."""
+    vec = p_end - p_start
+    length = float(np.linalg.norm(vec))
+    factor = _active_sketch_factor()
+    if length < 1e-6 or factor <= 0.0:
+        return np.vstack([p_start, p_end])
+    perp = np.array([-vec[1], vec[0]], dtype=np.float64) / length
+    ts = np.linspace(0.0, 1.0, 17)
+    env = np.sin(math.pi * ts)
+    amp = min(0.022, 0.018 * length) * factor
+    wave = 0.75 * np.sin(2.0 * math.pi * 0.65 * ts + phases[0]) + 0.25 * np.sin(
+        2.0 * math.pi * 1.25 * ts + phases[1]
+    )
+    return np.asarray(
+        p_start[None, :]
+        + ts[:, None] * vec[None, :]
+        + (amp * env * wave)[:, None] * perp[None, :],
+        dtype=np.float64,
+    )
+
+
 def _draw_casing_segment(
     ax: maxes.Axes,
     p_start: np.ndarray,
@@ -216,10 +267,12 @@ def _draw_casing_segment(
     edgecolor: str,
     width: float,
     zorder: float,
+    phases: tuple[float, float] = (0.4, 1.1),
 ) -> None:
     """Draws one coaxial ink-cased segment with zero inter-layer drift."""
-    xs = [float(p_start[0]), float(p_end[0])]
-    ys = [float(p_start[1]), float(p_end[1])]
+    pts = _wiggled_bond_curve(p_start, p_end, phases)
+    xs = pts[:, 0]
+    ys = pts[:, 1]
     outer_w = width + max(1.4, 0.54 * width)
     (outer_line,) = ax.plot(
         xs,
@@ -227,6 +280,7 @@ def _draw_casing_segment(
         color=edgecolor,
         linewidth=outer_w,
         solid_capstyle="butt",
+        solid_joinstyle="round",
         zorder=zorder,
     )
     outer_line.set_sketch_params(0.0, 0.0, 0.0)
@@ -236,6 +290,7 @@ def _draw_casing_segment(
         color=color,
         linewidth=max(0.8, width),
         solid_capstyle="butt",
+        solid_joinstyle="round",
         zorder=zorder + 0.004,
     )
     inner_line.set_sketch_params(0.0, 0.0, 0.0)
@@ -251,50 +306,65 @@ def _draw_two_tone_rail(
     width: float,
     zorder: float,
     split_frac: float = 0.5,
+    phases: tuple[float, float] = (0.4, 1.1),
 ) -> None:
     """Draws one continuous ink casing around seamlessly joined color halves."""
+    pts = _wiggled_bond_curve(p_start, p_end, phases)
     outer_w = width + max(1.4, 0.54 * width)
     (outer_line,) = ax.plot(
-        [float(p_start[0]), float(p_end[0])],
-        [float(p_start[1]), float(p_end[1])],
+        pts[:, 0],
+        pts[:, 1],
         color=edgecolor,
         linewidth=outer_w,
         solid_capstyle="butt",
+        solid_joinstyle="round",
         zorder=zorder,
     )
     outer_line.set_sketch_params(0.0, 0.0, 0.0)
     inner_w = max(0.8, width)
     if c1 == c2:
         (core_line,) = ax.plot(
-            [float(p_start[0]), float(p_end[0])],
-            [float(p_start[1]), float(p_end[1])],
+            pts[:, 0],
+            pts[:, 1],
             color=c1,
             linewidth=inner_w,
             solid_capstyle="butt",
+            solid_joinstyle="round",
             zorder=zorder + 0.004,
         )
         core_line.set_sketch_params(0.0, 0.0, 0.0)
         return
 
     frac = float(np.clip(split_frac, 0.05, 0.95))
-    vec = p_end - p_start
-    mid = p_start + frac * vec
-    overlap = p_start + min(0.98, frac + 0.025) * vec
+    if len(pts) <= 2:
+        vec = p_end - p_start
+        mid = p_start + frac * vec
+        overlap = p_start + min(0.98, frac + 0.025) * vec
+        pts_a = np.vstack([p_start, overlap])
+        pts_b = np.vstack([mid, p_end])
+    else:
+        n_last = len(pts) - 1
+        split_idx = int(np.clip(round(frac * n_last), 1, n_last - 1))
+        end_a = min(len(pts), split_idx + 2)
+        pts_a = pts[:end_a]
+        pts_b = pts[split_idx:]
     (half_a,) = ax.plot(
-        [float(p_start[0]), float(overlap[0])],
-        [float(p_start[1]), float(overlap[1])],
+        pts_a[:, 0],
+        pts_a[:, 1],
         color=c1,
         linewidth=inner_w,
         solid_capstyle="butt",
+        solid_joinstyle="round",
         zorder=zorder + 0.004,
     )
     half_a.set_sketch_params(0.0, 0.0, 0.0)
     (half_b,) = ax.plot(
-        [float(mid[0]), float(p_end[0])],
-        [float(mid[1]), float(p_end[1])],
+        pts_b[:, 0],
+        pts_b[:, 1],
         color=c2,
         linewidth=inner_w,
         solid_capstyle="butt",
+        solid_joinstyle="round",
         zorder=zorder + 0.005,
     )
     half_b.set_sketch_params(0.0, 0.0, 0.0)
@@ -320,6 +390,7 @@ def draw_half_bond(
     if length < 1e-6:
         return
     perp = np.array([-vec[1], vec[0]], dtype=np.float64) / length
+    phases = _bond_phases(a, b)
 
     if abs(order - 2.0) < 0.25:
         shift = perp * offset_scale
@@ -332,6 +403,7 @@ def draw_half_bond(
                 stroke,
                 width * 0.50,
                 zorder,
+                phases=phases,
             )
         return
 
@@ -346,15 +418,19 @@ def draw_half_bond(
                 stroke,
                 width * 0.38,
                 zorder,
+                phases=phases,
             )
         return
 
-    _draw_casing_segment(ax, a, b, color, stroke, width, zorder)
+    _draw_casing_segment(
+        ax, a, b, color, stroke, width, zorder, phases=phases
+    )
     if abs(order - 1.5) < 0.2:
         shift = perp * (offset_scale * 1.1)
+        dash_pts = _wiggled_bond_curve(a + 0.1 * vec + shift, b + shift, phases)
         (dash_line,) = ax.plot(
-            [float((a + 0.1 * vec + shift)[0]), float((b + shift)[0])],
-            [float((a + 0.1 * vec + shift)[1]), float((b + shift)[1])],
+            dash_pts[:, 0],
+            dash_pts[:, 1],
             color=stroke,
             linewidth=max(1.0, width * 0.45),
             linestyle="--",
@@ -385,6 +461,7 @@ def draw_two_tone_bond(
     if length < 1e-6:
         return
     perp = np.array([-vec[1], vec[0]], dtype=np.float64) / length
+    phases = _bond_phases(a, b)
 
     if abs(order - 2.0) < 0.25:
         shift = perp * offset_scale
@@ -399,6 +476,7 @@ def draw_two_tone_bond(
                 width * 0.50,
                 zorder,
                 split_frac=split_frac,
+                phases=phases,
             )
         return
 
@@ -415,23 +493,30 @@ def draw_two_tone_bond(
                 width * 0.38,
                 zorder,
                 split_frac=split_frac,
+                phases=phases,
             )
         return
 
     _draw_two_tone_rail(
-        ax, a, b, c1, c2, stroke, width, zorder, split_frac=split_frac
+        ax,
+        a,
+        b,
+        c1,
+        c2,
+        stroke,
+        width,
+        zorder,
+        split_frac=split_frac,
+        phases=phases,
     )
     if abs(order - 1.5) < 0.2:
         shift = perp * (offset_scale * 1.1)
+        dash_pts = _wiggled_bond_curve(
+            a + 0.1 * vec + shift, b - 0.1 * vec + shift, phases
+        )
         (dash_line,) = ax.plot(
-            [
-                float((a + 0.1 * vec + shift)[0]),
-                float((b - 0.1 * vec + shift)[0]),
-            ],
-            [
-                float((a + 0.1 * vec + shift)[1]),
-                float((b - 0.1 * vec + shift)[1]),
-            ],
+            dash_pts[:, 0],
+            dash_pts[:, 1],
             color=stroke,
             linewidth=max(1.0, width * 0.45),
             linestyle="--",

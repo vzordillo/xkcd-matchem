@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import collections
 from collections.abc import Mapping
+import math
 
 from matplotlib import axes as maxes
 from matplotlib import patches
@@ -150,6 +151,10 @@ def _draw_skeletal_bond(
     length = float(np.linalg.norm(vec))
     if length < 1e-6:
         return
+    if shorten_i + shorten_j >= 0.88 * length and shorten_i + shorten_j > 0.0:
+        fit = (0.88 * length) / (shorten_i + shorten_j)
+        shorten_i *= fit
+        shorten_j *= fit
     unit = vec / length
     perp = np.array([-unit[1], unit[0]], dtype=np.float64)
     start = p1 + unit * shorten_i
@@ -329,18 +334,39 @@ def _terminal_carbon_label(
     return f"CH{h_cnt}"
 
 
-def _draw_skeletal_labels(
+def _resolve_2d_label_metrics(
     ax: maxes.Axes,
+    vis_xy: np.ndarray,
+    pad: float,
+) -> tuple[float, float, float, float]:
+    """Resolves font size and Angstrom-space char box from axes extent."""
+    fig = ax.get_figure()
+    dpi = float(fig.dpi) if fig is not None else 100.0
+    bbox = ax.get_window_extent()
+    ax_w_pt = max(float(bbox.width) * 72.0 / max(dpi, 1.0), 45.0)
+    ax_h_pt = max(float(bbox.height) * 72.0 / max(dpi, 1.0), 45.0)
+    span_x = max(float(np.ptp(vis_xy[:, 0])) + 2.0 * pad, 2.2)
+    span_y = max(float(np.ptp(vis_xy[:, 1])) + 2.0 * pad, 2.2)
+    pt_per_ang = min(ax_w_pt / span_x, ax_h_pt / span_y)
+    fontsize = float(np.clip(0.54 * pt_per_ang, 8.2, 11.5))
+    ang_per_pt = 1.0 / max(pt_per_ang, 1.0)
+    char_w = 0.66 * fontsize * ang_per_pt
+    char_h = 0.80 * fontsize * ang_per_pt
+    margin = max(0.13, 0.24 * fontsize * ang_per_pt)
+    return fontsize, char_w, char_h, margin
+
+
+def _build_label_specs(
     atoms: structure.AtomsData,
     xy: np.ndarray,
     neighbors: dict[int, list[tuple[int, float]]],
     visible: list[bool],
     hetero_h_count: dict[int, int],
-    palette: str | Mapping[str, str],
-    ink: str,
-    bg: str,
-) -> None:
-    """Draws halo-backed heteroatom and terminal carbon labels."""
+    metrics: tuple[float, float, float, float],
+) -> dict[int, tuple[str, np.ndarray, float, float]]:
+    """Builds outward-shifted text center and halo half-axes per atom."""
+    _, char_w, char_h, margin = metrics
+    specs: dict[int, tuple[str, np.ndarray, float, float]] = {}
     for idx, sym in enumerate(atoms.symbols):
         if not _atom_has_label(idx, atoms, neighbors, visible):
             continue
@@ -352,23 +378,79 @@ def _draw_skeletal_labels(
             label = f"{sym}H{h_cnt}"
         if sym == "C":
             label = _terminal_carbon_label(idx, atoms, neighbors, visible)
-        text_col = _label_color(sym, palette, ink, bg)
-        ax.add_patch(
-            patches.Circle(
-                (float(xy[idx, 0]), float(xy[idx, 1])),
-                radius=0.17,
-                facecolor=bg,
-                edgecolor="none",
-                zorder=3,
-            )
+
+        center = xy[idx].copy()
+        if len(label) > 1:
+            vis_nbs = [nb for nb, _ in neighbors[idx] if visible[nb]]
+            if len(vis_nbs) == 1:
+                d_vec = xy[idx] - xy[vis_nbs[0]]
+                d_norm = float(np.linalg.norm(d_vec))
+                if d_norm > 1e-6 and abs(float(d_vec[0]) / d_norm) >= 0.22:
+                    center[0] += math.copysign(
+                        0.5 * float(len(label) - 1) * char_w, float(d_vec[0])
+                    )
+        hw = 0.5 * float(len(label)) * char_w + margin
+        hh = 0.5 * char_h + margin
+        specs[idx] = (label, center, hw, hh)
+    return specs
+
+
+def _trim_bond_to_label(
+    p_atom: np.ndarray,
+    p_other: np.ndarray,
+    spec: tuple[str, np.ndarray, float, float] | None,
+) -> float:
+    """Computes ray-ellipse exit distance so skeletal bonds stop cleanly."""
+    if spec is None:
+        return 0.0
+    bond_vec = p_other - p_atom
+    bond_len = float(np.linalg.norm(bond_vec))
+    if bond_len < 1e-6:
+        return 0.0
+    unit = bond_vec / bond_len
+    _, center, hw, hh = spec
+    dx = float(p_atom[0] - center[0])
+    dy = float(p_atom[1] - center[1])
+    a_coef = (float(unit[0]) / hw) ** 2 + (float(unit[1]) / hh) ** 2
+    b_coef = (dx * float(unit[0])) / (hw**2) + (dy * float(unit[1])) / (hh**2)
+    c_coef = (dx / hw) ** 2 + (dy / hh) ** 2 - 1.0
+    if c_coef >= 0.0 or a_coef <= 1e-12:
+        t_exit = 0.0
+    else:
+        disc = max(b_coef * b_coef - a_coef * c_coef, 0.0)
+        t_exit = (-b_coef + math.sqrt(disc)) / a_coef
+    return float(np.clip(t_exit, 0.16, 0.44 * bond_len))
+
+
+def _draw_skeletal_labels(
+    ax: maxes.Axes,
+    atoms: structure.AtomsData,
+    label_specs: dict[int, tuple[str, np.ndarray, float, float]],
+    fontsize: float,
+    palette: str | Mapping[str, str],
+    ink: str,
+    bg: str,
+) -> None:
+    """Draws un-sketched elliptical paper halos and readable atom labels."""
+    for idx, (label, center, hw, hh) in label_specs.items():
+        text_col = _label_color(atoms.symbols[idx], palette, ink, bg)
+        halo = patches.Ellipse(
+            (float(center[0]), float(center[1])),
+            width=2.0 * hw,
+            height=2.0 * hh,
+            facecolor=bg,
+            edgecolor="none",
+            zorder=3,
         )
+        halo.set_sketch_params(0.0, 0.0, 0.0)
+        ax.add_patch(halo)
         ax.text(
-            float(xy[idx, 0]),
-            float(xy[idx, 1]),
+            float(center[0]),
+            float(center[1]),
             label,
             ha="center",
             va="center",
-            fontsize=11.5,
+            fontsize=fontsize,
             color=text_col,
             zorder=4,
         )
@@ -416,14 +498,21 @@ def render_structure_2d(
     visible, hetero_h_count = _compute_visibility(
         atoms, neighbors, show_hydrogens
     )
+    vis_xy = xy[np.array(visible, dtype=bool)]
+    if vis_xy.size == 0:
+        vis_xy = xy
+    metrics = _resolve_2d_label_metrics(ax, vis_xy, pad)
+    label_specs = _build_label_specs(
+        atoms, xy, neighbors, visible, hetero_h_count, metrics
+    )
 
     ink = str(plt.rcParams.get("axes.edgecolor", palettes.INK))
     bg = str(plt.rcParams.get("axes.facecolor", palettes.PAPER))
     for b in bonds:
         if not (visible[b.i] and visible[b.j]):
             continue
-        s_i = 0.17 if _atom_has_label(b.i, atoms, neighbors, visible) else 0.0
-        s_j = 0.17 if _atom_has_label(b.j, atoms, neighbors, visible) else 0.0
+        s_i = _trim_bond_to_label(xy[b.i], xy[b.j], label_specs.get(b.i))
+        s_j = _trim_bond_to_label(xy[b.j], xy[b.i], label_specs.get(b.j))
         edge_key = (min(b.i, b.j), max(b.i, b.j))
         _draw_skeletal_bond(
             ax,
@@ -438,18 +527,18 @@ def render_structure_2d(
         )
 
     _draw_skeletal_labels(
-        ax, atoms, xy, neighbors, visible, hetero_h_count, palette, ink, bg
+        ax, atoms, label_specs, metrics[0], palette, ink, bg
     )
 
-    vis_xy = xy[np.array(visible, dtype=bool)]
-    if vis_xy.size == 0:
-        vis_xy = xy
-    ax.set_xlim(
-        float(np.min(vis_xy[:, 0])) - pad, float(np.max(vis_xy[:, 0])) + pad
-    )
-    ax.set_ylim(
-        float(np.min(vis_xy[:, 1])) - pad, float(np.max(vis_xy[:, 1])) + pad
-    )
+    xs_all = [vis_xy[:, 0]]
+    ys_all = [vis_xy[:, 1]]
+    for _, center, hw, hh in label_specs.values():
+        xs_all.append(np.array([center[0] - hw, center[0] + hw]))
+        ys_all.append(np.array([center[1] - hh, center[1] + hh]))
+    x_comb = np.concatenate(xs_all)
+    y_comb = np.concatenate(ys_all)
+    ax.set_xlim(float(np.min(x_comb)) - pad, float(np.max(x_comb)) + pad)
+    ax.set_ylim(float(np.min(y_comb)) - pad, float(np.max(y_comb)) + pad)
     ax.set_aspect("equal")
     ax.set_axis_off()
     return ax

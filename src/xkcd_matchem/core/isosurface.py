@@ -18,6 +18,7 @@ from __future__ import annotations
 import dataclasses
 
 import numpy as np
+from scipy import interpolate
 
 from xkcd_matchem.core import electronic
 from xkcd_matchem.core import exceptions
@@ -330,4 +331,48 @@ def extract_isosurface(
     all_dirs = np.concatenate(tri_dirs, axis=0)
     return _deduplicate_edges_and_orient(
         all_pairs, all_dirs, grid, float(level)
+    )
+
+
+def upsample_coarse_grid(
+    grid: electronic.VolumetricGrid,
+    min_dim: int = 36,
+) -> electronic.VolumetricGrid:
+    """Smoothly cubic-upsamples coarse volumetric grids for round 3D lobes."""
+    nx, ny, nz = grid.data.shape
+    if min(nx, ny, nz) < 5 or min(nx, ny, nz) >= min_dim:
+        return grid
+    new_nx = max(nx, min_dim)
+    new_ny = max(ny, min_dim)
+    new_nz = max(nz, min_dim)
+    interp = interpolate.RegularGridInterpolator(
+        (
+            np.arange(nx, dtype=np.float64),
+            np.arange(ny, dtype=np.float64),
+            np.arange(nz, dtype=np.float64),
+        ),
+        np.asarray(grid.data, dtype=np.float64),
+        method="cubic",
+    )
+    gx, gy, gz = np.meshgrid(
+        np.linspace(0.0, float(nx - 1), new_nx),
+        np.linspace(0.0, float(ny - 1), new_ny),
+        np.linspace(0.0, float(nz - 1), new_nz),
+        indexing="ij",
+    )
+    pts = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
+    new_data = interp(pts).reshape(new_nx, new_ny, new_nz)
+    scales = np.array(
+        [
+            float(nx - 1) / float(new_nx - 1),
+            float(ny - 1) / float(new_ny - 1),
+            float(nz - 1) / float(new_nz - 1),
+        ],
+        dtype=np.float64,
+    )
+    return electronic.VolumetricGrid(
+        data=new_data,
+        origin=grid.origin.copy(),
+        voxel_vectors=grid.voxel_vectors * scales[:, None],
+        atoms=grid.atoms,
     )

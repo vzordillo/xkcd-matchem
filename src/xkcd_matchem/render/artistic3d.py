@@ -18,10 +18,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 import dataclasses
 import math
-from typing import Any
-from typing import cast
 
-from matplotlib import collections
 from matplotlib import colors as mcolors
 import numpy as np
 
@@ -67,16 +64,17 @@ VALID_ISO_SHADES: tuple[str, ...] = (
 
 @dataclasses.dataclass(frozen=True)
 class MeshLayerInput:
-    """Projected front-facing triangles and depth mask for one orbital lobe."""
+    """Projected front-facing triangles and smooth normals for one lobe."""
 
     mesh: isosurface.IsosurfaceMesh
     xy_v: np.ndarray
+    depth_v: np.ndarray
+    vn_rot: np.ndarray
     verts_cam: np.ndarray
     front_mask: np.ndarray
     tris_2d: np.ndarray
     depths: np.ndarray
     tones: np.ndarray
-    face_rgbs: np.ndarray
     behind_mask: np.ndarray
     silhouettes: list[np.ndarray]
     hex_col: str
@@ -84,10 +82,11 @@ class MeshLayerInput:
 
 @dataclasses.dataclass(frozen=True)
 class ShadeArtData:
-    """Assembled fill collections, pen strokes, stipple dots, and bounds."""
+    """Assembled seam-free RGBA washes, pen strokes, stipples, and bounds."""
 
-    back_coll: collections.PolyCollection | None
-    front_coll: collections.PolyCollection | None
+    back_rgba: np.ndarray | None
+    front_rgba: np.ndarray | None
+    wash_extent: tuple[float, float, float, float] | None
     line_batches: list[
         tuple[
             list[np.ndarray],
@@ -98,7 +97,7 @@ class ShadeArtData:
             tuple[float, float, float] | None,
         ]
     ]
-    dot_batches: list[tuple[np.ndarray, np.ndarray, str, float, float]]
+    dot_batches: list[tuple[np.ndarray, np.ndarray, np.ndarray, float]]
     all_xy: np.ndarray | None
 
 
@@ -113,22 +112,16 @@ def normalize_iso_shade(shade: str) -> str:
     return _SHADE_ALIASES[key]
 
 
-def _ink_hex(base_hex: str, factor: float = 0.68) -> str:
-    """Darkens a lobe phase color slightly for colored comic pen ink."""
+def _ink_hex(base_hex: str, lift: float = 0.04) -> str:
+    """Softens a lobe phase color slightly toward paper for clean ink."""
     r, g, b = mcolors.to_rgb(base_hex)
     return mcolors.to_hex(
         (
-            float(np.clip(r * factor, 0.0, 1.0)),
-            float(np.clip(g * factor, 0.0, 1.0)),
-            float(np.clip(b * factor, 0.0, 1.0)),
+            float(np.clip(lift + (1.0 - lift) * r, 0.0, 1.0)),
+            float(np.clip(lift + (1.0 - lift) * g, 0.0, 1.0)),
+            float(np.clip(lift + (1.0 - lift) * b, 0.0, 1.0)),
         )
     )
-
-
-def _wash_rgb(base_hex: str, lift: float = 0.36) -> np.ndarray:
-    """Softens a base RGB triplet toward paper white for sheer washes."""
-    rgb = np.asarray(mcolors.to_rgb(base_hex), dtype=np.float64)
-    return np.clip(lift + (1.0 - lift) * rgb, 0.0, 1.0)
 
 
 def _chain_edges(
@@ -191,7 +184,10 @@ def extract_silhouette_polylines(
         if (len(flags) == 2 and flags[0] != flags[1])
         or (len(flags) == 1 and flags[0])
     ]
-    return _chain_edges(sil_edges, xy_v, min_len=3)
+    return [
+        _smooth_polyline(p, passes=3)
+        for p in _chain_edges(sil_edges, xy_v, min_len=3)
+    ]
 
 
 def iso_scene_frame(
@@ -317,7 +313,6 @@ def _clip_xkcd_chords(
     angle_deg: float,
     spacing: float,
     span: float,
-    offset_frac: float = 0.0,
     seed: int = 11,
 ) -> list[tuple[float, float, float, float, float]]:
     """Returns feathered ``(ua, ub, vk, ba, bb)`` shadow pen chords."""
@@ -329,7 +324,7 @@ def _clip_xkcd_chords(
     u_sub, v_sub = sub_tris @ e_u, sub_tris @ e_v
     u_bnd, v_bnd = bound_tris @ e_u, bound_tris @ e_v
 
-    v_lo = float(np.min(v_sub)) + (0.45 + offset_frac) * spacing
+    v_lo = float(np.min(v_sub)) + 0.45 * spacing
     v_hi = float(np.max(v_sub)) - 0.15 * spacing
     if v_hi <= v_lo:
         return []
@@ -358,25 +353,6 @@ def _clip_xkcd_chords(
     return chords
 
 
-def _chords_to_strokes(
-    chords: Sequence[tuple[float, float, float, float, float]],
-    angle_deg: float,
-) -> list[np.ndarray]:
-    """Converts chord intervals into multi-vertex 2D polylines for xkcd."""
-    if not chords:
-        return []
-    rad = math.radians(angle_deg)
-    e_u = np.array([math.cos(rad), math.sin(rad)], dtype=np.float64)
-    e_v = np.array([-math.sin(rad), math.cos(rad)], dtype=np.float64)
-    t_grid = np.linspace(0.0, 1.0, 7)[:, None]
-    out: list[np.ndarray] = []
-    for ca, cb, vk, _, _ in chords:
-        p0 = ca * e_u + vk * e_v
-        p1 = cb * e_u + vk * e_v
-        out.append(p0[None, :] + t_grid * (p1 - p0)[None, :])
-    return out
-
-
 def _chords_to_scumbles(
     chords: Sequence[tuple[float, float, float, float, float]],
     angle_deg: float,
@@ -393,20 +369,40 @@ def _chords_to_scumbles(
     out: list[np.ndarray] = []
     for ca, cb, vk, ba, bb in chords:
         length = cb - ca
-        n_loops = max(1.3, length / max(0.85 * spacing, 1e-4))
+        n_loops = max(1.3, length / max(0.88 * spacing, 1e-4))
         n_pts = min(96, max(14, int(math.ceil(n_loops * 12))))
         ts = np.linspace(0.0, 1.0, n_pts)
         phi = float(rng.uniform(0.0, 2.0 * math.pi))
         psi = float(rng.uniform(0.0, 2.0 * math.pi))
         omega = 2.0 * math.pi * n_loops
-        amp_u = 0.34 * spacing
-        amp_v = 0.42 * spacing
-        u_pts = ca + ts * length + amp_u * np.sin(omega * ts + phi)
-        v_pts = vk + amp_v * np.cos(1.13 * omega * ts + psi)
+        u_pts = ca + ts * length + 0.30 * spacing * np.sin(omega * ts + phi)
+        v_pts = vk + 0.36 * spacing * np.cos(1.13 * omega * ts + psi)
         u_pts = np.clip(u_pts, ba, bb)
         xy_pts = u_pts[:, None] * e_u[None, :] + v_pts[:, None] * e_v[None, :]
         out.append(xy_pts)
     return out
+
+
+def _smooth_polyline(pts: np.ndarray, passes: int = 2) -> np.ndarray:
+    """Applies Chaikin-like fairing to remove voxel stair-step jaggedness."""
+    if len(pts) < 3:
+        return pts
+    arr = np.asarray(pts, dtype=np.float64).copy()
+    is_closed = bool(np.allclose(arr[0], arr[-1], atol=1e-6))
+    for _ in range(passes):
+        if is_closed and len(arr) >= 4:
+            core = arr[:-1]
+            sm = (
+                0.25 * np.roll(core, 1, axis=0)
+                + 0.50 * core
+                + 0.25 * np.roll(core, -1, axis=0)
+            )
+            arr = np.vstack([sm, sm[0]])
+        else:
+            arr[1:-1] = (
+                0.25 * arr[:-2] + 0.50 * arr[1:-1] + 0.25 * arr[2:]
+            )
+    return np.asarray(arr, dtype=np.float64)
 
 
 def _slice_single_plane(
@@ -449,10 +445,13 @@ def _slice_3d_contour_arcs(
     xy_v: np.ndarray,
     sub_face_indices: np.ndarray,
     plane_normal: np.ndarray,
+    *,
     spacing: float,
-    seed: int,
+    span: float,
+    offset_frac: float = 0.0,
+    seed: int = 11,
 ) -> list[np.ndarray]:
-    """Slices 3D shadow mesh faces with planes to draw form-hugging arcs."""
+    """Slices 3D shadow mesh faces into faired form-hugging arcs."""
     if len(sub_face_indices) == 0 or spacing <= 1e-9:
         return []
     n_vec = np.asarray(plane_normal, dtype=np.float64)
@@ -460,20 +459,26 @@ def _slice_3d_contour_arcs(
     s_verts = verts_cam @ n_vec
     sub_faces = mesh.faces[sub_face_indices]
     s_tris = s_verts[sub_faces]
-    s_lo = float(np.min(s_tris)) + 0.45 * spacing
-    s_hi = float(np.max(s_tris)) - 0.25 * spacing
+    s_lo = float(np.min(s_tris)) + (0.40 + offset_frac) * spacing
+    s_hi = float(np.max(s_tris)) - 0.20 * spacing
     if s_hi <= s_lo:
         return []
 
     rng = np.random.default_rng(seed)
     all_arcs: list[np.ndarray] = []
+    min_len = 0.018 * max(span, 1.0)
     for base_s in np.arange(s_lo, s_hi, spacing):
         sk = float(base_s + rng.uniform(-0.10, 0.10) * spacing)
         mask = (np.min(s_tris, axis=1) < sk) & (np.max(s_tris, axis=1) >= sk)
-        if np.any(mask):
-            all_arcs.extend(
-                _slice_single_plane(sub_faces[mask], s_verts, xy_v, sk)
-            )
+        if not np.any(mask):
+            continue
+        for raw_arc in _slice_single_plane(sub_faces[mask], s_verts, xy_v, sk):
+            if len(raw_arc) >= 2:
+                arc_len = float(
+                    np.sum(np.linalg.norm(np.diff(raw_arc, axis=0), axis=1))
+                )
+                if arc_len >= min_len:
+                    all_arcs.append(_smooth_polyline(raw_arc, passes=2))
     return all_arcs
 
 
@@ -482,7 +487,7 @@ def _point_in_tris_tones(
     sub_tris: np.ndarray,
     sub_tones: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Evaluates barycentric hit mask and tonal intensity at candidate pts."""
+    """Evaluates barycentric hit mask and tonal intensity in chunks."""
     p0 = sub_tris[:, 0, :]
     v0 = sub_tris[:, 2, :] - p0
     v1 = sub_tris[:, 1, :] - p0
@@ -492,79 +497,108 @@ def _point_in_tris_tones(
     denom = d00 * d11 - d01 * d01
     inv_d = 1.0 / np.where(np.abs(denom) < 1e-18, 1e-18, denom)
 
-    v2 = cands[:, None, :] - p0[None, :, :]
-    d20 = np.sum(v2 * v0[None, :, :], axis=2)
-    d21 = np.sum(v2 * v1[None, :, :], axis=2)
-    u = (d11[None, :] * d20 - d01[None, :] * d21) * inv_d[None, :]
-    v = (d00[None, :] * d21 - d01[None, :] * d20) * inv_d[None, :]
-    inside = (u >= -1e-4) & (v >= -1e-4) & (u + v <= 1.0 + 1e-4)
-    has_tri = np.any(inside, axis=1)
-    if not np.any(has_tri):
+    hit_chunks: list[np.ndarray] = []
+    tone_chunks: list[np.ndarray] = []
+    for start in range(0, len(cands), 512):
+        chunk = cands[start : start + 512]
+        v2 = chunk[:, None, :] - p0[None, :, :]
+        d20 = np.sum(v2 * v0[None, :, :], axis=2)
+        d21 = np.sum(v2 * v1[None, :, :], axis=2)
+        u = (d11[None, :] * d20 - d01[None, :] * d21) * inv_d[None, :]
+        v = (d00[None, :] * d21 - d01[None, :] * d20) * inv_d[None, :]
+        inside = (u >= -1e-4) & (v >= -1e-4) & (u + v <= 1.0 + 1e-4)
+        has_tri = np.any(inside, axis=1)
+        if np.any(has_tri):
+            tri_idx = np.argmax(inside[has_tri], axis=1)
+            hit_chunks.append(chunk[has_tri])
+            tone_chunks.append(sub_tones[tri_idx])
+    if not hit_chunks:
         return (
             np.zeros((0, 2), dtype=np.float64),
             np.zeros((0,), dtype=np.float64),
         )
-    tri_idx = np.argmax(inside[has_tri], axis=1)
-    return cands[has_tri], sub_tones[tri_idx]
-
-
-def _build_stipple_flecks(
-    kept_pts: np.ndarray,
-    span: float,
-    rng: np.random.Generator,
-) -> list[np.ndarray]:
-    """Builds short jittered marker micro-strokes for xkcd stippling."""
-    n_flecks = max(0, len(kept_pts) // 4)
-    if n_flecks == 0:
-        return []
-    ang = rng.uniform(0.0, math.pi, size=n_flecks)
-    dxy = 0.0036 * max(span, 1.0) * np.column_stack([np.cos(ang), np.sin(ang)])
-    sel = kept_pts[:n_flecks]
-    return [
-        np.vstack([sel[i] - dxy[i], sel[i] + dxy[i]]) for i in range(n_flecks)
-    ]
+    return np.vstack(hit_chunks), np.concatenate(tone_chunks)
 
 
 def _sample_stipple_marks(
     sub_tris: np.ndarray,
     sub_tones: np.ndarray,
     span: float,
+    ink_col: str,
+    s_alpha: float,
     seed: int,
-) -> tuple[np.ndarray, np.ndarray, list[np.ndarray]]:
-    """Generates tonal stipple dots and xkcd felt-tip micro-flecks."""
-    empty: tuple[np.ndarray, np.ndarray, list[np.ndarray]] = (
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Generates light random non-uniform fine-liner stipple points."""
+    empty: tuple[np.ndarray, np.ndarray, np.ndarray] = (
         np.zeros((0, 2), dtype=np.float64),
         np.zeros((0,), dtype=np.float64),
-        [],
+        np.zeros((0, 4), dtype=np.float64),
     )
     if len(sub_tris) == 0:
         return empty
 
-    step = 0.028 * max(span, 1.0)
-    x0, y0 = np.min(sub_tris.reshape(-1, 2), axis=0)
-    x1, y1 = np.max(sub_tris.reshape(-1, 2), axis=0)
-    gx = np.arange(x0 + 0.25 * step, x1, step)
-    gy = np.arange(y0 + 0.25 * step, y1, step)
-    if len(gx) == 0 or len(gy) == 0:
-        return empty
+    flat = sub_tris.reshape(-1, 2)
+    x0, y0 = np.min(flat, axis=0)
+    x1, y1 = np.max(flat, axis=0)
+    area = max(float((x1 - x0) * (y1 - y0)), 1e-6)
+    cell_area = (0.017 * max(span, 1.0)) ** 2
+    n_cands = int(np.clip(area / max(cell_area, 1e-6), 320, 4200))
 
     rng = np.random.default_rng(seed)
-    xx, yy = np.meshgrid(gx, gy)
-    cands = np.column_stack([xx.ravel(), yy.ravel()])
-    cands += rng.uniform(-0.38 * step, 0.38 * step, size=cands.shape)
+    cands = np.column_stack(
+        [rng.uniform(x0, x1, size=n_cands), rng.uniform(y0, y1, size=n_cands)]
+    )
     hit_pts, pt_tones = _point_in_tris_tones(cands, sub_tris, sub_tones)
     if len(hit_pts) == 0:
         return empty
 
-    keep = rng.random(len(pt_tones)) < (
-        np.clip((0.58 - pt_tones) / 0.58, 0.04, 1.0) ** 1.35
-    )
+    sh = np.clip((0.66 - pt_tones) / 0.66, 0.0, 1.0)
+    keep = rng.random(len(sh)) < (0.04 + 0.92 * (sh**1.75))
     kept_pts = hit_pts[keep]
     if len(kept_pts) == 0:
         return empty
 
-    sizes = 2.0 + 4.8 * np.clip(1.0 - pt_tones[keep], 0.0, 1.0)
-    return kept_pts, sizes, _build_stipple_flecks(kept_pts, span, rng)
+    sh_k = sh[keep]
+    skew = rng.random(len(kept_pts)) ** 1.55
+    sizes = (0.50 + 4.20 * skew) * (0.72 + 0.38 * sh_k)
+    rgb = np.asarray(mcolors.to_rgb(ink_col), dtype=np.float64)
+    alphas = np.clip(
+        s_alpha * rng.uniform(0.72, 1.18, size=len(kept_pts))
+        * (0.65 + 0.45 * sh_k),
+        0.20,
+        0.52,
+    )
+    rgba = np.empty((len(kept_pts), 4), dtype=np.float64)
+    rgba[:, :3] = rgb[None, :]
+    rgba[:, 3] = alphas
+    return kept_pts, sizes, rgba
+
+
+def _smooth_vertex_normals(mesh: isosurface.IsosurfaceMesh) -> np.ndarray:
+    """Averages outward triangle normals onto vertices for Phong shading."""
+    v_norms = np.zeros_like(mesh.vertices, dtype=np.float64)
+    if len(mesh.faces) == 0:
+        return v_norms
+    for col in range(3):
+        np.add.at(v_norms, mesh.faces[:, col], mesh.normals)
+    lens = np.linalg.norm(v_norms, axis=1, keepdims=True)
+    return np.asarray(v_norms / np.maximum(lens, 1e-12), dtype=np.float64)
+
+
+def _compute_front_tones(
+    n_front: np.ndarray,
+    light_dir: np.ndarray,
+    half_dir: np.ndarray,
+) -> np.ndarray:
+    """Computes smooth 3D form tones with highlight and reflected rim."""
+    ndotl = np.clip(n_front @ light_dir, 0.0, 1.0)
+    spec = np.clip(n_front @ half_dir, 0.0, 1.0) ** 12
+    nz_f = np.clip(n_front[:, 2], 0.0, 1.0)
+    rim_bounce = 0.22 * ((1.0 - nz_f) ** 2.2) * (1.0 - ndotl)
+    return np.asarray(
+        np.clip(0.10 + 0.74 * ndotl + 0.22 * spec + rim_bounce, 0.0, 1.0),
+        dtype=np.float64,
+    )
 
 
 def _project_single_lobe(
@@ -574,9 +608,9 @@ def _project_single_lobe(
     frame: tuple[np.ndarray, float, np.ndarray | None, np.ndarray | None],
     basis: np.ndarray,
     light_dir: np.ndarray,
-    shade_key: str,
+    half_dir: np.ndarray,
 ) -> MeshLayerInput | None:
-    """Projects one lobe, computes shading tones, and splits atom depths."""
+    """Projects one lobe, computes 3D tones & smooth normals, splits depths."""
     pivot, span, atom_xy, atom_depth = frame
     if len(mesh.faces) == 0:
         return None
@@ -588,21 +622,12 @@ def _project_single_lobe(
     sils = extract_silhouette_polylines(mesh, xy_v, front_mask)
     if not np.any(front_mask):
         return None
+
     vis_faces = mesh.faces[front_mask]
     tris_2d = xy_v[vis_faces]
     deps = np.mean(depth_v[vis_faces], axis=1)
-    illum = np.clip(n_rot[front_mask] @ light_dir, 0.0, 1.0)
-    tones = 0.68 * illum + 0.32 * np.clip(n_rot[front_mask, 2], 0.0, 1.0)
-    if shade_key == "solid":
-        lambert = 0.68 + 0.32 * illum
-        rgb_base = np.asarray(mcolors.to_rgb(hex_col), dtype=np.float64)
-        rgbs = np.clip(
-            0.26 + 0.74 * rgb_base[None, :] * lambert[:, None], 0.0, 1.0
-        )
-    else:
-        rgbs = np.broadcast_to(
-            _wash_rgb(hex_col)[None, :], (len(tris_2d), 3)
-        ).copy()
+    tones = _compute_front_tones(n_rot[front_mask], light_dir, half_dir)
+
     if atom_xy is not None and atom_depth is not None:
         tri_xy = np.mean(tris_2d, axis=1)
         nearest = np.argmin(
@@ -612,15 +637,17 @@ def _project_single_lobe(
         behind_mask = deps < (atom_depth[nearest] - 0.03)
     else:
         behind_mask = np.zeros(len(tris_2d), dtype=bool)
+    vn_rot = _smooth_vertex_normals(mesh) @ basis.T
     return MeshLayerInput(
         mesh=mesh,
         xy_v=xy_v,
+        depth_v=depth_v,
+        vn_rot=vn_rot,
         verts_cam=(mesh.vertices - pivot) @ basis.T,
         front_mask=front_mask,
         tris_2d=tris_2d,
         depths=deps,
         tones=tones,
-        face_rgbs=rgbs,
         behind_mask=behind_mask,
         silhouettes=sils,
         hex_col=hex_col,
@@ -633,49 +660,255 @@ def project_lobe_layers(
     cam: geometry.Camera,
     shade_key: str,
 ) -> tuple[list[MeshLayerInput], float, np.ndarray | None, np.ndarray | None]:
-    """Projects lobes, computes comic tones, and splits front/back of atoms."""
+    """Projects lobes, computes 3D tones, and splits front/back of atoms."""
+    del shade_key
     frame = iso_scene_frame(meshes, grid, cam)
     basis = geometry.rotation_matrix(cam.azimuth, cam.elevation, cam.roll)
-    light_dir = np.array([-0.45, 0.55, 0.70], dtype=np.float64)
+    light_dir = np.array([-0.52, 0.58, 0.63], dtype=np.float64)
     light_dir /= float(np.linalg.norm(light_dir))
+    half_dir = light_dir + np.array([0.0, 0.0, 1.0], dtype=np.float64)
+    half_dir /= float(np.linalg.norm(half_dir))
     layers: list[MeshLayerInput] = []
     for mesh, hex_col in meshes:
         layer = _project_single_lobe(
-            mesh, hex_col, cam, frame, basis, light_dir, shade_key
+            mesh, hex_col, cam, frame, basis, light_dir, half_dir
         )
         if layer is not None:
             layers.append(layer)
     return layers, frame[1], frame[2], frame[3]
 
 
-def _make_poly_coll(
-    tris: np.ndarray,
-    cols: np.ndarray,
-    depths: np.ndarray,
-    alpha: float,
-    zorder: float,
-) -> collections.PolyCollection | None:
-    """Creates a seam-free un-sketched PolyCollection."""
-    if len(tris) == 0 or alpha <= 0.0:
+def _tri_pixel_box(
+    pts_2d: np.ndarray,
+    grid_spec: tuple[np.ndarray, np.ndarray, float, float, float, float, int],
+) -> tuple[int, int, int, int, float] | None:
+    """Computes clipped pixel bounding box and determinant for a triangle."""
+    _, _, x0, y0, dx, dy, res = grid_spec
+    det = (pts_2d[1, 1] - pts_2d[2, 1]) * (pts_2d[0, 0] - pts_2d[2, 0]) + (
+        pts_2d[2, 0] - pts_2d[1, 0]
+    ) * (pts_2d[0, 1] - pts_2d[2, 1])
+    if abs(float(det)) < 1e-16:
         return None
-    order = np.argsort(depths)
-    coll = collections.PolyCollection(
-        cast(Any, tris[order]),
-        facecolors=cols[order],
-        edgecolors="none",
-        linewidths=0.0,
-        antialiaseds=False,
-        alpha=alpha,
-        zorder=zorder,
+    ix0 = max(0, int(math.floor((float(np.min(pts_2d[:, 0])) - x0) / dx)))
+    ix1 = min(res - 1, int(math.ceil((float(np.max(pts_2d[:, 0])) - x0) / dx)))
+    iy0 = max(0, int(math.floor((float(np.min(pts_2d[:, 1])) - y0) / dy)))
+    iy1 = min(res - 1, int(math.ceil((float(np.max(pts_2d[:, 1])) - y0) / dy)))
+    if ix1 < ix0 or iy1 < iy0:
+        return None
+    return ix0, ix1, iy0, iy1, float(det)
+
+
+def _rasterize_triangle(
+    z_buf: np.ndarray,
+    n_buf: np.ndarray,
+    pts_2d: np.ndarray,
+    tri_z: np.ndarray,
+    tri_vn: np.ndarray,
+    grid_spec: tuple[np.ndarray, np.ndarray, float, float, float, float, int],
+) -> None:
+    """Rasterizes one front triangle into z-buffer & smooth normal buffer."""
+    box = _tri_pixel_box(pts_2d, grid_spec)
+    if box is None:
+        return
+    ix0, ix1, iy0, iy1, det = box
+    gx = grid_spec[0][ix0 : ix1 + 1][None, :] - pts_2d[2, 0]
+    gy = grid_spec[1][iy0 : iy1 + 1][:, None] - pts_2d[2, 1]
+    inv_d = 1.0 / det
+    w0 = (
+        (pts_2d[1, 1] - pts_2d[2, 1]) * gx + (pts_2d[2, 0] - pts_2d[1, 0]) * gy
+    ) * inv_d
+    w1 = (
+        (pts_2d[2, 1] - pts_2d[0, 1]) * gx + (pts_2d[0, 0] - pts_2d[2, 0]) * gy
+    ) * inv_d
+    w2 = 1.0 - w0 - w1
+    hit = (w0 >= -1e-5) & (w1 >= -1e-5) & (w2 >= -1e-5)
+    if not np.any(hit):
+        return
+    z_px = w0 * tri_z[0] + w1 * tri_z[1] + w2 * tri_z[2]
+    sub_z = z_buf[iy0 : iy1 + 1, ix0 : ix1 + 1]
+    upd = hit & (z_px > sub_z)
+    if np.any(upd):
+        sub_z[upd] = z_px[upd]
+        n_px = (
+            w0[..., None] * tri_vn[0]
+            + w1[..., None] * tri_vn[1]
+            + w2[..., None] * tri_vn[2]
+        )
+        n_buf[iy0 : iy1 + 1, ix0 : ix1 + 1][upd] = n_px[upd]
+
+
+def _shade_lobe_hits(
+    n_hit: np.ndarray,
+    hex_col: str,
+    alpha: float,
+    shade_key: str,
+    light_dir: np.ndarray,
+    half_dir: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Evaluates per-pixel Phong 3D color and volumetric alpha."""
+    norms = np.linalg.norm(n_hit, axis=1, keepdims=True)
+    n_unit = n_hit / np.maximum(norms, 1e-12)
+    ndotl = np.clip(n_unit @ light_dir, 0.0, 1.0)
+    spec = np.clip(n_unit @ half_dir, 0.0, 1.0) ** 16
+    nz_h = np.clip(n_unit[:, 2], 0.0, 1.0)
+    rim = 0.24 * ((1.0 - nz_h) ** 2.2) * (1.0 - ndotl)
+
+    rgb_base = np.asarray(mcolors.to_rgb(hex_col), dtype=np.float64)
+    lit = 0.16 + 0.84 * rgb_base[None, :] * (
+        (0.48 + 0.52 * ndotl + 0.20 * rim)[:, None]
     )
-    coll.set_sketch_params(0.0, 0.0, 0.0)
-    return coll
+    px_rgb = np.clip(lit + (0.68 * spec)[:, None] * (1.0 - lit), 0.0, 1.0)
+
+    if shade_key == "solid":
+        base_a = alpha
+    elif shade_key == "outline":
+        base_a = alpha * 0.10
+    else:
+        base_a = alpha * 0.52
+    core_band = (1.0 - ndotl) * nz_h
+    spec_boost = (0.14 if shade_key != "outline" else 0.0) * spec
+    px_a = np.clip(
+        base_a * (0.62 + 0.62 * core_band) + spec_boost,
+        0.0,
+        min(0.80, alpha + 0.16),
+    )
+    return px_rgb, px_a
+
+
+def _composite_pm(
+    dst_pm: np.ndarray,
+    iy: np.ndarray,
+    ix: np.ndarray,
+    rgb: np.ndarray,
+    px_a: np.ndarray,
+) -> None:
+    """Alpha-over composites premultiplied pixel hits into ``dst_pm``."""
+    if len(iy) == 0:
+        return
+    src_pm = np.empty((len(iy), 4), dtype=np.float64)
+    src_pm[:, :3] = rgb * px_a[:, None]
+    src_pm[:, 3] = px_a
+    dst_pm[iy, ix] = src_pm + dst_pm[iy, ix] * (1.0 - px_a[:, None])
+
+
+def _unpremultiply_pm(pm: np.ndarray) -> np.ndarray | None:
+    """Converts premultiplied RGBA buffer into straight float RGBA."""
+    if float(np.max(pm[..., 3])) <= 1e-6:
+        return None
+    alpha = np.clip(pm[..., 3], 0.0, 1.0)
+    rgb = np.zeros_like(pm[..., :3], dtype=np.float64)
+    mask = alpha > 1e-6
+    rgb[mask] = np.clip(pm[..., :3][mask] / alpha[mask, None], 0.0, 1.0)
+    out = np.empty_like(pm, dtype=np.float64)
+    out[..., :3] = rgb
+    out[..., 3] = alpha
+    return out
+
+
+def _composite_single_lobe(
+    ly: MeshLayerInput,
+    back_pm: np.ndarray,
+    front_pm: np.ndarray,
+    grid_spec: tuple[np.ndarray, np.ndarray, float, float, float, float, int],
+    atom_ref: tuple[np.ndarray | None, np.ndarray | None],
+    shade_cfg: tuple[float, str, np.ndarray, np.ndarray],
+) -> None:
+    """Rasterizes one lobe into back-of-atom and front-of-atom PM buffers."""
+    res = grid_spec[6]
+    z_buf = np.full((res, res), -np.inf, dtype=np.float64)
+    n_buf = np.zeros((res, res, 3), dtype=np.float64)
+    vis_faces = ly.mesh.faces[ly.front_mask]
+    tri_z = ly.depth_v[vis_faces]
+    tri_vn = ly.vn_rot[vis_faces]
+    for idx in range(len(vis_faces)):
+        _rasterize_triangle(
+            z_buf, n_buf, ly.tris_2d[idx], tri_z[idx], tri_vn[idx], grid_spec
+        )
+    iy_h, ix_h = np.nonzero(np.isfinite(z_buf))
+    if len(iy_h) == 0:
+        return
+    alpha, shade_key, light_dir, half_dir = shade_cfg
+    px_rgb, px_a = _shade_lobe_hits(
+        n_buf[iy_h, ix_h], ly.hex_col, alpha, shade_key, light_dir, half_dir
+    )
+    atom_xy, atom_depth = atom_ref
+    if atom_xy is not None and atom_depth is not None:
+        px_xy = np.column_stack([grid_spec[0][ix_h], grid_spec[1][iy_h]])
+        near = np.argmin(
+            np.sum((px_xy[:, None, :] - atom_xy[None, :, :]) ** 2, axis=2),
+            axis=1,
+        )
+        is_back = z_buf[iy_h, ix_h] < (atom_depth[near] - 0.03)
+    else:
+        is_back = np.zeros(len(iy_h), dtype=bool)
+    _composite_pm(
+        back_pm, iy_h[is_back], ix_h[is_back], px_rgb[is_back], px_a[is_back]
+    )
+    _composite_pm(
+        front_pm,
+        iy_h[~is_back],
+        ix_h[~is_back],
+        px_rgb[~is_back],
+        px_a[~is_back],
+    )
+
+
+def _rasterize_wash_buffers(
+    layers: Sequence[MeshLayerInput],
+    all_xy: np.ndarray,
+    atom_xy: np.ndarray | None,
+    atom_depth: np.ndarray | None,
+    span: float,
+    alpha: float,
+    shade_key: str,
+) -> tuple[
+    np.ndarray | None,
+    np.ndarray | None,
+    tuple[float, float, float, float],
+]:
+    """Rasterizes seam-free depth-split Phong 3D RGBA wash buffers."""
+    res = 200
+    pad = 0.02 * max(span, 1.0)
+    x0 = float(np.min(all_xy[:, 0])) - pad
+    x1 = float(np.max(all_xy[:, 0])) + pad
+    y0 = float(np.min(all_xy[:, 1])) - pad
+    y1 = float(np.max(all_xy[:, 1])) + pad
+    grid_spec = (
+        np.linspace(x0, x1, res),
+        np.linspace(y0, y1, res),
+        x0,
+        y0,
+        (x1 - x0) / (res - 1),
+        (y1 - y0) / (res - 1),
+        res,
+    )
+    light_dir = np.array([-0.52, 0.58, 0.63], dtype=np.float64)
+    light_dir /= float(np.linalg.norm(light_dir))
+    half_dir = light_dir + np.array([0.0, 0.0, 1.0], dtype=np.float64)
+    half_dir /= float(np.linalg.norm(half_dir))
+
+    back_pm = np.zeros((res, res, 4), dtype=np.float64)
+    front_pm = np.zeros((res, res, 4), dtype=np.float64)
+    for ly in sorted(layers, key=lambda item: float(np.mean(item.depths))):
+        _composite_single_lobe(
+            ly,
+            back_pm,
+            front_pm,
+            grid_spec,
+            (atom_xy, atom_depth),
+            (alpha, shade_key, light_dir, half_dir),
+        )
+
+    return (
+        _unpremultiply_pm(back_pm),
+        _unpremultiply_pm(front_pm),
+        (x0, x1, y0, y1),
+    )
 
 
 def _emit_hatch_strokes(
     layer: MeshLayerInput,
     sub_mask: np.ndarray,
-    bound_tris: np.ndarray,
     *,
     shade_key: str,
     span: float,
@@ -694,60 +927,71 @@ def _emit_hatch_strokes(
     ],
     seed_base: int,
 ) -> None:
-    """Appends xkcd parallel hatch or cross-hatch shadow strokes."""
-    xkcd_sketch = (1.05, 52.0, 2.0)
+    """Appends light, curved, native-xkcd 3D parallel or cross-hatch lines."""
+    xkcd_sketch = (0.85, 90.0, 2.0)
     sp = 0.056 * max(span, 1.0)
-    shadow = sub_mask & (layer.tones < 0.58)
-    c1 = _clip_xkcd_chords(
-        layer.tris_2d[shadow],
-        bound_tris,
-        angle_deg=40.0,
-        spacing=sp,
+    front_ids = np.flatnonzero(layer.front_mask)
+
+    arcs1 = _slice_3d_contour_arcs(
+        layer.mesh,
+        layer.verts_cam,
+        layer.xy_v,
+        front_ids[sub_mask & (layer.tones < 0.68)],
+        np.array([-0.55, 0.65, 0.52]),
+        spacing=sp * 1.25,
         span=span,
         seed=seed_base + 1,
     )
-    s1 = _chords_to_strokes(c1, 40.0)
-    if s1:
-        line_batches.append((s1, ink_col, 1.05, s_alpha, z_stroke, xkcd_sketch))
+    if arcs1:
+        line_batches.append(
+            (arcs1, ink_col, 0.66, 0.72 * s_alpha, z_stroke, xkcd_sketch)
+        )
     if shade_key == "hatch":
-        cd = _clip_xkcd_chords(
-            layer.tris_2d[sub_mask & (layer.tones < 0.34)],
-            bound_tris,
-            angle_deg=40.0,
+        arcs_d = _slice_3d_contour_arcs(
+            layer.mesh,
+            layer.verts_cam,
+            layer.xy_v,
+            front_ids[sub_mask & (layer.tones < 0.38)],
+            np.array([-0.55, 0.65, 0.52]),
             spacing=sp,
             span=span,
             offset_frac=0.5,
             seed=seed_base + 2,
         )
-        sd = _chords_to_strokes(cd, 40.0)
-        if sd:
+        if arcs_d:
             line_batches.append(
-                (sd, ink_col, 1.0, s_alpha, z_stroke, xkcd_sketch)
+                (arcs_d, ink_col, 0.76, s_alpha, z_stroke, xkcd_sketch)
             )
         return
 
-    c2 = _clip_xkcd_chords(
-        layer.tris_2d[sub_mask & (layer.tones < 0.38)],
-        bound_tris,
-        angle_deg=-48.0,
+    arcs2 = _slice_3d_contour_arcs(
+        layer.mesh,
+        layer.verts_cam,
+        layer.xy_v,
+        front_ids[sub_mask & (layer.tones < 0.44)],
+        np.array([0.65, 0.55, 0.52]),
         spacing=sp,
         span=span,
         seed=seed_base + 3,
     )
-    s2 = _chords_to_strokes(c2, -48.0)
-    if s2:
-        line_batches.append((s2, ink_col, 1.05, s_alpha, z_stroke, xkcd_sketch))
-    c3 = _clip_xkcd_chords(
-        layer.tris_2d[sub_mask & (layer.tones < 0.22)],
-        bound_tris,
-        angle_deg=-6.0,
-        spacing=sp * 1.15,
+    if arcs2:
+        line_batches.append(
+            (arcs2, ink_col, 0.70, 0.88 * s_alpha, z_stroke, xkcd_sketch)
+        )
+    arcs3 = _slice_3d_contour_arcs(
+        layer.mesh,
+        layer.verts_cam,
+        layer.xy_v,
+        front_ids[sub_mask & (layer.tones < 0.25)],
+        np.array([0.08, 0.86, 0.50]),
+        spacing=sp * 1.05,
         span=span,
         seed=seed_base + 4,
     )
-    s3 = _chords_to_strokes(c3, -6.0)
-    if s3:
-        line_batches.append((s3, ink_col, 0.95, s_alpha, z_stroke, xkcd_sketch))
+    if arcs3:
+        line_batches.append(
+            (arcs3, ink_col, 0.64, 0.82 * s_alpha, z_stroke, xkcd_sketch)
+        )
 
 
 def _emit_contour_strokes(
@@ -771,35 +1015,54 @@ def _emit_contour_strokes(
     ],
     seed_base: int,
 ) -> None:
-    """Appends 3D curvature-following contour and cross-contour arcs."""
-    xkcd_sketch = (1.05, 52.0, 2.0)
+    """Appends light, curved native-xkcd 3D latitude & meridian arcs."""
+    xkcd_sketch = (0.85, 90.0, 2.0)
+    sp = 0.058 * max(span, 1.0)
     front_ids = np.flatnonzero(layer.front_mask)
+
     arcs1 = _slice_3d_contour_arcs(
         layer.mesh,
         layer.verts_cam,
         layer.xy_v,
-        front_ids[sub_mask & (layer.tones < 0.58)],
-        np.array([0.42, 0.91, 0.0]),
-        spacing=0.058 * max(span, 1.0),
+        front_ids[sub_mask & (layer.tones < 0.70)],
+        np.array([-0.42, 0.50, 0.76]),
+        spacing=sp * 1.15,
+        span=span,
         seed=seed_base + 5,
     )
     if arcs1:
         line_batches.append(
-            (arcs1, ink_col, 1.1, s_alpha, z_stroke, xkcd_sketch)
+            (arcs1, ink_col, 0.68, 0.76 * s_alpha, z_stroke, xkcd_sketch)
+        )
+    arcs_core = _slice_3d_contour_arcs(
+        layer.mesh,
+        layer.verts_cam,
+        layer.xy_v,
+        front_ids[sub_mask & (layer.tones < 0.36)],
+        np.array([-0.42, 0.50, 0.76]),
+        spacing=sp,
+        span=span,
+        offset_frac=0.5,
+        seed=seed_base + 12,
+    )
+    if arcs_core:
+        line_batches.append(
+            (arcs_core, ink_col, 0.76, s_alpha, z_stroke, xkcd_sketch)
         )
     if shade_key == "cross_contour":
         arcs2 = _slice_3d_contour_arcs(
             layer.mesh,
             layer.verts_cam,
             layer.xy_v,
-            front_ids[sub_mask & (layer.tones < 0.38)],
-            np.array([0.91, -0.42, 0.15]),
-            spacing=0.058 * max(span, 1.0),
+            front_ids[sub_mask & (layer.tones < 0.48)],
+            np.array([0.62, 0.34, 0.71]),
+            spacing=sp * 1.05,
+            span=span,
             seed=seed_base + 6,
         )
         if arcs2:
             line_batches.append(
-                (arcs2, ink_col, 1.05, s_alpha, z_stroke, xkcd_sketch)
+                (arcs2, ink_col, 0.68, 0.86 * s_alpha, z_stroke, xkcd_sketch)
             )
 
 
@@ -824,11 +1087,11 @@ def _emit_scumble_strokes(
     ],
     seed_base: int,
 ) -> None:
-    """Appends wandering circular xkcd pen-scribble loops in shadows."""
-    sp_scum = 0.068 * max(span, 1.0)
-    scum_sketch = (0.7, 45.0, 2.0)
+    """Appends light wandering circular xkcd pen-scribble loops."""
+    sp_scum = 0.072 * max(span, 1.0)
+    scum_sketch = None
     c1 = _clip_xkcd_chords(
-        layer.tris_2d[sub_mask & (layer.tones < 0.56)],
+        layer.tris_2d[sub_mask & (layer.tones < 0.62)],
         bound_tris,
         angle_deg=32.0,
         spacing=sp_scum,
@@ -838,10 +1101,10 @@ def _emit_scumble_strokes(
     s1 = _chords_to_scumbles(c1, 32.0, sp_scum, seed=seed_base + 9)
     if s1:
         line_batches.append(
-            (s1, ink_col, 0.92, s_alpha * 0.92, z_stroke, scum_sketch)
+            (s1, ink_col, 0.64, 0.72 * s_alpha, z_stroke, scum_sketch)
         )
     c2 = _clip_xkcd_chords(
-        layer.tris_2d[sub_mask & (layer.tones < 0.32)],
+        layer.tris_2d[sub_mask & (layer.tones < 0.34)],
         bound_tris,
         angle_deg=-52.0,
         spacing=sp_scum * 1.05,
@@ -851,7 +1114,7 @@ def _emit_scumble_strokes(
     s2 = _chords_to_scumbles(c2, -52.0, sp_scum * 1.05, seed=seed_base + 11)
     if s2:
         line_batches.append(
-            (s2, ink_col, 0.88, s_alpha * 0.88, z_stroke, scum_sketch)
+            (s2, ink_col, 0.60, 0.75 * s_alpha, z_stroke, scum_sketch)
         )
 
 
@@ -874,19 +1137,18 @@ def _append_lobe_art_strokes(
             tuple[float, float, float] | None,
         ]
     ],
-    dot_batches: list[tuple[np.ndarray, np.ndarray, str, float, float]],
+    dot_batches: list[tuple[np.ndarray, np.ndarray, np.ndarray, float]],
     seed_base: int,
 ) -> None:
-    """Appends shading strokes/stipples for one depth side of one lobe."""
+    """Appends light shading strokes/stipples for one depth side."""
     if not np.any(sub_mask):
         return
     bound_tris = layer.tris_2d[sub_mask]
-    s_alpha = min(1.0, alpha + 0.48)
+    s_alpha = float(np.clip(alpha + 0.15, 0.24, 0.48))
     if shade_key in ("hatch", "crosshatch"):
         _emit_hatch_strokes(
             layer,
             sub_mask,
-            bound_tris,
             shade_key=shade_key,
             span=span,
             ink_col=ink_col,
@@ -908,19 +1170,17 @@ def _append_lobe_art_strokes(
             seed_base=seed_base,
         )
     elif shade_key == "stipple":
-        shadow = sub_mask & (layer.tones < 0.58)
-        pts, sz, flecks = _sample_stipple_marks(
+        shadow = sub_mask & (layer.tones < 0.66)
+        pts, sz, rgba = _sample_stipple_marks(
             layer.tris_2d[shadow],
             layer.tones[shadow],
             span,
+            ink_col,
+            s_alpha,
             seed=seed_base + 7,
         )
         if len(pts) > 0:
-            dot_batches.append((pts, sz, ink_col, s_alpha, z_stroke))
-        if flecks:
-            line_batches.append(
-                (flecks, ink_col, 1.05, s_alpha, z_stroke, None)
-            )
+            dot_batches.append((pts, sz, rgba, z_stroke))
     elif shade_key == "scumble":
         _emit_scumble_strokes(
             layer,
@@ -935,97 +1195,6 @@ def _append_lobe_art_strokes(
         )
 
 
-def _silhouette_wash_collection(
-    layers: Sequence[MeshLayerInput],
-    z_list: Sequence[float],
-    *,
-    want_back: bool,
-    alpha: float,
-    zorder: float,
-) -> collections.PolyCollection | None:
-    """Builds seam-free flat lobe washes from closed outer silhouette loops."""
-    polys: list[np.ndarray] = []
-    cols: list[np.ndarray] = []
-    for ly, z_sil in zip(layers, z_list, strict=True):
-        if (z_sil < 2.0) != want_back:
-            continue
-        wash_rgb = _wash_rgb(ly.hex_col)
-        closed = [
-            p for p in ly.silhouettes
-            if len(p) >= 4 and np.allclose(p[0], p[-1], atol=1e-6)
-        ]
-        if closed:
-            for loop in closed:
-                polys.append(loop)
-                cols.append(wash_rgb)
-        else:
-            for tri in ly.tris_2d:
-                polys.append(tri)
-                cols.append(wash_rgb)
-    if not polys or alpha <= 0.0:
-        return None
-    coll = collections.PolyCollection(
-        cast(Any, polys),
-        facecolors=np.vstack(cols),
-        edgecolors="none",
-        linewidths=0.0,
-        antialiaseds=False,
-        alpha=alpha,
-        zorder=zorder,
-    )
-    coll.set_sketch_params(0.0, 0.0, 0.0)
-    return coll
-
-
-def _assemble_wash_collections(
-    layers: Sequence[MeshLayerInput],
-    z_list: Sequence[float],
-    alpha: float,
-    shade_key: str,
-) -> tuple[
-    collections.PolyCollection | None,
-    collections.PolyCollection | None,
-]:
-    """Builds behind-atom and front-of-atom polygon wash collections."""
-    if shade_key != "solid":
-        wash_alpha = alpha * (0.12 if shade_key == "outline" else 0.34)
-        return (
-            _silhouette_wash_collection(
-                layers,
-                z_list,
-                want_back=True,
-                alpha=wash_alpha * 0.95,
-                zorder=1.4,
-            ),
-            _silhouette_wash_collection(
-                layers,
-                z_list,
-                want_back=False,
-                alpha=wash_alpha,
-                zorder=40.0,
-            ),
-        )
-    back_coll = _make_poly_coll(
-        np.concatenate([ly.tris_2d[ly.behind_mask] for ly in layers], axis=0),
-        np.concatenate(
-            [ly.face_rgbs[ly.behind_mask] for ly in layers], axis=0
-        ),
-        np.concatenate([ly.depths[ly.behind_mask] for ly in layers], axis=0),
-        alpha * 0.95,
-        zorder=1.4,
-    )
-    front_coll = _make_poly_coll(
-        np.concatenate([ly.tris_2d[~ly.behind_mask] for ly in layers], axis=0),
-        np.concatenate(
-            [ly.face_rgbs[~ly.behind_mask] for ly in layers], axis=0
-        ),
-        np.concatenate([ly.depths[~ly.behind_mask] for ly in layers], axis=0),
-        alpha,
-        zorder=40.0,
-    )
-    return back_coll, front_coll
-
-
 def build_isosurface_art(
     meshes: Sequence[tuple[isosurface.IsosurfaceMesh, str]],
     grid: electronic.VolumetricGrid,
@@ -1033,27 +1202,19 @@ def build_isosurface_art(
     alpha: float,
     shade: str = "solid",
 ) -> ShadeArtData:
-    """Builds depth-split fills, comic pen strokes, and silhouette rims."""
+    """Builds seam-free 3D RGBA washes, light squiggly strokes, & rims."""
     shade_key = normalize_iso_shade(shade)
     layers, span, atom_xy, atom_depth = project_lobe_layers(
         meshes, grid, cam, shade_key
     )
     if not layers:
-        return ShadeArtData(None, None, [], [], None)
+        return ShadeArtData(None, None, None, [], [], None)
 
-    z_list: list[float] = []
-    for ly in layers:
-        z_sil = 41.0
-        if atom_xy is not None and atom_depth is not None:
-            c_xy = np.mean(ly.tris_2d.reshape(-1, 2), axis=0)
-            near = int(np.argmin(np.sum((atom_xy - c_xy) ** 2, axis=1)))
-            if float(np.mean(ly.depths)) < float(atom_depth[near]) - 0.03:
-                z_sil = 1.5
-        z_list.append(z_sil)
-
-    back_coll, front_coll = _assemble_wash_collections(
-        layers, z_list, alpha, shade_key
+    all_xy = np.vstack([ly.xy_v for ly in layers])
+    back_rgba, front_rgba, wash_extent = _rasterize_wash_buffers(
+        layers, all_xy, atom_xy, atom_depth, span, alpha, shade_key
     )
+
     line_batches: list[
         tuple[
             list[np.ndarray],
@@ -1064,11 +1225,18 @@ def build_isosurface_art(
             tuple[float, float, float] | None,
         ]
     ] = []
-    dot_batches: list[tuple[np.ndarray, np.ndarray, str, float, float]] = []
-    sil_lw = 1.6 if shade_key == "solid" else 1.85
-    sil_alpha = min(1.0, alpha + (0.44 if shade_key == "solid" else 0.58))
+    dot_batches: list[tuple[np.ndarray, np.ndarray, np.ndarray, float]] = []
+    sil_lw = 1.40
+    sil_alpha = float(np.clip(alpha + 0.32, 0.28, 0.62))
+    sil_sketch = None
 
-    for idx, (ly, z_sil) in enumerate(zip(layers, z_list, strict=True)):
+    for idx, ly in enumerate(layers):
+        z_sil = 41.0
+        if atom_xy is not None and atom_depth is not None:
+            c_xy = np.mean(ly.tris_2d.reshape(-1, 2), axis=0)
+            near = int(np.argmin(np.sum((atom_xy - c_xy) ** 2, axis=1)))
+            if float(np.mean(ly.depths)) < float(atom_depth[near]) - 0.03:
+                z_sil = 1.5
         ink_col = _ink_hex(ly.hex_col)
         if shade_key not in ("solid", "outline"):
             for mask, z_st, off in (
@@ -1089,10 +1257,16 @@ def build_isosurface_art(
                 )
         if ly.silhouettes:
             line_batches.append(
-                (ly.silhouettes, ly.hex_col, sil_lw, sil_alpha, z_sil, None)
+                (
+                    ly.silhouettes,
+                    ly.hex_col,
+                    sil_lw,
+                    sil_alpha,
+                    z_sil,
+                    sil_sketch,
+                )
             )
 
-    all_xy = np.vstack([ly.xy_v for ly in layers])
     return ShadeArtData(
-        back_coll, front_coll, line_batches, dot_batches, all_xy
+        back_rgba, front_rgba, wash_extent, line_batches, dot_batches, all_xy
     )
