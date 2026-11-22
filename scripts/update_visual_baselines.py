@@ -47,6 +47,7 @@ import xkcd_matchem as xm
 
 
 BASELINE_DPI: int = 90
+BASELINE_MPL_MINOR: tuple[int, int] = (3, 11)
 DEFAULT_BASELINES_DIR: pathlib.Path = (
     pathlib.Path(__file__).resolve().parents[1] / "tests" / "baselines"
 )

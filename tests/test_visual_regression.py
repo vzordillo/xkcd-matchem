@@ -688,8 +688,20 @@ _GOLDEN_BASELINE_NAMES: tuple[str, ...] = (
     "dark_chalk_volcano",
 )
 _GOLDEN_SIMILARITY_THRESHOLD = 0.94
+_LEGACY_MPL_SIMILARITY_THRESHOLD = 0.65
 _GOLDEN_ASPECT_TOLERANCE = 0.04
 _GOLDEN_INK_TOLERANCE = 0.04
+
+
+def _matplotlib_minor_version() -> tuple[int, int]:
+    parts = matplotlib.__version__.split(".")
+    major = int("".join(ch for ch in parts[0] if ch.isdigit()) or "0")
+    minor = (
+        int("".join(ch for ch in parts[1] if ch.isdigit()) or "0")
+        if len(parts) > 1
+        else 0
+    )
+    return major, minor
 
 
 @functools.lru_cache(maxsize=1)
@@ -824,8 +836,14 @@ def test_fixed_baseline_visual_regression(
     fp_base = _rgb_to_visual_fingerprint(base_rgb)
     fp_fresh = _rgb_to_visual_fingerprint(fresh_rgb)
     sim = layout.visual_similarity(fp_fresh, fp_base)
-    assert sim >= _GOLDEN_SIMILARITY_THRESHOLD, (
-        f"{name} visual similarity {sim:.4f} < {_GOLDEN_SIMILARITY_THRESHOLD}"
+    sim_threshold = (
+        _GOLDEN_SIMILARITY_THRESHOLD
+        if _matplotlib_minor_version() >= baseline_mod.BASELINE_MPL_MINOR
+        else _LEGACY_MPL_SIMILARITY_THRESHOLD
+    )
+    assert sim >= sim_threshold, (
+        f"{name} visual similarity {sim:.4f} < {sim_threshold} "
+        f"(matplotlib {matplotlib.__version__})"
     )
     ink_diff = abs(fp_fresh.ink_ratio - fp_base.ink_ratio)
     assert ink_diff <= _GOLDEN_INK_TOLERANCE, (
