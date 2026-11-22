@@ -16,10 +16,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import functools
+import importlib.util
+import pathlib
+import sys
 from typing import Any
 
 import matplotlib
 from matplotlib import figure as mfigure
+from matplotlib import image as mimage
 from matplotlib import pyplot as plt
 import numpy as np
 import pytest
@@ -667,3 +672,236 @@ def test_stress_crowded_multi_subplot_grids(
         assert rep.ink_ratio >= 0.01
     finally:
         plt.close(fig)
+
+
+_BASELINES_DIR = pathlib.Path(__file__).resolve().parent / "baselines"
+_BASELINE_SCRIPT = (
+    pathlib.Path(__file__).resolve().parents[1]
+    / "scripts"
+    / "update_visual_baselines.py"
+)
+_GOLDEN_BASELINE_NAMES: tuple[str, ...] = (
+    "molecule_aspirin",
+    "crystal_si_111",
+    "bands_si_qe",
+    "xrd_nacl",
+    "dark_chalk_volcano",
+)
+_GOLDEN_SIMILARITY_THRESHOLD = 0.94
+_GOLDEN_ASPECT_TOLERANCE = 0.04
+_GOLDEN_INK_TOLERANCE = 0.04
+
+
+@functools.lru_cache(maxsize=1)
+def _load_baseline_module() -> Any:
+    spec = importlib.util.spec_from_file_location(
+        "update_visual_baselines", _BASELINE_SCRIPT
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _load_png_rgb(path: pathlib.Path) -> np.ndarray:
+    arr = np.asarray(mimage.imread(path, format="png"), dtype=np.float64)
+    if arr.ndim == 3 and arr.shape[2] >= 4:
+        alpha = arr[..., 3:4]
+        return np.asarray(
+            arr[..., :3] * alpha + (1.0 - alpha), dtype=np.float64
+        )
+    return np.asarray(arr[..., :3], dtype=np.float64)
+
+
+def _area_downsample_rgb(
+    rgb: np.ndarray,
+    size: tuple[int, int] = (64, 64),
+) -> np.ndarray:
+    target_h, target_w = size
+    src_h, src_w, _ = rgb.shape
+    row_edges = np.linspace(0, src_h, target_h + 1, dtype=np.int64)
+    col_edges = np.linspace(0, src_w, target_w + 1, dtype=np.int64)
+    out = np.zeros((target_h, target_w, 3), dtype=np.float64)
+    for r_idx in range(target_h):
+        r0 = int(row_edges[r_idx])
+        r1 = min(max(r0 + 1, int(row_edges[r_idx + 1])), src_h)
+        for c_idx in range(target_w):
+            c0 = int(col_edges[c_idx])
+            c1 = min(max(c0 + 1, int(col_edges[c_idx + 1])), src_w)
+            patch = rgb[r0:r1, c0:c1, :]
+            out[r_idx, c_idx, 0] = float(np.mean(patch[..., 0]))
+            out[r_idx, c_idx, 1] = float(np.mean(patch[..., 1]))
+            out[r_idx, c_idx, 2] = float(np.mean(patch[..., 2]))
+    return out
+
+
+def _rgb_to_visual_fingerprint(
+    rgb: np.ndarray,
+    size: tuple[int, int] = (64, 64),
+) -> layout.VisualFingerprint:
+    rim = np.concatenate(
+        [
+            rgb[:2, :, :].reshape(-1, 3),
+            rgb[-2:, :, :].reshape(-1, 3),
+            rgb[2:-2, :2, :].reshape(-1, 3),
+            rgb[2:-2, -2:, :].reshape(-1, 3),
+        ],
+        axis=0,
+    )
+    bg_arr = np.median(rim, axis=0)
+    diff = np.max(np.abs(rgb - bg_arr[None, None, :]), axis=-1)
+    ink_ratio = float(np.mean(diff > 0.06))
+    rgb_small = _area_downsample_rgb(rgb, size=size)
+    lum_small = (
+        0.2126 * rgb_small[..., 0]
+        + 0.7152 * rgb_small[..., 1]
+        + 0.0722 * rgb_small[..., 2]
+    )
+    return layout.VisualFingerprint(
+        luminance_grid=np.asarray(lum_small, dtype=np.float64),
+        rgb_grid=rgb_small,
+        bg_rgb=(float(bg_arr[0]), float(bg_arr[1]), float(bg_arr[2])),
+        ink_ratio=round(ink_ratio, 6),
+        size=size,
+    )
+
+
+@pytest.mark.parametrize("name", _GOLDEN_BASELINE_NAMES)
+def test_fixed_baseline_visual_regression(
+    name: str,
+    tmp_path: pathlib.Path,
+) -> None:
+    baseline_mod = _load_baseline_module()
+    assert tuple(baseline_mod.BASELINE_NAMES) == _GOLDEN_BASELINE_NAMES
+    baseline_path = _BASELINES_DIR / f"{name}.png"
+    assert baseline_path.is_file()
+    assert baseline_path.stat().st_size > 0
+
+    prev_font = xm.get_default_font()
+    xm.set_default_font(None)
+    fig = baseline_mod.render_baseline_figure(name)
+    try:
+        spec = baseline_mod.BASELINE_SPECS[name]
+        report = layout.audit_figure_layout(
+            fig, min_contrast=spec.min_contrast
+        )
+        assert not report.text_overlaps, (
+            f"{name} text overlaps: {report.text_overlaps}"
+        )
+        assert not report.clipped_texts, (
+            f"{name} clipped texts: {report.clipped_texts}"
+        )
+        assert not report.low_contrast_texts, (
+            f"{name} low contrast: {report.low_contrast_texts}"
+        )
+        assert report.border_leak_ratio <= 0.01, (
+            f"{name} border leak: {report.border_leak_ratio}"
+        )
+        assert report.passed
+
+        fresh_path = tmp_path / f"{name}.png"
+        xm.save_figure(
+            fig, fresh_path, dpi=baseline_mod.BASELINE_DPI, tight=True
+        )
+    finally:
+        plt.close(fig)
+        xm.set_default_font(prev_font)
+
+    base_rgb = _load_png_rgb(baseline_path)
+    fresh_rgb = _load_png_rgb(fresh_path)
+    base_aspect = float(base_rgb.shape[1]) / max(float(base_rgb.shape[0]), 1.0)
+    fresh_aspect = float(fresh_rgb.shape[1]) / max(
+        float(fresh_rgb.shape[0]), 1.0
+    )
+    aspect_rel_diff = abs(fresh_aspect - base_aspect) / base_aspect
+    assert aspect_rel_diff <= _GOLDEN_ASPECT_TOLERANCE, (
+        f"{name} aspect drift {aspect_rel_diff:.4f} "
+        f"(fresh={fresh_aspect:.3f}, base={base_aspect:.3f})"
+    )
+
+    fp_base = _rgb_to_visual_fingerprint(base_rgb)
+    fp_fresh = _rgb_to_visual_fingerprint(fresh_rgb)
+    sim = layout.visual_similarity(fp_fresh, fp_base)
+    assert sim >= _GOLDEN_SIMILARITY_THRESHOLD, (
+        f"{name} visual similarity {sim:.4f} < {_GOLDEN_SIMILARITY_THRESHOLD}"
+    )
+    ink_diff = abs(fp_fresh.ink_ratio - fp_base.ink_ratio)
+    assert ink_diff <= _GOLDEN_INK_TOLERANCE, (
+        f"{name} ink-ratio diff {ink_diff:.4f} > {_GOLDEN_INK_TOLERANCE}"
+    )
+
+
+def test_fixed_baseline_detects_visual_drift(tmp_path: pathlib.Path) -> None:
+    baseline_mod = _load_baseline_module()
+    dpi = int(baseline_mod.BASELINE_DPI)
+
+    def _compare(name: str, perturbed_fig: mfigure.Figure, tag: str) -> float:
+        out_path = tmp_path / f"{name}_{tag}.png"
+        try:
+            xm.save_figure(perturbed_fig, out_path, dpi=dpi, tight=True)
+        finally:
+            plt.close(perturbed_fig)
+        fp_base = _rgb_to_visual_fingerprint(
+            _load_png_rgb(_BASELINES_DIR / f"{name}.png")
+        )
+        fp_pert = _rgb_to_visual_fingerprint(_load_png_rgb(out_path))
+        return layout.visual_similarity(fp_pert, fp_base)
+
+    prev_font = xm.get_default_font()
+    xm.set_default_font(None)
+    try:
+        # 1. Theme drift: dark_chalk -> classic drops similarity sharply.
+        with xm.xkcd_style("classic"):
+            fig_theme, ax_theme = plt.subplots(figsize=(5.4, 3.8))
+            xm.plot_volcano(
+                [-0.75, -0.35, -0.05, 0.25, 0.65],
+                [-2.9, -1.35, -0.35, -1.25, -3.1],
+                labels=["Ru", "Rh", "Pt", "Pd", "Au"],
+                preset="classic",
+                ax=ax_theme,
+                title="HER Volcano",
+            )
+            fig_theme.tight_layout()
+        sim_theme = _compare("dark_chalk_volcano", fig_theme, "classic")
+        assert sim_theme < _GOLDEN_SIMILARITY_THRESHOLD - 0.30
+
+        # 2. 3D camera rotation drift (+90 deg azimuth on aspirin).
+        with xm.xkcd_style("classic"):
+            fig_cam, ax_cam = plt.subplots(figsize=(4.8, 3.8))
+            xm.plot_molecule(
+                "aspirin.xyz",
+                ax=ax_cam,
+                camera=xm.Camera(
+                    azimuth=-35.0,
+                    elevation=42.0,
+                    perspective=0.28,
+                ),
+                title="Aspirin (3D)",
+            )
+            fig_cam.tight_layout()
+        sim_cam = _compare("molecule_aspirin", fig_cam, "rot90")
+        assert sim_cam < _GOLDEN_SIMILARITY_THRESHOLD - 0.10
+
+        # 3. Dropped data curves on electronic band structure.
+        fig_drop = baseline_mod.render_baseline_figure("bands_si_qe")
+        for line in list(fig_drop.axes[0].lines):
+            line.remove()
+        sim_drop = _compare("bands_si_qe", fig_drop, "dropped_curves")
+        assert sim_drop < _GOLDEN_SIMILARITY_THRESHOLD - 0.10
+
+        # 4. Missing Miller plane overlay on Si (111) crystal.
+        with xm.xkcd_style("classic"):
+            fig_nomiller, ax_nomiller = plt.subplots(figsize=(4.8, 4.2))
+            xm.plot_crystal(
+                "si_diamond.cif",
+                ax=ax_nomiller,
+                crystal_axes="corner",
+                title="Si (111)",
+            )
+            fig_nomiller.tight_layout()
+        sim_nomiller = _compare("crystal_si_111", fig_nomiller, "no_miller")
+        assert sim_nomiller < _GOLDEN_SIMILARITY_THRESHOLD - 0.10
+    finally:
+        xm.set_default_font(prev_font)
