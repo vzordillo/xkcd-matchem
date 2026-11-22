@@ -2,7 +2,7 @@
 
 Welcome to the documentation book for **`xkcd-matchem`** — a playful, clean-looking, xkcd-style Python library for visualizing molecules, crystals, surfaces, electronic structure, spectra, reactions, and molecular dynamics trajectories.
 
-What began as a small helper to bring some xkcd comic charm to a conference poster grew into an open toolkit for students, educators, and researchers who want their **science communication (scicomm)**, lectures, group meetings, and posters to feel clear, lively, and memorable.
+Built for students, educators, and researchers, it turns chemistry and materials science figures into clear, approachable **science communication (scicomm)** for lectures, group talks, and conference posters — with 29 zero-dependency file readers and an offline Interactive 3D Studio.
 
 ![xkcd-matchem showcase](_static/gallery/hero_showcase.png)
 

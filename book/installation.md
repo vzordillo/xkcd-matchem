@@ -4,21 +4,28 @@
 
 `xkcd-matchem` has a light core footprint: **Python 3.10+**, **NumPy**, **SciPy**, and **Matplotlib**. All **17 bundled sample files** (molecules, crystals, slabs, DFT outputs, LOBSTER COHP tables, Phonopy bands, spectra, orbital cubes, and MD/NEB trajectories) and bundled comic-style fonts—`xkcd Script` (default, CC BY-NC 3.0 for non-commercial/academic use) plus commercial-safe SIL OFL 1.1 alternates (`Patrick Hand` and `Comic Neue`)—ship inside the wheel.
 
+Install directly from GitHub:
+
 ```bash
-pip install xkcd-matchem
+pip install git+https://github.com/vzordillo/xkcd-matchem.git
 ```
+
+:::{note}
+**PyPI Release Note:** Standard PyPI installation (`pip install xkcd-matchem`) will be enabled with the first tagged PyPI release. Until then, install from GitHub using the `git+https://...` commands on this page or from a local editable checkout below.
+:::
 
 ### Quick Verification
 
-Once installed, check the CLI and inspect the bundled examples and built-in file parsers:
+Once installed, check the CLI, inspect the bundled examples and built-in file parsers, and render a quick verification figure:
 
 ```bash
 xkcd-matchem --version
 xkcd-matchem samples
 xkcd-matchem formats
+xkcd-matchem render si_diamond.cif -o si_check.png
 ```
 
-You should see all **17 sample datasets** (alphabetically from `alaninedipeptide.pdb` to `water_rdf.xvg`) and all **29 zero-dependency native formats** listed cleanly.
+You should see `xkcd-matchem 0.1.0`, all **17 sample datasets** (alphabetically from `alaninedipeptide.pdb` to `water_rdf.xvg`), all **29 zero-dependency native formats**, and a rendered `si_check.png` crystal figure in your working directory.
 
 ## Optional Ecosystem Adapters
 
@@ -33,10 +40,10 @@ Already using ASE, pymatgen, RDKit, cclib, or MDAnalysis? Install only the bridg
 | `md` | `MDAnalysis>=2.6`, `mdtraj>=1.9` | Import MDAnalysis `Universe` or MDTraj `Trajectory` objects (`xm.from_mdanalysis`, `xm.from_mdtraj`) |
 | `animation` | `pillow>=10.0` | Export looping trajectory animations as GIFs via `xm.animate_trajectory()` |
 
-For example, to add ASE, pymatgen, RDKit, and GIF animation support together:
+For example, to add ASE, pymatgen, RDKit, and GIF animation support together from GitHub:
 
 ```bash
-pip install "xkcd-matchem[ase,pymatgen,rdkit,animation]"
+pip install "xkcd-matchem[ase,pymatgen,rdkit,animation] @ git+https://github.com/vzordillo/xkcd-matchem.git"
 ```
 
 :::{tip}
