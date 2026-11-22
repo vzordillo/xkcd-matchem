@@ -24,12 +24,14 @@ from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import structure
 from xkcd_matchem.data import elements
 from xkcd_matchem.io import registry
+from xkcd_matchem.io.native import _limits
 
 
 def _consume_cube_mo_header(
     lines: list[str],
     cursor: int,
     has_mo_line: bool,
+    source: str | pathlib.Path = "",
 ) -> tuple[int, int]:
     """Consumes optional multi-orbital CUBE header lines."""
     if not has_mo_line or cursor >= len(lines):
@@ -39,6 +41,7 @@ def _consume_cube_mo_header(
     if not mo_toks:
         return cursor, 1
     n_mo = max(1, mo_toks[0])
+    _limits.check_grid_voxels(n_mo, source=source)
     while len(mo_toks) < 1 + n_mo and cursor < len(lines):
         mo_toks.extend(int(t) for t in lines[cursor].split())
         cursor += 1
@@ -59,6 +62,7 @@ def read_cube(path: str | pathlib.Path) -> electronic.VolumetricGrid:
       ParseError: If the header or volumetric grid is truncated or invalid.
     """
     p = pathlib.Path(path)
+    _limits.check_file_size(p)
     lines = p.read_text(encoding="utf-8").splitlines()
     if len(lines) < 7:
         raise exceptions.ParseError(f"Truncated Gaussian CUBE file: {p}")
@@ -68,6 +72,7 @@ def read_cube(path: str | pathlib.Path) -> electronic.VolumetricGrid:
         n_raw = int(line3[0])
         has_mo_line = n_raw < 0
         n_atoms = abs(n_raw)
+        _limits.check_atom_count(n_atoms, source=p)
         origin = (
             np.array([float(x) for x in line3[1:4]], dtype=np.float64) * bohr
         )
@@ -84,6 +89,7 @@ def read_cube(path: str | pathlib.Path) -> electronic.VolumetricGrid:
                 np.array([float(x) for x in parts[1:4]], dtype=np.float64)
                 * scale
             )
+        _limits.check_grid_voxels(dims[0] * dims[1] * dims[2], source=p)
 
         if len(lines) < 6 + n_atoms:
             raise exceptions.ParseError(f"Truncated CUBE atom table in {p}")
@@ -100,8 +106,11 @@ def read_cube(path: str | pathlib.Path) -> electronic.VolumetricGrid:
     except (IndexError, ValueError) as exc:
         raise exceptions.ParseError(f"Malformed CUBE header in {p}") from exc
 
-    cursor, n_mo = _consume_cube_mo_header(lines, 6 + n_atoms, has_mo_line)
+    cursor, n_mo = _consume_cube_mo_header(
+        lines, 6 + n_atoms, has_mo_line, source=p
+    )
     n_read = dims[0] * dims[1] * dims[2] * n_mo
+    _limits.check_grid_voxels(n_read, source=p)
     values = np.fromstring(
         " ".join(lines[cursor:]), sep=" ", dtype=np.float64, count=n_read
     )

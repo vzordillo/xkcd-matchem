@@ -12,10 +12,12 @@ permissions:
 jobs:
   test-and-lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - name: Check out repository
@@ -45,6 +47,82 @@ jobs:
       - name: Run test suite
         run: pytest -v --cov=xkcd_matchem --cov-fail-under=90 tests/
 
-      - name: Build sdist and wheel
-        if: matrix.python-version == '3.12'
-        run: python -m build
+  wheel-smoke:
+    needs: test-and-lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist and wheel and verify with twine
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "build>=1.2" "twine>=5.0"
+          python -m build
+          twine check dist/*
+
+      - name: Install wheel into isolated temp venv and smoke-test
+        env:
+          MPLBACKEND: Agg
+        run: |
+          WHEEL_PATH="$(realpath dist/*.whl)"
+          SMOKE_DIR="$(mktemp -d)"
+          trap 'rm -rf "$SMOKE_DIR"' EXIT
+          python -m venv "$SMOKE_DIR/venv"
+          "$SMOKE_DIR/venv/bin/python" -m pip install --upgrade pip
+          "$SMOKE_DIR/venv/bin/python" -m pip install "$WHEEL_PATH"
+          cd /tmp
+          "$SMOKE_DIR/venv/bin/xkcd-matchem" --version
+          "$SMOKE_DIR/venv/bin/xkcd-matchem" render si_diamond.cif \
+            -o "$SMOKE_DIR/cli_smoke.png"
+          test -s "$SMOKE_DIR/cli_smoke.png"
+          "$SMOKE_DIR/venv/bin/python" - <<'PY'
+          import importlib.resources
+          import pathlib
+          import tempfile
+          import matplotlib
+          matplotlib.use("Agg")
+          from matplotlib import pyplot as plt
+          import xkcd_matchem as xm
+          from xkcd_matchem.style import fonts
+          from xkcd_matchem.style import theme
+
+          assert theme.get_preset("classic").font == "Patrick Hand"
+          for name in ("Patrick Hand", "Comic Neue", "Comic Neue Bold"):
+              assert fonts.get_bundled_font_path(name).is_file()
+          fonts_dir = importlib.resources.files("xkcd_matchem.data").joinpath(
+              "fonts"
+          )
+          for lic in ("PatrickHand-OFL.txt", "ComicNeue-OFL.txt"):
+              assert fonts_dir.joinpath(lic).is_file()
+          tpl = importlib.resources.files("xkcd_matchem.data").joinpath(
+              "templates/viewer.html"
+          )
+          assert tpl.is_file()
+          samples = xm.list_samples()
+          assert len(samples) >= 16
+          assert "si_diamond.cif" in samples
+
+          with tempfile.TemporaryDirectory() as tmp:
+              out_png = pathlib.Path(tmp) / "smoke.png"
+              out_html = pathlib.Path(tmp) / "smoke.html"
+              ax = xm.plot_crystal("si_diamond.cif")
+              ax.figure.savefig(out_png)
+              plt.close(ax.figure)
+              assert out_png.is_file() and out_png.stat().st_size > 1000
+              xm.export_interactive_html("aspirin.xyz", out_html)
+              html_txt = out_html.read_text(encoding="utf-8")
+              assert "Patrick Hand" in html_txt
+              assert "__XM_PAYLOAD__" not in html_txt
+          print("Wheel smoke checks passed.")
+          PY
