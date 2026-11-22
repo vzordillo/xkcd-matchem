@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     ELEMENTS_BY_Z = data.ELEMENTS_BY_Z
     ElementRecord = data.ElementRecord
     GraphicalAbstractLayout = layout.GraphicalAbstractLayout
+    HydrogenBond = core.HydrogenBond
     InteractiveView = render.InteractiveView
     IsosurfaceMesh = core.IsosurfaceMesh
     MatchemError = core.MatchemError
@@ -94,6 +95,7 @@ if TYPE_CHECKING:
     clear_background_grid = style.clear_background_grid
     compute_background_grid_coords = style.compute_background_grid_coords
     compute_brillouin_zone = core.compute_brillouin_zone
+    compute_tetrahedral_order = core.compute_tetrahedral_order
     compute_wulff_shape = core.compute_wulff_shape
     compute_xrd = core.compute_xrd
     create_conference_poster = layout.create_conference_poster
@@ -133,6 +135,7 @@ if TYPE_CHECKING:
     get_vdw_radius = data.get_vdw_radius
     infer_bond_orders = core.infer_bond_orders
     infer_bonds = core.infer_bonds
+    infer_hbonds = core.infer_hbonds
     is_dark_color = render.is_dark_color
     list_background_styles = style.list_background_styles
     list_element_palettes = style.list_element_palettes
@@ -243,6 +246,7 @@ __all__ = [
     "ELEMENTS_BY_Z",
     "ElementRecord",
     "GraphicalAbstractLayout",
+    "HydrogenBond",
     "InteractiveView",
     "IsosurfaceMesh",
     "MatchemError",
@@ -281,6 +285,7 @@ __all__ = [
     "clear_background_grid",
     "compute_background_grid_coords",
     "compute_brillouin_zone",
+    "compute_tetrahedral_order",
     "compute_wulff_shape",
     "compute_xrd",
     "core",
@@ -322,6 +327,7 @@ __all__ = [
     "get_vdw_radius",
     "infer_bond_orders",
     "infer_bonds",
+    "infer_hbonds",
     "io",
     "is_dark_color",
     "layout",
@@ -452,6 +458,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "ELEMENTS_BY_Z": (_DATA, "ELEMENTS_BY_Z"),
     "ElementRecord": (_DATA, "ElementRecord"),
     "GraphicalAbstractLayout": (_LAYOUT, "GraphicalAbstractLayout"),
+    "HydrogenBond": (_CORE, "HydrogenBond"),
     "InteractiveView": (_RENDER, "InteractiveView"),
     "IsosurfaceMesh": (_CORE, "IsosurfaceMesh"),
     "MatchemError": (_CORE, "MatchemError"),
@@ -492,6 +499,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
         "compute_background_grid_coords",
     ),
     "compute_brillouin_zone": (_CORE, "compute_brillouin_zone"),
+    "compute_tetrahedral_order": (_CORE, "compute_tetrahedral_order"),
     "compute_wulff_shape": (_CORE, "compute_wulff_shape"),
     "compute_xrd": (_CORE, "compute_xrd"),
     "create_conference_poster": (_LAYOUT, "create_conference_poster"),
@@ -531,6 +539,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "get_vdw_radius": (_DATA, "get_vdw_radius"),
     "infer_bond_orders": (_CORE, "infer_bond_orders"),
     "infer_bonds": (_CORE, "infer_bonds"),
+    "infer_hbonds": (_CORE, "infer_hbonds"),
     "is_dark_color": (_RENDER, "is_dark_color"),
     "list_background_styles": (_STYLE, "list_background_styles"),
     "list_element_palettes": (_STYLE, "list_element_palettes"),

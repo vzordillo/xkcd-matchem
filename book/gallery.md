@@ -11,6 +11,12 @@ Looping GIFs are rendered with `xm.animate_trajectory()`, `xm.animate_orbit()`, 
 | ![TiO2 coordination polyhedra orbit](_static/gallery/crystal_orbit.gif) | ![SN2 NEB reaction animation](_static/gallery/neb_reaction.gif) | ![Theme and color scheme switcher](_static/gallery/theme_switcher.gif) |
 | *Orbiting TiO₆ coordination octahedra with depth-sorted faces* | *Animating a 9-image S<sub>N</sub>2 reaction path into a looping GIF* | *Switching light, warm paper, and dark chalkboard presets on the fly* |
 
+### MLIP Water → Ice I<sub>h</sub> Crystallization MD
+
+Direct-coexistence freezing of 32 H₂O molecules simulated locally with the **MACE-MPA-0** foundation potential (`scripts/simulate_water_to_ice_mlip.py`, bundled as `water_to_ice.xyz`), rendered with dynamic dashed hydrogen bonds (`show_hbonds=True`), live Errington–Debenedetti tetrahedral order $q(t)$, and exothermic potential energy $\Delta E(t)$ — see [Tutorial 15: Animated GIFs](tutorials/15_animations_md_orbits_and_isosurfaces.ipynb):
+
+![MACE-MPA-0 water to ice Ih MD crystallization animation](_static/gallery/water_to_ice_md.gif)
+
 ## Full Multi-Domain Showcase
 
 A quick overview spanning molecules, periodic crystals, electronic structure, spectroscopy, and thermodynamics in one view:

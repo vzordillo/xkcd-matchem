@@ -2,7 +2,7 @@
 
 ## Core Package
 
-`xkcd-matchem` has a light core footprint: **Python 3.10+**, **NumPy**, **SciPy**, and **Matplotlib**. All **17 bundled sample files** (molecules, crystals, slabs, DFT outputs, LOBSTER COHP tables, Phonopy bands, spectra, orbital cubes, and MD/NEB trajectories) and bundled comic-style fonts—`xkcd Script` (default, CC BY-NC 3.0 for non-commercial/academic use) plus commercial-safe SIL OFL 1.1 alternates (`Patrick Hand` and `Comic Neue`)—ship inside the wheel.
+`xkcd-matchem` has a light core footprint: **Python 3.10+**, **NumPy**, **SciPy**, and **Matplotlib**. All **18 bundled sample files** (molecules, crystals, slabs, DFT outputs, LOBSTER COHP tables, Phonopy bands, spectra, orbital cubes, and MD/NEB trajectories) and bundled comic-style fonts—`xkcd Script` (default, CC BY-NC 3.0 for non-commercial/academic use) plus commercial-safe SIL OFL 1.1 alternates (`Patrick Hand` and `Comic Neue`)—ship inside the wheel.
 
 Install directly from GitHub:
 
@@ -25,7 +25,7 @@ xkcd-matchem formats
 xkcd-matchem render si_diamond.cif -o si_check.png
 ```
 
-You should see `xkcd-matchem 0.1.0`, all **17 sample datasets** (alphabetically from `alaninedipeptide.pdb` to `water_rdf.xvg`), all **29 zero-dependency native formats**, and a rendered `si_check.png` crystal figure in your working directory.
+You should see `xkcd-matchem 0.1.0`, all **18 sample datasets** (alphabetically from `alaninedipeptide.pdb` to `water_to_ice.xyz`), all **29 zero-dependency native formats**, and a rendered `si_check.png` crystal figure in your working directory.
 
 ## Optional Ecosystem Adapters
 

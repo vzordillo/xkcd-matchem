@@ -29,6 +29,77 @@ from xkcd_matchem.core import structure
 from xkcd_matchem.data import elements
 
 
+def compute_tetrahedral_order(
+    atoms: structure.AtomsData,
+    center_symbol: str = "O",
+    max_cutoff: float = 5.5,
+) -> float:
+    """Computes the Errington-Debenedetti tetrahedral order parameter ``q``.
+
+    For each atom of ``center_symbol``, evaluates::
+
+        q_i = 1 - (3/8) * sum_{j=1..3} sum_{k=j+1..4} (cos(psi_jk) + 1/3)^2
+
+    over its 4 nearest periodic neighbors of the same species. Ideal
+    tetrahedral networks (Ice Ih, diamond Si) yield ``q = 1.0``, while
+    disordered liquid water typically sits around ``q ~ 0.45-0.65``.
+
+    Args:
+      atoms: Input molecular or periodic crystal structure.
+      center_symbol: Species whose local tetrahedral network is evaluated.
+      max_cutoff: Initial neighbor search radius in Angstrom (expanded if
+        needed to locate at least 4 neighbors per center).
+
+    Returns:
+      Mean tetrahedral order parameter ``q`` in ``[-3, 1]``.
+
+    Raises:
+      StructureError: If fewer than 5 matching atoms exist or 4 neighbors
+        cannot be located within search range.
+    """
+    sym = elements.get_element(center_symbol).symbol
+    sel = [i for i, s in enumerate(atoms.symbols) if s == sym]
+    if len(sel) < 5:
+        raise exceptions.StructureError(
+            f"Need at least 5 {sym!r} atoms to compute tetrahedral order q."
+        )
+    sub = structure.AtomsData(
+        symbols=[sym] * len(sel),
+        positions=atoms.positions[sel],
+        cell=atoms.cell,
+        pbc=atoms.pbc,
+    )
+    hits = neighbors.find_periodic_neighbors(
+        sub,
+        max_cutoff=max_cutoff,
+        min_cutoff=1e-4,
+        use_pbc=sub.cell is not None and any(sub.pbc),
+        symmetric=True,
+    )
+    by_i: dict[int, list[neighbors.NeighborHit]] = {}
+    for hit in hits:
+        by_i.setdefault(hit.i, []).append(hit)
+    q_vals: list[float] = []
+    for i in range(len(sub)):
+        nbrs = sorted(by_i.get(i, []), key=lambda h: h.distance)[:4]
+        if len(nbrs) < 4:
+            raise exceptions.StructureError(
+                f"Atom {i} has fewer than 4 {sym!r} neighbors within "
+                f"{max_cutoff:.2f} A."
+            )
+        vecs = np.array(
+            [h.vector / max(h.distance, 1e-12) for h in nbrs],
+            dtype=np.float64,
+        )
+        acc = 0.0
+        for j in range(3):
+            for k in range(j + 1, 4):
+                cos_t = float(np.clip(np.dot(vecs[j], vecs[k]), -1.0, 1.0))
+                acc += (cos_t + 1.0 / 3.0) ** 2
+        q_vals.append(1.0 - (3.0 / 8.0) * acc)
+    return float(np.mean(q_vals))
+
+
 @dataclasses.dataclass
 class Trajectory:
     """Multi-frame atomic trajectory for MD simulations or NEB reaction paths.
@@ -364,3 +435,21 @@ class Trajectory:
                 f"No matching atoms for RDF pair {pair!r}."
             )
         return r_centers, g_sum / norm_accum
+
+    def tetrahedral_order(
+        self,
+        center_symbol: str = "O",
+        max_cutoff: float = 5.5,
+    ) -> np.ndarray:
+        """Evaluates Errington-Debenedetti tetrahedral order ``q`` per frame."""
+        return np.array(
+            [
+                compute_tetrahedral_order(
+                    frame,
+                    center_symbol=center_symbol,
+                    max_cutoff=max_cutoff,
+                )
+                for frame in self.frames
+            ],
+            dtype=np.float64,
+        )

@@ -896,10 +896,190 @@ def _make_isosurface_orbit_gif(out_dir: pathlib.Path) -> None:
     _save_gif(frames, out_dir / "isosurface_shading_orbit.gif", 130)
 
 
+def _make_water_to_ice_gif(out_dir: pathlib.Path) -> None:
+    """Generates a synchronized MACE-MPA-0 water-to-ice Ih MD freezing GIF."""
+    traj = xm.load_trajectory("water_to_ice.xyz")
+    times = (
+        traj.times
+        if traj.times is not None
+        else np.arange(len(traj), dtype=np.float64)
+    )
+    temps = traj.temperatures
+    rel_e = traj.energy_profile(relative=True, unit="eV")
+    q_vals = traj.tetrahedral_order("O")
+    hb_counts = [len(xm.infer_hbonds(frame)) for frame in traj.frames]
+
+    cam = xm.Camera(azimuth=-72.0, elevation=14.0, perspective=0.25)
+    chunks: list[np.ndarray] = []
+    for frame in traj.frames:
+        if frame.cell is None:
+            continue
+        pivot = 0.5 * (frame.cell[0] + frame.cell[1] + frame.cell[2])
+        span = xm.core.geometry.scene_projection_span(
+            frame.positions, cam, center=pivot, cell=frame.cell
+        )
+        xy, _ = xm.core.geometry.project_points(
+            frame.positions, cam, center=pivot, span=span
+        )
+        c2d, _, _ = xm.core.geometry.cell_corners_projected(
+            frame.cell, cam, center=pivot, span=span
+        )
+        chunks.extend([xy, c2d])
+    all_pts = np.vstack(chunks)
+    pad = 1.15
+    x_lo = float(all_pts[:, 0].min()) - pad
+    x_hi = float(all_pts[:, 0].max()) + pad
+    y_lo = float(all_pts[:, 1].min()) - pad
+    y_hi = float(all_pts[:, 1].max()) + pad
+
+    sw = xm.stroke_weights("classic")
+    t_end = max(float(times[-1]), 1.0)
+    q_lo, q_hi = 0.70, 1.04
+    e_lo = float(np.min(rel_e)) - 0.55
+    e_hi = max(float(np.max(rel_e)) + 0.45, 0.5)
+
+    frames: list[Image.Image] = []
+    # Brief pause on final frozen crystal frame so viewers absorb Ice Ih lattice
+    seq = list(range(len(traj))) + [len(traj) - 1, len(traj) - 1]
+    for idx in seq:
+        with xm.xkcd_style("classic"):
+            fig = plt.figure(figsize=(10.2, 5.2), dpi=95)
+            fig.patch.set_facecolor(xm.style.PAPER)
+            fig.patch.set_edgecolor(xm.style.PAPER)
+            fig.patch.set_sketch_params(0.0, 0.0, 0.0)
+            gs = fig.add_gridspec(
+                2, 2, width_ratios=[1.02, 1.18], hspace=0.42, wspace=0.18
+            )
+            ax_3d = fig.add_subplot(gs[:, 0])
+            ax_q = fig.add_subplot(gs[0, 1])
+            ax_e = fig.add_subplot(gs[1, 1])
+
+            xm.render_structure_3d(
+                traj[idx],
+                ax=ax_3d,
+                camera=cam,
+                show_cell="clean",
+                show_hbonds=True,
+                radius_scale=0.88,
+            )
+            ax_3d.set_xlim(x_lo, x_hi)
+            ax_3d.set_ylim(y_lo, y_hi)
+            ax_3d.set_aspect("equal", adjustable="box")
+            t_tag = (
+                f" | {float(temps[idx]):.0f} K"
+                if temps is not None
+                else ""
+            )
+            ax_3d.set_title(
+                f"Water -> Ice Ih ({hb_counts[idx]} H-bonds{t_tag})",
+                fontsize=12.0,
+            )
+
+            # Top-right: Errington-Debenedetti tetrahedral order q(t)
+            ax_q.plot(
+                times,
+                q_vals,
+                color="#0072B2",
+                lw=sw.overlay,
+                alpha=0.25,
+                zorder=2.0,
+            )
+            ax_q.plot(
+                times[: idx + 1],
+                q_vals[: idx + 1],
+                color="#0072B2",
+                lw=sw.primary,
+                zorder=3.5,
+            )
+            ax_q.fill_between(
+                times[: idx + 1],
+                q_lo,
+                q_vals[: idx + 1],
+                color="#56B4E9",
+                alpha=0.18,
+                zorder=1.5,
+            )
+            q_ref = ax_q.axhline(
+                1.0, color="#64748B", linestyle="--", lw=sw.guide, zorder=1.2
+            )
+            q_ref.set_sketch_params(0.0, 0.0, 0.0)
+            ax_q.text(
+                0.03 * t_end,
+                0.985,
+                "Ideal Ice Ih (q = 1.0)",
+                fontsize=8.5,
+                va="top",
+                color=xm.style.INK,
+            )
+            ax_q.scatter(
+                [float(times[idx])],
+                [float(q_vals[idx])],
+                s=95,
+                color="#D55E00",
+                edgecolor=xm.style.INK,
+                linewidth=1.4,
+                clip_on=False,
+                zorder=6.0,
+            )
+            ax_q.set_xlim(-0.25, t_end + 0.35)
+            ax_q.set_ylim(q_lo, q_hi)
+            ax_q.set_ylabel("Tetrahedral q")
+            ax_q.set_title(
+                f"MACE-MPA-0 Crystallization | t = {float(times[idx]):.1f} ps"
+                f" (q = {float(q_vals[idx]):.2f})",
+                fontsize=11.0,
+            )
+            xm.style.apply_xkcd_spines(ax_q, preset="classic")
+
+            # Bottom-right: Exothermic potential energy drop
+            ax_e.plot(
+                times,
+                rel_e,
+                color="#009E73",
+                lw=sw.overlay,
+                alpha=0.25,
+                zorder=2.0,
+            )
+            ax_e.plot(
+                times[: idx + 1],
+                rel_e[: idx + 1],
+                color="#009E73",
+                lw=sw.primary,
+                zorder=3.5,
+            )
+            e_zero = ax_e.axhline(
+                0.0, color="#64748B", linestyle="--", lw=sw.guide, zorder=1.2
+            )
+            e_zero.set_sketch_params(0.0, 0.0, 0.0)
+            ax_e.scatter(
+                [float(times[idx])],
+                [float(rel_e[idx])],
+                s=95,
+                color="#D55E00",
+                edgecolor=xm.style.INK,
+                linewidth=1.4,
+                clip_on=False,
+                zorder=6.0,
+            )
+            ax_e.set_xlim(-0.25, t_end + 0.35)
+            ax_e.set_ylim(e_lo, e_hi)
+            ax_e.set_xlabel("Simulation Time (ps)")
+            ax_e.set_ylabel("Delta E (eV)")
+            xm.style.apply_xkcd_spines(ax_e, preset="classic")
+
+            fig.subplots_adjust(
+                left=0.03, right=0.97, top=0.91, bottom=0.12
+            )
+            frames.append(_fig_to_pil(fig))
+            plt.close(fig)
+    _save_gif(frames, out_dir / "water_to_ice_md.gif", duration_ms=175)
+
+
 def _make_readme_gifs(out_dir: pathlib.Path) -> None:
-    """Generates lightweight animated GIFs showcasing 3D, NEB, and themes."""
+    """Generates lightweight animated GIFs showcasing 3D, NEB, MD, & themes."""
     _make_crystal_orbit_gif(out_dir)
     _make_neb_gif(out_dir)
+    _make_water_to_ice_gif(out_dir)
     _make_theme_switcher_gif(out_dir)
     _make_isosurface_orbit_gif(out_dir)
 

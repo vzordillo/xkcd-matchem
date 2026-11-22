@@ -37,6 +37,9 @@ _SAMPLE_DESCRIPTIONS: dict[str, str] = {
     "sn2_neb.xyz": "Cl- + CH3Cl SN2 9-image reaction path (extended XYZ)",
     "cu_md.lammpstrj": "Cu cluster 10-frame MD trajectory (LAMMPS lammpstrj)",
     "water_rdf.xvg": "Liquid water O-O radial distribution (GROMACS XVG)",
+    "water_to_ice.xyz": (
+        "MACE-MPA-0 direct-coexistence water-to-ice Ih MD (32 H2O, extXYZ)"
+    ),
     "tio2_slab.poscar": "Rutile TiO2 (110) surface slab (VASP POSCAR)",
 }
 

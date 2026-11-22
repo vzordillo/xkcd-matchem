@@ -17,7 +17,7 @@ Looking for the right function? Start here:
 | Plot crystal-field *d*-orbital splitting diagrams | `xm.plot_crystal_field(...)` |
 | Plot cyclic voltammetry, Tafel slopes, battery cycling, or `dQ/dV` | `xm.plot_cyclic_voltammetry(...)`, `xm.plot_tafel(...)`, `xm.plot_battery_profile(...)`, `xm.plot_dqdv(...)` |
 | Sketch reaction pathways, schemes, or NEB barriers | `xm.plot_reaction_profile(...)`, `xm.plot_reaction_scheme(...)`, `xm.plot_neb(...)` |
-| Analyze or animate MD/NEB trajectories, 3D orbits & isosurfaces | `xm.plot_md_timeseries(...)`, `xm.plot_rdf(...)`, `xm.plot_rmsd(...)`, `xm.animate_trajectory(...)`, `xm.animate_orbit(...)`, `xm.animate_isosurface(...)` |
+| Analyze or animate MD/NEB trajectories, H-bonds, 3D orbits & isosurfaces | `xm.plot_md_timeseries(...)`, `xm.plot_rdf(...)`, `xm.plot_rmsd(...)`, `xm.infer_hbonds(...)`, `xm.compute_tetrahedral_order(...)`, `xm.animate_trajectory(...)`, `xm.animate_orbit(...)`, `xm.animate_isosurface(...)` |
 | Plot hulls, EOS fits, Pourbaix, volcanos, defects, or parity | `xm.plot_phase_diagram_2d(...)`, `xm.plot_eos(...)`, `xm.plot_pourbaix(...)`, `xm.plot_volcano(...)`, `xm.plot_defect_formation(...)`, `xm.plot_parity(...)`, `xm.plot_bar_comparison(...)`, `xm.plot_pipeline_diagram(...)` |
 | Plot an xkcd periodic table, heatmap, or formula spotlight | `xm.plot_periodic_table(...)` |
 | Plot ternary hulls, space-group sunbursts, or histograms | `xm.plot_ternary_phase_diagram(...)`, `xm.plot_spacegroup_distribution(...)`, `xm.plot_histogram(...)` |

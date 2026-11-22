@@ -6,10 +6,10 @@ Built for students, educators, and researchers, it turns chemistry and materials
 
 ![xkcd-matchem showcase](_static/gallery/hero_showcase.png)
 
-| 3D Coordination Polyhedra Orbit | Climbing-Image NEB Pathway | Live Theme & Palette Switching |
+| 3D Coordination Polyhedra Orbit | MACE-MPA-0 Water → Ice I<sub>h</sub> MD | Climbing-Image NEB Pathway |
 | :---: | :---: | :---: |
-| ![TiO2 coordination polyhedra orbit](_static/gallery/crystal_orbit.gif) | ![SN2 NEB reaction animation](_static/gallery/neb_reaction.gif) | ![Theme and color scheme switcher](_static/gallery/theme_switcher.gif) |
-| *Orbiting TiO₆ coordination octahedra with depth-sorted faces* | *Animating a 9-image S<sub>N</sub>2 reaction path into a looping GIF* | *Switching light, warm paper, and dark chalkboard presets on the fly* |
+| ![TiO2 coordination polyhedra orbit](_static/gallery/crystal_orbit.gif) | ![MACE-MPA-0 water to ice Ih MD freezing](_static/gallery/water_to_ice_md.gif) | ![SN2 NEB reaction animation](_static/gallery/neb_reaction.gif) |
+| *Orbiting TiO₆ coordination octahedra with depth-sorted faces* | *MLIP water freezing with dynamic H-bonds & order q(t)* | *Animating a 9-image S<sub>N</sub>2 reaction path into a looping GIF* |
 
 ## Pick Your Starting Point
 

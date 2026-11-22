@@ -39,6 +39,7 @@ __all__ = [
     "CoordinationPolyhedron",
     "DensityOfStates",
     "EOSFitResult",
+    "HydrogenBond",
     "IsosurfaceMesh",
     "MatchemError",
     "MolecularOrbitals",
@@ -60,6 +61,7 @@ __all__ = [
     "broaden_peaks",
     "cell_vectors_from_parameters",
     "compute_brillouin_zone",
+    "compute_tetrahedral_order",
     "compute_wulff_shape",
     "compute_xrd",
     "extract_isosurface",
@@ -68,6 +70,7 @@ __all__ = [
     "fit_birch_murnaghan",
     "infer_bond_orders",
     "infer_bonds",
+    "infer_hbonds",
     "miller_plane_polygon",
     "minimum_image_vector",
     "project_points",
@@ -85,6 +88,7 @@ CohpData = electronic.CohpData
 CoordinationPolyhedron = bonding.CoordinationPolyhedron
 DensityOfStates = electronic.DensityOfStates
 EOSFitResult = wulff.EOSFitResult
+HydrogenBond = bonding.HydrogenBond
 IsosurfaceMesh = isosurface.IsosurfaceMesh
 MatchemError = exceptions.MatchemError
 MolecularOrbitals = electronic.MolecularOrbitals
@@ -106,6 +110,7 @@ birch_murnaghan_pressure = wulff.birch_murnaghan_pressure
 broaden_peaks = spectroscopy.broaden_peaks
 cell_vectors_from_parameters = geometry.cell_vectors_from_parameters
 compute_brillouin_zone = brillouin.compute_brillouin_zone
+compute_tetrahedral_order = trajectory.compute_tetrahedral_order
 compute_wulff_shape = wulff.compute_wulff_shape
 compute_xrd = spectroscopy.compute_xrd
 extract_isosurface = isosurface.extract_isosurface
@@ -114,6 +119,7 @@ find_periodic_neighbors = neighbors.find_periodic_neighbors
 fit_birch_murnaghan = wulff.fit_birch_murnaghan
 infer_bond_orders = bonding.infer_bond_orders
 infer_bonds = bonding.infer_bonds
+infer_hbonds = bonding.infer_hbonds
 miller_plane_polygon = geometry.miller_plane_polygon
 minimum_image_vector = geometry.minimum_image_vector
 project_points = geometry.project_points

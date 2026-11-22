@@ -94,6 +94,8 @@ class RenderOptions3D:
     bond_scale: float
     vector_scale: float = 1.0
     vector_color: str = "#D55E00"
+    show_hbonds: bool = False
+    hbond_color: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -173,6 +175,16 @@ class VectorPayload:
 
 
 @dataclasses.dataclass(frozen=True)
+class HBondPayload:
+    """Painter item payload for a dashed geometric hydrogen bond."""
+
+    p_start: np.ndarray
+    p_end: np.ndarray
+    color: str
+    linewidth: float
+
+
+@dataclasses.dataclass(frozen=True)
 class PainterItem:
     """Depth-sorted 3D painter's-algorithm draw entry."""
 
@@ -182,6 +194,7 @@ class PainterItem:
         int
         | BondPayload
         | HalfBondPayload
+        | HBondPayload
         | TrianglePayload
         | MillerPayload
         | CellEdgePayload
@@ -427,6 +440,84 @@ def _add_bond_queue_items(
         )
 
 
+def _add_hbond_queue_items(
+    items: list[PainterItem],
+    atoms: structure.AtomsData,
+    cam: geometry.Camera,
+    scene: SceneGeometry3D,
+    hbond_color: str | None,
+) -> None:
+    """Appends depth-sorted dashed ``H...A`` hydrogen-bond guide strokes."""
+    hbonds = bonding.infer_hbonds(atoms, use_pbc=atoms.cell is not None)
+    if not hbonds:
+        return
+    bg = str(plt.rcParams.get("axes.facecolor", palettes.PAPER))
+    default_col = "#56B4E9" if primitives.is_dark_color(bg) else "#0072B2"
+    col = default_col if hbond_color is None else hbond_color
+    lw = float(np.clip(0.38 * scene.bond_w, 0.95, 1.75))
+    for hb in hbonds:
+        h_idx, a_idx = hb.hydrogen_index, hb.acceptor_index
+        if h_idx >= len(atoms) or a_idx >= len(atoms):
+            continue
+        if hb.shift == (0, 0, 0) or atoms.cell is None:
+            depth_hb = 0.5 * float(scene.depth[h_idx] + scene.depth[a_idx])
+            items.append(
+                PainterItem(
+                    depth=depth_hb - 0.05,
+                    kind="hbond",
+                    payload=HBondPayload(
+                        p_start=scene.xy[h_idx],
+                        p_end=scene.xy[a_idx],
+                        color=col,
+                        linewidth=lw,
+                    ),
+                )
+            )
+            continue
+        shift_vec = (
+            hb.shift[0] * atoms.cell[0]
+            + hb.shift[1] * atoms.cell[1]
+            + hb.shift[2] * atoms.cell[2]
+        )
+        p_h = atoms.positions[h_idx]
+        p_a = atoms.positions[a_idx]
+        stubs, _ = geometry.project_points(
+            np.vstack(
+                [
+                    p_h + 0.45 * (p_a + shift_vec - p_h),
+                    p_a + 0.45 * (p_h - shift_vec - p_a),
+                ]
+            ),
+            cam,
+            center=scene.pivot,
+            span=scene.proj_span,
+        )
+        items.append(
+            PainterItem(
+                depth=float(scene.depth[h_idx]) - 0.07,
+                kind="hbond",
+                payload=HBondPayload(
+                    p_start=scene.xy[h_idx],
+                    p_end=stubs[0],
+                    color=col,
+                    linewidth=lw,
+                ),
+            )
+        )
+        items.append(
+            PainterItem(
+                depth=float(scene.depth[a_idx]) - 0.07,
+                kind="hbond",
+                payload=HBondPayload(
+                    p_start=scene.xy[a_idx],
+                    p_end=stubs[1],
+                    color=col,
+                    linewidth=lw,
+                ),
+            )
+        )
+
+
 def _add_polyhedra_items(
     items: list[PainterItem],
     atoms: structure.AtomsData,
@@ -652,6 +743,18 @@ def _draw_queue_item(
             solid_capstyle="round",
             zorder=z_layer,
         )
+    elif kind == "hbond" and isinstance(payload, HBondPayload):
+        ln = ax.plot(
+            [float(payload.p_start[0]), float(payload.p_end[0])],
+            [float(payload.p_start[1]), float(payload.p_end[1])],
+            color=payload.color,
+            linestyle=(0, (3.2, 2.4)),
+            linewidth=payload.linewidth,
+            alpha=0.82,
+            solid_capstyle="round",
+            zorder=z_layer,
+        )[0]
+        ln.set_sketch_params(0.0, 0.0, 0.0)
     elif kind == "vec" and isinstance(payload, VectorPayload):
         primitives.draw_vector_arrow_2d(
             ax,
@@ -868,6 +971,8 @@ def _build_3d_painter_queue(
             scene,
             skip_spec=_polyhedra_skip_spec(opts.style, polyhedra),
         )
+    if opts.show_hbonds and opts.style != "spacefill":
+        _add_hbond_queue_items(items, atoms, cam, scene, opts.hbond_color)
     _add_polyhedra_items(items, atoms, polyhedra, cam, scene, opts.palette)
     _add_vector_items(items, atoms, vec_arr, cam, scene, opts)
     miller_labels = _add_miller_queue_items(
@@ -1042,6 +1147,8 @@ def render_structure_3d(
     ) = None,
     vector_scale: float = 1.0,
     vector_color: str = "#D55E00",
+    show_hbonds: bool | str = False,
+    hbond_color: str | None = None,
 ) -> maxes.Axes:
     """Renders a 3D molecule or crystal in clean xkcd-style depth-sorted view.
 
@@ -1076,6 +1183,10 @@ def render_structure_3d(
         ``"velocities"``, ``"magmom"``, or an ``(N, 3)`` / ``(N,)`` array.
       vector_scale: Multiplier for vector arrow length in Angstrom.
       vector_color: Arrow hex color or ``"spin"`` for red(+)/blue(-) z-spins.
+      show_hbonds: Whether to overlay dashed geometric ``D-H...A`` hydrogen
+        bonds (pass ``True`` or a hex color string such as ``"#56B4E9"``).
+      hbond_color: Optional hex color for dashed hydrogen-bond strokes
+        (defaults to theme-contrasting blue).
 
     Returns:
       Matplotlib ``Axes`` containing the rendered structure.
@@ -1106,6 +1217,15 @@ def render_structure_3d(
         if show_bonds is None
         else show_bonds
     )
+    hb_flag = bool(show_hbonds) and (
+        not isinstance(show_hbonds, str)
+        or show_hbonds.strip().lower() not in ("", "none", "off", "false")
+    )
+    hb_col = (
+        show_hbonds
+        if (hb_flag and isinstance(show_hbonds, str) and hbond_color is None)
+        else hbond_color
+    )
     opts = RenderOptions3D(
         style=style,
         palette=palette,
@@ -1114,6 +1234,8 @@ def render_structure_3d(
         bond_scale=bond_scale,
         vector_scale=vector_scale,
         vector_color=vector_color,
+        show_hbonds=hb_flag,
+        hbond_color=hb_col,
     )
     _render_prepared_3d(
         ax, atoms, cam, scene, opts, polyhedra, miller_planes, vec_arr

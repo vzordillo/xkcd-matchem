@@ -452,6 +452,7 @@ def plot_molecule(
     ) = None,
     vector_scale: float = 1.0,
     vector_color: str = "#D55E00",
+    show_hbonds: bool | str = False,
 ) -> maxes.Axes:
     """Plots a molecule in xkcd-style 3D depth-sorted or 2D skeletal view.
 
@@ -473,6 +474,8 @@ def plot_molecule(
         ``"velocities"``, ``"magmom"``, or an ``(N, 3)`` / ``(N,)`` array).
       vector_scale: Multiplier for vector arrow length in Angstrom.
       vector_color: Arrow hex color or ``"spin"`` for red/blue z-spins.
+      show_hbonds: Whether to overlay dashed geometric ``D-H...A`` hydrogen
+        bonds in 3D view (``True`` or hex color string).
 
     Returns:
       Matplotlib ``Axes`` containing the rendered molecule.
@@ -498,6 +501,7 @@ def plot_molecule(
                 vectors=vectors,
                 vector_scale=vector_scale,
                 vector_color=vector_color,
+                show_hbonds=show_hbonds,
             )
             if show_legend:
                 _pad_structure_view(ax, bottom_frac=0.14, top_frac=0.04)
@@ -571,6 +575,7 @@ def plot_crystal(
     ) = None,
     vector_scale: float = 1.0,
     vector_color: str = "#D55E00",
+    show_hbonds: bool | str = False,
 ) -> maxes.Axes:
     """Plots a periodic crystal or supercell with unit cell, axes & bonds.
 
@@ -610,6 +615,7 @@ def plot_crystal(
             vectors=mapped_vectors,
             vector_scale=vector_scale,
             vector_color=vector_color,
+            show_hbonds=show_hbonds,
         )
         if show_legend:
             _pad_structure_view(ax, bottom_frac=0.17, top_frac=0.04)

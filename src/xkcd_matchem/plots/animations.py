@@ -236,6 +236,7 @@ def _render_orbit_frame(
     show_cell: bool | str,
     crystal_axes: bool | str | None,
     show_bonds: bool,
+    show_hbonds: bool | str,
     show_legend: bool,
     palette: str | Mapping[str, str],
     preset: str | theme.ThemePreset,
@@ -263,6 +264,7 @@ def _render_orbit_frame(
                 show_cell=show_cell,
                 crystal_axes=crystal_axes,
                 show_bonds=show_bonds,
+                show_hbonds=show_hbonds,
                 polyhedra=polyhedra,
             )
             ax.set_xlim(x_lo, x_hi)
@@ -293,6 +295,7 @@ def animate_orbit(
     show_cell: bool | str = True,
     crystal_axes: bool | str | None = None,
     show_bonds: bool | None = None,
+    show_hbonds: bool | str = False,
     show_legend: bool = True,
     palette: str | Mapping[str, str] = "xkcd",
     preset: str | theme.ThemePreset = "classic",
@@ -326,6 +329,8 @@ def animate_orbit(
         ``"corner"``, or ``"origin"``).
       show_bonds: Override covalent bond drawing (defaults to ``False`` when
         ``polyhedra`` is set, else ``True``).
+      show_hbonds: Whether to overlay dashed geometric ``D-H...A`` hydrogen
+        bonds on every frame (``True`` or a hex color string).
       show_legend: Whether to display the inline element color legend.
       palette: Element color palette name or custom ``{symbol: hex}`` mapping.
       preset: Visual theme preset name or ``ThemePreset``.
@@ -360,6 +365,7 @@ def animate_orbit(
             show_cell=show_cell,
             crystal_axes=crystal_axes,
             show_bonds=bonds_flag,
+            show_hbonds=show_hbonds,
             show_legend=show_legend,
             palette=palette,
             preset=preset,

@@ -62,6 +62,29 @@ _DOUBLE_MAX_DIST: dict[tuple[str, str], float] = {
 
 
 @dataclasses.dataclass(frozen=True)
+class HydrogenBond:
+    """Geometric ``D-H...A`` hydrogen bond detected in a molecule or crystal.
+
+    Attributes:
+      donor_index: Atom index of the electronegative donor ``D`` (e.g. ``O``).
+      hydrogen_index: Atom index of the bridging hydrogen ``H``.
+      acceptor_index: Atom index of the acceptor ``A``.
+      distance_ha: ``H...A`` separation in Angstrom.
+      distance_da: ``D...A`` donor-acceptor separation in Angstrom.
+      angle_deg: ``D-H...A`` angle in degrees (ideal linear = 180 deg).
+      shift: Periodic lattice shift ``(sx, sy, sz)`` from ``H`` to ``A``.
+    """
+
+    donor_index: int
+    hydrogen_index: int
+    acceptor_index: int
+    distance_ha: float
+    distance_da: float
+    angle_deg: float
+    shift: tuple[int, int, int] = (0, 0, 0)
+
+
+@dataclasses.dataclass(frozen=True)
 class CoordinationPolyhedron:
     """Convex coordination polyhedron around a central atom.
 
@@ -263,6 +286,103 @@ def infer_bonds(
     if infer_orders:
         bonds = infer_bond_orders(atoms, bonds)
     return bonds
+
+
+def infer_hbonds(
+    atoms: structure.AtomsData,
+    *,
+    max_ha_dist: float = 2.35,
+    max_da_dist: float = 3.35,
+    min_angle_deg: float = 135.0,
+    donors: Sequence[str] = ("O", "N", "F"),
+    acceptors: Sequence[str] = ("O", "N", "F"),
+    use_pbc: bool = True,
+) -> list[HydrogenBond]:
+    """Detects geometric ``D-H...A`` hydrogen bonds under optional PBC.
+
+    Args:
+      atoms: Input atomic or periodic crystal structure.
+      max_ha_dist: Maximum ``H...A`` distance in Angstrom.
+      max_da_dist: Maximum ``D...A`` distance in Angstrom.
+      min_angle_deg: Minimum ``D-H...A`` angle in degrees.
+      donors: Allowed electronegative donor element symbols.
+      acceptors: Allowed electronegative acceptor element symbols.
+      use_pbc: Whether to search across periodic image boundaries.
+
+    Returns:
+      Sorted list of detected ``HydrogenBond`` objects.
+    """
+    if len(atoms) < 3:
+        return []
+    donor_set = {elements.get_element(s).symbol for s in donors}
+    acceptor_set = {elements.get_element(s).symbol for s in acceptors}
+    search_cut = max(1.30, float(max_ha_dist))
+    hits = neighbors.find_periodic_neighbors(
+        atoms,
+        max_cutoff=search_cut,
+        min_cutoff=0.45,
+        use_pbc=use_pbc and atoms.cell is not None,
+        symmetric=True,
+    )
+    by_h: dict[int, list[neighbors.NeighborHit]] = {}
+    for hit in hits:
+        if atoms.symbols[hit.i] == "H":
+            by_h.setdefault(hit.i, []).append(hit)
+
+    hbonds: list[HydrogenBond] = []
+    for h_idx, h_hits in by_h.items():
+        cov = [
+            h
+            for h in h_hits
+            if atoms.symbols[h.j] in donor_set and h.distance <= 1.25
+        ]
+        if not cov:
+            continue
+        donor_hit = min(cov, key=lambda h: h.distance)
+        v_hd = donor_hit.vector
+        n_hd = float(np.linalg.norm(v_hd))
+        if n_hd < 1e-8:
+            continue
+        for acc_hit in h_hits:
+            if atoms.symbols[acc_hit.j] not in acceptor_set:
+                continue
+            if acc_hit.j == donor_hit.j and acc_hit.shift == donor_hit.shift:
+                continue
+            if not 1.25 < acc_hit.distance <= max_ha_dist:
+                continue
+            v_ha = acc_hit.vector
+            d_da = float(np.linalg.norm(v_ha - v_hd))
+            if d_da > max_da_dist:
+                continue
+            cos_ang = float(
+                np.clip(
+                    np.dot(v_hd, v_ha) / max(n_hd * acc_hit.distance, 1e-12),
+                    -1.0,
+                    1.0,
+                )
+            )
+            ang = float(np.degrees(np.arccos(cos_ang)))
+            if ang >= min_angle_deg:
+                hbonds.append(
+                    HydrogenBond(
+                        donor_index=donor_hit.j,
+                        hydrogen_index=h_idx,
+                        acceptor_index=acc_hit.j,
+                        distance_ha=float(acc_hit.distance),
+                        distance_da=d_da,
+                        angle_deg=ang,
+                        shift=acc_hit.shift,
+                    )
+                )
+    hbonds.sort(
+        key=lambda hb: (
+            hb.donor_index,
+            hb.hydrogen_index,
+            hb.acceptor_index,
+            hb.shift,
+        )
+    )
+    return hbonds
 
 
 def _oriented_hull_faces(

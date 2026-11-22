@@ -141,7 +141,30 @@ def read_xyz_trajectory(path: str | pathlib.Path) -> trajectory.Trajectory:
         frames.append(frame)
     if not frames:
         raise exceptions.ParseError(f"No XYZ frames found in {p}.")
-    return trajectory.Trajectory(frames=frames, metadata={"source": str(p)})
+    times: np.ndarray | None = None
+    temps: np.ndarray | None = None
+    if all("time" in frame.metadata for frame in frames):
+        try:
+            times = np.array(
+                [float(frame.metadata["time"]) for frame in frames],
+                dtype=np.float64,
+            )
+        except ValueError:
+            times = None
+    if all("temperature" in frame.metadata for frame in frames):
+        try:
+            temps = np.array(
+                [float(frame.metadata["temperature"]) for frame in frames],
+                dtype=np.float64,
+            )
+        except ValueError:
+            temps = None
+    return trajectory.Trajectory(
+        frames=frames,
+        times=times,
+        temperatures=temps,
+        metadata={"source": str(p)},
+    )
 
 
 def read_xyz(path: str | pathlib.Path) -> structure.AtomsData:

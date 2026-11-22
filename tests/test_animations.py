@@ -162,3 +162,62 @@ def test_animate_trajectory_path_and_ping_pong(tmp_path: pathlib.Path) -> None:
         assert img.format == "GIF"
         assert getattr(img, "n_frames", 1) == 8
     assert plt.get_fignums() == []
+
+
+def test_water_to_ice_hbonds_and_tetrahedral_order(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Verifies MLIP water_to_ice.xyz metadata, H-bonds, q(t), and rendering."""
+    traj = xm.load_trajectory("water_to_ice.xyz")
+    assert len(traj) == 24
+    assert traj.times is not None
+    assert len(traj.times) == 24
+    assert traj.temperatures is not None
+    assert len(traj.temperatures) == 24
+    assert traj.energies is not None
+    assert len(traj.energies) == 24
+
+    q_vals = traj.tetrahedral_order("O")
+    assert q_vals.shape == (24,)
+    assert float(q_vals[-1]) > float(q_vals[0])
+    assert 0.85 <= float(q_vals[-1]) <= 1.0
+
+    hb_start = xm.infer_hbonds(traj[0])
+    hb_end = xm.infer_hbonds(traj[-1])
+    assert len(hb_end) > len(hb_start)
+    assert len(hb_end) >= 55
+    for hb in hb_end:
+        assert hb.distance_ha <= 2.35
+        assert hb.distance_da <= 3.35
+        assert hb.angle_deg >= 135.0
+
+    # Render static & animated water-to-ice with show_hbonds=True and custom hex
+    ax1 = xm.plot_crystal(
+        traj[-1], show_cell="clean", show_hbonds=True, boundary_atoms=False
+    )
+    assert ax1 is not None
+    plt.close(ax1.figure)
+
+    ax2 = xm.plot_molecule("alaninedipeptide.pdb", show_hbonds="#56B4E9")
+    assert ax2 is not None
+    plt.close(ax2.figure)
+
+    gif_ice = xm.animate_trajectory(
+        "water_to_ice.xyz",
+        tmp_path / "water_ice_hb.gif",
+        fps=6,
+        stride=8,
+        show_cell="clean",
+        show_hbonds=True,
+        dpi=72,
+    )
+    assert gif_ice.is_file()
+    with Image.open(gif_ice) as img:
+        assert getattr(img, "n_frames", 1) == 3
+
+    # Edge-case guards for infer_hbonds & compute_tetrahedral_order
+    tiny = xm.AtomsData(symbols=["O", "H"], positions=np.zeros((2, 3)))
+    assert xm.infer_hbonds(tiny) == []
+    with pytest.raises(xm.StructureError, match="at least 5"):
+        xm.compute_tetrahedral_order(tiny, center_symbol="O")
+    assert plt.get_fignums() == []

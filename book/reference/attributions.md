@@ -65,3 +65,8 @@ Used by `xm.compute_xrd()` and `xm.plot_xrd()` to weight Bragg peak intensities 
 - **xkcd Script (default)**: Derived from Randall Munroe's handwriting via [`ipython/xkcd-font`](https://github.com/ipython/xkcd-font), Creative Commons Attribution-NonCommercial 3.0 Unported (CC BY-NC 3.0; non-commercial/academic use; see `src/xkcd_matchem/data/fonts/xkcd-script-LICENSE.txt`).
 - **Patrick Hand**: Patrick Wagesreiter, SIL Open Font License 1.1 (`PatrickHand-OFL.txt`; commercial-safe alternate, activated automatically when `XM_COMMERCIAL_SAFE=1` or via `xm.set_default_font("Patrick Hand")`).
 - **Comic Neue**: Craig Rozynski & Hrant Papazian, SIL Open Font License 1.1 (`ComicNeue-OFL.txt`; commercial-safe alternate via `xm.set_default_font("Comic Neue")`).
+
+### 8. Bundled MLIP MD Sample & Structural Order Metrics
+
+- **MACE-MPA-0 Foundation Potential**: Batatia, I. et al. (2023/2024). "A foundation model for atomistic materials chemistry" ([arXiv:2401.00096](https://arxiv.org/abs/2401.00096)); `medium-mpa-0` weights trained on MPtrj + sAlexandria (PBE). Used locally via ASE Langevin MD (`scripts/simulate_water_to_ice_mlip.py`) to generate the bundled `water_to_ice.xyz` direct-coexistence water-to-ice $I_h$ trajectory sample (32 H₂O / 96 atoms).
+- **Tetrahedral Order Parameter (`xm.compute_tetrahedral_order`)**: Errington, J. R.; Debenedetti, P. G. (2001). "Relationship between structural order and the anomalies of liquid water". *Nature*, 409, 318-321. DOI: [10.1038/35053024](https://doi.org/10.1038/35053024).

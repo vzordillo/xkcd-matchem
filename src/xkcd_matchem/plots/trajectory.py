@@ -278,7 +278,8 @@ def animate_trajectory(
     preset: str | theme.ThemePreset = "classic",
     *,
     ping_pong: bool = False,
-    show_cell: bool = True,
+    show_cell: bool | str = True,
+    show_hbonds: bool | str = False,
     figsize: tuple[float, float] = (4.8, 4.2),
     dpi: int = 110,
     title: str | None = None,
@@ -297,6 +298,8 @@ def animate_trajectory(
       ping_pong: If ``True``, appends reversed interior frames for seamless
         forward-and-back looping (ideal for NEB reaction paths).
       show_cell: Whether to render the periodic unit cell when present.
+      show_hbonds: Whether to overlay dashed geometric ``D-H...A`` hydrogen
+        bonds on every frame (``True`` or a hex color string).
       figsize: Matplotlib figure size ``(width, height)`` in inches.
       dpi: Frame rasterization resolution in dots per inch.
       title: Optional heading prefix (frame counter is appended automatically).
@@ -314,7 +317,7 @@ def animate_trajectory(
     out = pathlib.Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     cam = geometry.resolve_camera(camera, cell=selected[0].cell)
-    x_lo, x_hi, y_lo, y_hi = _trajectory_viewport(selected, cam)
+    viewport = _trajectory_viewport(selected, cam)
     preset_obj = theme.get_preset(preset)
     prefix = f"{title} — " if title else ""
     with theme.xkcd_style(preset=preset):
@@ -335,9 +338,10 @@ def animate_trajectory(
                     camera=cam,
                     palette=palette,
                     show_cell=show_cell,
+                    show_hbonds=show_hbonds,
                 )
-                ax.set_xlim(x_lo, x_hi)
-                ax.set_ylim(y_lo, y_hi)
+                ax.set_xlim(viewport[0], viewport[1])
+                ax.set_ylim(viewport[2], viewport[3])
                 ax.set_aspect("equal", adjustable="box")
                 ax.set_title(
                     f"{prefix}Frame {frame_idx + 1}/{len(selected)}",

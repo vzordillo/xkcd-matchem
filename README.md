@@ -24,7 +24,7 @@
 
 ## Installation & Quickstart
 
-Requires **Python 3.10+**, NumPy, SciPy, and Matplotlib (17 bundled sample datasets and comic-style fonts included; `pip install xkcd-matchem` will be enabled on the first PyPI release):
+Requires **Python 3.10+**, NumPy, SciPy, and Matplotlib (18 bundled sample datasets and comic-style fonts included; `pip install xkcd-matchem` will be enabled on the first PyPI release):
 
 ```bash
 pip install git+https://github.com/vzordillo/xkcd-matchem.git
@@ -82,10 +82,10 @@ xm.set_default_font(None)  # reset to bundled xkcd Script default
 
 ## In Motion & Flagship Highlights
 
-| 3D Coordination Polyhedra Orbit | Climbing-Image NEB Pathway | Live Theme & Palette Switching |
+| 3D Coordination Polyhedra Orbit | MACE-MPA-0 Water → Ice I<sub>h</sub> MD | Climbing-Image NEB Pathway |
 | :---: | :---: | :---: |
-| ![TiO2 coordination polyhedra orbit](book/_static/gallery/crystal_orbit.gif) | ![SN2 NEB reaction animation](book/_static/gallery/neb_reaction.gif) | ![Theme and color scheme switcher](book/_static/gallery/theme_switcher.gif) |
-| *Orbiting TiO₆ octahedra with depth-sorted faces* | *Looping 9-image S<sub>N</sub>2 transition-state path* | *Light, warm paper, and dark chalkboard presets* |
+| ![TiO2 coordination polyhedra orbit](book/_static/gallery/crystal_orbit.gif) | ![MACE-MPA-0 water to ice Ih MD freezing](book/_static/gallery/water_to_ice_md.gif) | ![SN2 NEB reaction animation](book/_static/gallery/neb_reaction.gif) |
+| *Orbiting TiO₆ octahedra with depth-sorted faces* | *MLIP water freezing with dynamic H-bonds & order q(t)* | *Looping 9-image S<sub>N</sub>2 transition-state path* |
 
 | Pen-and-Ink 3D Orbital Shading Modes | Brillouin Zones, COHP, Volcanos & Defects |
 | :---: | :---: |
@@ -95,7 +95,7 @@ xm.set_default_font(None)  # reset to bundled xkcd Script default
 | :---: | :---: |
 | ![Crystal-field splitting, electrochemistry, battery dQ/dV, NMR, and XPS](book/_static/gallery/electrochem_crystalfield_nmr.png) | ![Turnkey SciComm layout templates for graphical abstracts, slides, and comics](book/_static/gallery/scicomm_layout_templates.png) |
 
-Explore all 21 figures & 4 animations in the **[Visual Gallery](https://vzordillo.github.io/xkcd-matchem/gallery.html)**.
+Explore all 21 figures & 5 animations in the **[Visual Gallery](https://vzordillo.github.io/xkcd-matchem/gallery.html)**.
 
 ---
 
