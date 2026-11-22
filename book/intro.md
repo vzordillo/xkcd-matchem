@@ -16,8 +16,8 @@ Not sure where to jump in? Choose the path that fits what you want to do right n
 
 - **Want to try it without writing code?** Open the **[Interactive 3D Studio](playground.md)** right inside this documentation to spin crystals, swap atom colors, build supercells, and copy ready-to-run Python snippets.
 - **Want to browse what's possible first?** Flip through the **[Visual Gallery](gallery.md)** — every figure links directly to the tutorial notebook that builds it.
-- **Ready to plot your own files?** Follow **[Installation](installation.md)**, then work through **Basic Usage** (Tutorials 01, 02, 03, 04, and 06) for one-line defaults across molecules, crystals, slabs, bands/DOS, spectra, and powder XRD.
-- **Customizing a talk, poster, or simulation workflow?** Jump to **Advanced Usage** (Tutorials 05, 07, 08, 09, 10, and 11) for custom themes and palettes, volumetric cubes, NEB pathways, periodic MD/RDF analysis, thermodynamic hulls, millimeter poster boards (with stacked cards and vintage parchment scrolls), the xkcd periodic table, background grids & hatched shading, matchem icons, GNN structure graphs, and ASE/pymatgen/RDKit/cclib bridges.
+- **Ready to plot your own files?** Follow **[Installation](installation.md)**, then work through **Basic Usage** (Tutorials 01, 02, 03, 04, and 06) for one-line defaults across themes, molecules, crystals and slabs, electronic band structures/DOS, vibrational/optical spectra, and powder XRD.
+- **Customizing a talk, poster, or simulation workflow?** Jump to **Advanced Usage** (Tutorials 05 and 07–13) for molecular orbitals & volumetric cubes, NEB reaction barriers, periodic MD/RDF analysis, convex hulls & Birch-Murnaghan EOS fits, millimeter poster boards (with stacked cards and vintage parchment scrolls), the 118-element xkcd periodic table, background grids & hatched shading, matchem icons & GNN crystal graphs, 3D orbital isosurfaces, phonon dispersions, equilibrium Wulff crystal shapes, stick-scientist comic strips, Wigner–Seitz Brillouin zones, LOBSTER COHP bonding curves, Sabatier catalysis volcanos, semiconductor defect formation diagrams, and ASE/pymatgen/RDKit/cclib bridges.
 
 :::{note}
 **Defaults first, full control whenever you want it.**
@@ -33,5 +33,5 @@ Intentional xkcd-style stroke jitter makes slides, posters, and tutorials engagi
 
 1. **[Getting Started](installation.md)** — Install the core package (plus optional adapters), browse the visual gallery, or test-drive the offline 3D Studio.
 2. **Basic Usage** — Hands-on notebooks focused on clean default presets for themes, molecules, crystals/slabs, band structures/DOS, and spectra/XRD.
-3. **Advanced Usage** — Deeper customization and analysis covering orbitals/cubes, NEB barriers, triclinic MD & RDF, convex hulls & EOS fits, poster boards, and ecosystem bridges.
+3. **Advanced Usage** — Deeper customization, storytelling, and domain analysis covering orbitals/cubes, NEB transition-state barriers, triclinic MD & RDF, convex hulls & EOS fits, poster boards, the periodic table & GNN graphs, 3D isosurfaces/phonons/Wulff shapes/comic strips, Brillouin zones/COHP/volcanos/defects, and ecosystem bridges.
 4. **[Reference](reference/supported_formats.md)** — Exact native file format contracts, scientific geometry safeguards, searchable API reference, citation metadata, and data attributions.
