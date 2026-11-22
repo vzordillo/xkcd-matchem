@@ -62,6 +62,7 @@ if TYPE_CHECKING:
     INTERNAL_UNITS = core.INTERNAL_UNITS
     InteractiveView = render.InteractiveView
     IsosurfaceMesh = core.IsosurfaceMesh
+    LayoutAuditReport = style.LayoutAuditReport
     MatchemError = core.MatchemError
     MechanismComicLayout = layout.MechanismComicLayout
     MolecularOrbitals = core.MolecularOrbitals
@@ -84,6 +85,7 @@ if TYPE_CHECKING:
     ThemePreset = style.ThemePreset
     Trajectory = core.Trajectory
     UnsupportedFormatError = core.UnsupportedFormatError
+    VisualFingerprint = style.VisualFingerprint
     VolumetricGrid = core.VolumetricGrid
     WulffFacet = core.WulffFacet
     WulffShape = core.WulffShape
@@ -94,6 +96,8 @@ if TYPE_CHECKING:
     annotate_distance = render.annotate_distance
     apply_background_grid = style.apply_background_grid
     atomic_form_factor = data.atomic_form_factor
+    audit_figure_layout = style.audit_figure_layout
+    avoid_text_overlaps = style.avoid_text_overlaps
     broaden_peaks = core.broaden_peaks
     clear_background_grid = style.clear_background_grid
     compute_background_grid_coords = style.compute_background_grid_coords
@@ -121,6 +125,7 @@ if TYPE_CHECKING:
     export_interactive_html = render.export_interactive_html
     extract_isosurface = core.extract_isosurface
     fetch_xkcd_script = style.fetch_xkcd_script
+    figure_visual_fingerprint = style.figure_visual_fingerprint
     find_coordination_polyhedra = core.find_coordination_polyhedra
     find_periodic_neighbors = core.find_periodic_neighbors
     from_ase = io.from_ase
@@ -130,6 +135,7 @@ if TYPE_CHECKING:
     from_pymatgen = io.from_pymatgen
     from_rdkit = io.from_rdkit
     from_smiles = io.from_smiles
+    generate_python_snippet = render.generate_python_snippet
     get_atomic_mass = data.get_atomic_mass
     get_covalent_radius = data.get_covalent_radius
     get_default_font = style.get_default_font
@@ -224,6 +230,7 @@ if TYPE_CHECKING:
     to_pymatgen = io.to_pymatgen
     use_xkcd_script = style.use_xkcd_script
     view_structure = render.view_structure
+    visual_similarity = style.visual_similarity
     xkcd_style = style.xkcd_style
 
 __version__ = _version.__version__
@@ -257,6 +264,7 @@ __all__ = [
     "INTERNAL_UNITS",
     "InteractiveView",
     "IsosurfaceMesh",
+    "LayoutAuditReport",
     "MatchemError",
     "MechanismComicLayout",
     "MolecularOrbitals",
@@ -279,6 +287,7 @@ __all__ = [
     "ThemePreset",
     "Trajectory",
     "UnsupportedFormatError",
+    "VisualFingerprint",
     "VolumetricGrid",
     "WulffFacet",
     "WulffShape",
@@ -290,6 +299,8 @@ __all__ = [
     "annotate_distance",
     "apply_background_grid",
     "atomic_form_factor",
+    "audit_figure_layout",
+    "avoid_text_overlaps",
     "broaden_peaks",
     "clear_background_grid",
     "compute_background_grid_coords",
@@ -319,6 +330,7 @@ __all__ = [
     "export_interactive_html",
     "extract_isosurface",
     "fetch_xkcd_script",
+    "figure_visual_fingerprint",
     "find_coordination_polyhedra",
     "find_periodic_neighbors",
     "from_ase",
@@ -328,6 +340,7 @@ __all__ = [
     "from_pymatgen",
     "from_rdkit",
     "from_smiles",
+    "generate_python_snippet",
     "get_atomic_mass",
     "get_covalent_radius",
     "get_default_font",
@@ -427,6 +440,7 @@ __all__ = [
     "to_pymatgen",
     "use_xkcd_script",
     "view_structure",
+    "visual_similarity",
     "xkcd_style",
 ]
 
@@ -475,6 +489,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "INTERNAL_UNITS": (_CORE, "INTERNAL_UNITS"),
     "InteractiveView": (_RENDER, "InteractiveView"),
     "IsosurfaceMesh": (_CORE, "IsosurfaceMesh"),
+    "LayoutAuditReport": (_STYLE, "LayoutAuditReport"),
     "MatchemError": (_CORE, "MatchemError"),
     "MechanismComicLayout": (_LAYOUT, "MechanismComicLayout"),
     "MolecularOrbitals": (_CORE, "MolecularOrbitals"),
@@ -497,6 +512,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "ThemePreset": (_STYLE, "ThemePreset"),
     "Trajectory": (_CORE, "Trajectory"),
     "UnsupportedFormatError": (_CORE, "UnsupportedFormatError"),
+    "VisualFingerprint": (_STYLE, "VisualFingerprint"),
     "VolumetricGrid": (_CORE, "VolumetricGrid"),
     "WulffFacet": (_CORE, "WulffFacet"),
     "WulffShape": (_CORE, "WulffShape"),
@@ -507,6 +523,8 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "annotate_distance": (_RENDER, "annotate_distance"),
     "apply_background_grid": (_STYLE, "apply_background_grid"),
     "atomic_form_factor": (_DATA, "atomic_form_factor"),
+    "audit_figure_layout": (_STYLE, "audit_figure_layout"),
+    "avoid_text_overlaps": (_STYLE, "avoid_text_overlaps"),
     "broaden_peaks": (_CORE, "broaden_peaks"),
     "clear_background_grid": (_STYLE, "clear_background_grid"),
     "compute_background_grid_coords": (
@@ -537,6 +555,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "export_interactive_html": (_RENDER, "export_interactive_html"),
     "extract_isosurface": (_CORE, "extract_isosurface"),
     "fetch_xkcd_script": (_STYLE, "fetch_xkcd_script"),
+    "figure_visual_fingerprint": (_STYLE, "figure_visual_fingerprint"),
     "find_coordination_polyhedra": (_CORE, "find_coordination_polyhedra"),
     "find_periodic_neighbors": (_CORE, "find_periodic_neighbors"),
     "from_ase": (_IO, "from_ase"),
@@ -546,6 +565,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "from_pymatgen": (_IO, "from_pymatgen"),
     "from_rdkit": (_IO, "from_rdkit"),
     "from_smiles": (_IO, "from_smiles"),
+    "generate_python_snippet": (_RENDER, "generate_python_snippet"),
     "get_atomic_mass": (_DATA, "get_atomic_mass"),
     "get_covalent_radius": (_DATA, "get_covalent_radius"),
     "get_default_font": (_STYLE, "get_default_font"),
@@ -643,6 +663,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "to_pymatgen": (_IO, "to_pymatgen"),
     "use_xkcd_script": (_STYLE, "use_xkcd_script"),
     "view_structure": (_RENDER, "view_structure"),
+    "visual_similarity": (_STYLE, "visual_similarity"),
     "xkcd_style": (_STYLE, "xkcd_style"),
 }
 

@@ -1,6 +1,6 @@
 # Visual Gallery
 
-Every figure and animated GIF below is generated automatically by `scripts/generate_gallery.py` using real bundled sample files, clean hand-drawn typography (commercial-safe **SIL OFL 1.1 `Patrick Hand`** by default, with optional non-commercial **CC BY-NC 3.0 `xkcd Script`** opt-in via `xm.use_xkcd_script()`), and depth-sorted 3D scenes. Click any tutorial link to see the exact code behind each plot.
+Every figure and animated GIF below is generated automatically by `scripts/generate_gallery.py` using real bundled sample files and depth-sorted 3D scenes. To showcase the classic xkcd aesthetic, these front-facing gallery images are rendered with the bundled optional **`xkcd Script`** font (**CC BY-NC 3.0**, activated via `xm.use_xkcd_script()`), while the library code and Interactive 3D Studio default out of the box to commercial-safe **SIL OFL 1.1 `Patrick Hand`** (alongside `Comic Neue`). Click any tutorial link to see the exact code behind each plot.
 
 ## Animated Motion & Theme Explorer
 

@@ -6,7 +6,7 @@ documentation, bundled fonts, and scientific data tables:
 | Component | Path | License | Notes |
 | --- | --- | --- | --- |
 | Python library, tests, scripts | `src/`, `tests/`, `scripts/` | Apache-2.0 | Permissive with explicit patent grant & attribution (`LICENSE`, `NOTICE`) |
-| Tutorials & documentation text | `book/` | CC BY 4.0 | Open academic and commercial reuse with attribution (`book/LICENSE-CC-BY-4.0.txt`); any figures explicitly rendered with `xkcd Script` carry CC BY-NC 3.0 font terms |
+| Tutorials & documentation text | `book/` | CC BY 4.0 | Open academic and commercial reuse with attribution (`book/LICENSE-CC-BY-4.0.txt`); showcase figures in `book/_static/gallery/` are rendered with opt-in `xkcd Script` (CC BY-NC 3.0) |
 | Patrick Hand font (default) | `src/xkcd_matchem/data/fonts/PatrickHand-*` | SIL OFL 1.1 | Bundled commercial-safe default font across all presets by Patrick Wagesreiter |
 | Comic Neue font | `src/xkcd_matchem/data/fonts/ComicNeue-*` | SIL OFL 1.1 | Bundled commercial-safe alternate font by Craig Rozynski & Hrant Papazian |
 | `xkcd Script` font (optional opt-in) | `src/xkcd_matchem/data/fonts/xkcd-script*` | CC BY-NC 3.0 | Bundled non-commercial opt-in font from `ipython/xkcd-font` (Randall Munroe); activated only via `xm.use_xkcd_script()` and blocked when `XM_COMMERCIAL_SAFE=1` (`xkcd-script-LICENSE.txt`) |

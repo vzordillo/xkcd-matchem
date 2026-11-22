@@ -65,7 +65,7 @@ xkcd-matchem view mos2_2h.poscar -o mos2_studio.html
 <details>
 <summary>Custom Themes, Commercial-Safe Default Font &amp; Opt-In xkcd Script</summary>
 
-Out of the box, `xkcd-matchem` defaults to the bundled **`Patrick Hand`** font (**SIL OFL 1.1**, commercial-safe and pairing cleanly with Apache-2.0 source code) alongside **`Comic Neue`** (**SIL OFL 1.1**). For non-commercial/academic talks, [`xkcd Script`](https://github.com/ipython/xkcd-font) (**CC BY-NC 3.0**) is bundled as an explicit opt-in via `xm.use_xkcd_script()` (and blocked with a `StyleError` when `XM_COMMERCIAL_SAFE=1` is set):
+Out of the box, `xkcd-matchem` defaults to the bundled **`Patrick Hand`** font (**SIL OFL 1.1**, commercial-safe and pairing cleanly with Apache-2.0 source code) alongside **`Comic Neue`** (**SIL OFL 1.1**). For non-commercial/academic talks, [`xkcd Script`](https://github.com/ipython/xkcd-font) (**CC BY-NC 3.0**) is bundled as an explicit opt-in via `xm.use_xkcd_script()` (and blocked with a `StyleError` when `XM_COMMERCIAL_SAFE=1` is set). The front-facing showcase figures and GIFs in this README and the Visual Gallery are rendered with `xm.use_xkcd_script()` to demonstrate the classic xkcd aesthetic:
 
 ```python
 import xkcd_matchem as xm
@@ -150,6 +150,6 @@ If `xkcd-matchem` helps with your poster, talk, or tutorial, please cite it via 
 **Acknowledgements:** Developed semi-autonomously with **Google DeepMind's Gemini** frontier models inside **[Google Antigravity](https://antigravity.google)**, supported by Google's **Antigravity for Science** academic researcher access program. Many thanks to the Google Antigravity, Google Research, and Google DeepMind teams for supporting open scientific communication tooling.
 
 - **Source Code**: [Apache License, Version 2.0](LICENSE) ([`NOTICE`](NOTICE)) &middot; **Documentation &amp; Tutorials**: [CC BY 4.0](book/LICENSE-CC-BY-4.0.txt)
-- **Bundled Commercial-Safe Fonts (Default)**: `Patrick Hand` (default) and `Comic Neue` under **SIL OFL 1.1** ([`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md))
-- **Optional Non-Commercial Font (Opt-In)**: `xkcd Script` under **CC BY-NC 3.0** via `xm.use_xkcd_script()` ([`xkcd-script-LICENSE.txt`](src/xkcd_matchem/data/fonts/xkcd-script-LICENSE.txt); blocked when `XM_COMMERCIAL_SAFE=1`)
+- **Bundled Commercial-Safe Fonts (Code Default)**: `Patrick Hand` (default across all presets and the 3D Studio) and `Comic Neue` under **SIL OFL 1.1** ([`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md))
+- **Optional Non-Commercial Font (Opt-In & Showcase Gallery)**: `xkcd Script` under **CC BY-NC 3.0** via `xm.use_xkcd_script()` ([`xkcd-script-LICENSE.txt`](src/xkcd_matchem/data/fonts/xkcd-script-LICENSE.txt); used to render the showcase figures in `book/_static/gallery/` and blocked when `XM_COMMERCIAL_SAFE=1`)
 - **Scientific Scope &amp; Attributions**: CODATA 2022, IUPAC 2021 / CIAAW 2024, BODR, Alvarez/Mantina vdW radii, Cromer-Mann (LA-3816), Okabe-Ito, and Jmol colors — see **[Capabilities &amp; Validation](https://vzordillo.github.io/xkcd-matchem/reference/capabilities.html)** and **[Citation &amp; Attributions](https://vzordillo.github.io/xkcd-matchem/reference/attributions.html)**.

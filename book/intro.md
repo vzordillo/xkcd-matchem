@@ -22,7 +22,7 @@ Not sure where to jump in? Choose the path that fits what you want to do right n
 
 :::{note}
 **Defaults first, full control whenever you want it.**
-Every plotter runs in a single line using balanced white-canvas defaults (`classic` preset, commercial-safe **SIL OFL 1.1 `Patrick Hand`** typography, borderless structure frames). Whenever you want to match a poster color scheme or dark slide deck, you can override individual element colors, cameras, backgrounds, fonts (including bundled `Comic Neue` under SIL OFL 1.1 or non-commercial opt-in `xm.use_xkcd_script()` under CC BY-NC 3.0), line wiggles, and reusable presets.
+Every plotter runs in a single line using balanced white-canvas defaults (`classic` preset, commercial-safe **SIL OFL 1.1 `Patrick Hand`** typography in library code and the 3D Studio, borderless structure frames). The front-facing showcase figures on this page and in the Visual Gallery are rendered with the optional non-commercial **`xkcd Script`** opt-in (`xm.use_xkcd_script()`, CC BY-NC 3.0). Whenever you want to match a poster color scheme or dark slide deck, you can override individual element colors, cameras, backgrounds, fonts (including bundled `Comic Neue` under SIL OFL 1.1), line wiggles, and reusable presets.
 :::
 
 :::{warning}

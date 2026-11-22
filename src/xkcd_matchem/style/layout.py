@@ -255,12 +255,20 @@ def _ensure_agg_draw(fig: mfigure.Figure) -> Any:
     return canvas.get_renderer()
 
 
+def _text_glyph_extent(
+    artist: mtext.Text,
+    renderer: Any,
+) -> Any:
+    """Returns text-only display bbox without Annotation arrow shafts."""
+    return mtext.Text.get_window_extent(artist, renderer=renderer)
+
+
 def _artist_pixel_bbox(
     artist: mtext.Text,
     renderer: Any,
 ) -> list[float]:
     """Returns ``[x0, y0, x1, y1]`` display bbox including any halo patch."""
-    bb = artist.get_window_extent(renderer=renderer)
+    bb = _text_glyph_extent(artist, renderer)
     x0, y0, x1, y1 = float(bb.x0), float(bb.y0), float(bb.x1), float(bb.y1)
     patch = artist.get_bbox_patch()
     if patch is not None and patch.get_visible():
@@ -803,7 +811,7 @@ def _detect_text_overlaps(
     """Finds meaningfully colliding visible text pairs across ``fig``."""
     measured: list[_BoxItem] = []
     for t_obj, role, _ in items:
-        win_bb = t_obj.get_window_extent(renderer=renderer)
+        win_bb = _text_glyph_extent(t_obj, renderer)
         if win_bb.width <= 1.0 or win_bb.height <= 1.0:
             continue
         measured.append((t_obj, role, _shrunk_glyph_box(win_bb)))
@@ -832,7 +840,7 @@ def _detect_clipped_texts(
     tol_outer = max(52.0, 0.14 * max(fig_w, fig_h))
     clipped: list[str] = []
     for t_obj, role, _ in items:
-        bb = t_obj.get_window_extent(renderer=renderer)
+        bb = _text_glyph_extent(t_obj, renderer)
         if bb.width <= 1.0 or bb.height <= 1.0:
             continue
         tol = (
@@ -872,7 +880,7 @@ def _effective_text_background(
     """Resolves the composited RGB background directly behind ``t_obj``."""
     bg: np.ndarray = fig_bg.copy()
     ax = t_obj.axes
-    bb = t_obj.get_window_extent(renderer=renderer)
+    bb = _text_glyph_extent(t_obj, renderer)
     cx = 0.5 * (float(bb.x0) + float(bb.x1))
     cy = 0.5 * (float(bb.y0) + float(bb.y1))
 

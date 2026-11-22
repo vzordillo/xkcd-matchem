@@ -13,7 +13,7 @@ Looking for the right function? Start here:
 | Analyze direct/indirect band gaps with occupation vs. Fermi-level semantics | `BandStructure.analyze_band_gap(...)`, `xm.core.BandGapResult`, `BandStructure.band_gap()` |
 | Plot a molecule in 3D or 2D skeletal view | `xm.plot_molecule(...)`, `xm.render_structure_3d(...)`, `xm.render_structure_2d(...)` |
 | Plot a crystal, Miller plane, Brillouin zone, Wulff shape, slab, or polyhedra | `xm.plot_crystal(...)`, `xm.plot_brillouin_zone(...)`, `xm.plot_wulff_shape(...)`, `xm.plot_slab(...)`, `xm.plot_coordination(...)` |
-| Spin a structure, trajectory, or CUBE orbital in the offline 3D Studio | `xm.view_structure(...)`, `xm.export_interactive_html(...)` |
+| Spin a structure, trajectory, or CUBE orbital in the offline 3D Studio | `xm.view_structure(...)`, `xm.export_interactive_html(...)`, `xm.generate_python_snippet(...)` |
 | Plot band structures, COHP, phonons, DOS, MOs, or 3D/2D cubes | `xm.plot_bands(...)`, `xm.plot_cohp(...)`, `xm.plot_phonon_bands(...)`, `xm.plot_dos(...)`, `xm.plot_bands_dos(...)`, `xm.plot_mo_diagram(...)`, `xm.plot_volumetric_slice(...)`, `xm.plot_isosurface(...)` |
 | Plot IR/UV-Vis, ¹H NMR multiplets, XPS Shirley fits, or powder XRD | `xm.plot_spectrum(...)`, `xm.plot_nmr(...)`, `xm.plot_xps(...)`, `xm.plot_xrd(...)`, `xm.compute_xrd(...)` |
 | Plot crystal-field *d*-orbital splitting diagrams | `xm.plot_crystal_field(...)` |
@@ -26,7 +26,7 @@ Looking for the right function? Start here:
 | Plot GNN crystal/molecular graphs or informatics networks | `xm.plot_structure_graph(...)`, `xm.plot_graph_network(...)` |
 | Draw xkcd chemistry/materials icons & element tiles | `xm.draw_icon(...)`, `xm.draw_element_badge(...)`, `xm.plot_icon_sheet(...)` |
 | Add notebook/graph/dotgrid/blueprint backgrounds or hatched fills | `xm.apply_background_grid(...)`, `xm.clear_background_grid(...)`, `xm.shade_between(...)`, `shade=...`, `background_grid=...` |
-| Customize themes, stroke weights, element colors, or existing Matplotlib axes | `xm.xkcd_style(...)`, `xm.stroke_weights(...)`, `xm.register_preset(...)`, `xm.register_palette(...)`, `xm.register_element_palette(...)`, `xm.style_existing_axes(...)` |
+| Customize themes, stroke weights, anti-collision layout, or figure audits | `xm.xkcd_style(...)`, `xm.stroke_weights(...)`, `xm.register_preset(...)`, `xm.register_palette(...)`, `xm.register_element_palette(...)`, `xm.style_existing_axes(...)`, `xm.avoid_text_overlaps(...)`, `xm.audit_figure_layout(...)`, `xm.figure_visual_fingerprint(...)`, `xm.visual_similarity(...)` |
 | Build turnkey graphical abstracts, 16:9 talk slides, posters, or mechanism comics | `xm.create_graphical_abstract(...)`, `xm.create_talk_slide(...)`, `xm.create_conference_poster(...)`, `xm.create_mechanism_comic(...)`, `xm.GraphicalAbstractLayout`, `xm.TalkSlideLayout`, `xm.ConferencePosterLayout`, `xm.MechanismComicLayout` |
 | Compose custom poster boards, stick-scientist comic strips, or parchment scrolls | `xm.Board`, `xm.Container`, `xm.Card`, `xm.ComicStrip`, `xm.plot_comic_strip(...)`, `xm.draw_stick_scientist(...)`, `xm.draw_speech_bubble(...)`, `xm.ScrollCard`, `xm.plot_scroll_card(...)`, `xm.Badge`, `xm.save_figure(...)` |
 
@@ -43,6 +43,12 @@ Looking for the right function? Start here:
 - **Palettes & elements:** Top-level `xm.OKABE_ITO`, `xm.get_palette()`, `xm.register_palette()`, `xm.get_element_color()`, `xm.register_element_palette()`, `xm.list_element_palettes()`; submodule helper `xm.style.list_palettes()`.
 - **Background grids & shading:** Top-level `xm.BACKGROUND_STYLES`, `xm.SHADE_STYLES`, `xm.list_background_styles()`, `xm.list_shade_styles()`, `xm.apply_background_grid()`, `xm.clear_background_grid()`, `xm.compute_background_grid_coords()`, `xm.resolve_hatch()`, `xm.shade_between()`.
 - **Fonts:** Commercial-safe SIL OFL 1.1 `Patrick Hand` is the default font out of the box (alongside `Comic Neue`), with `xkcd Script` (CC BY-NC 3.0) available as a non-commercial opt-in via `xm.use_xkcd_script()` (blocked when `XM_COMMERCIAL_SAFE=1`). Top-level helpers: `xm.register_font()`, `xm.set_default_font()`, `xm.get_default_font()`, `xm.use_xkcd_script()`, `xm.fetch_xkcd_script()`; submodule helpers: `xm.style.list_bundled_fonts()`, `xm.style.get_bundled_font_path()`, `xm.style.ensure_fonts_registered()`.
+- **Layout anti-collision & visual auditing (`xm.style.layout`):** Top-level `xm.avoid_text_overlaps()`, `xm.audit_figure_layout()`, `xm.LayoutAuditReport`, `xm.figure_visual_fingerprint()`, `xm.VisualFingerprint`, `xm.visual_similarity()`; submodule helpers `xm.style.resolve_1d_label_positions()`, `xm.style.wcag_contrast_ratio()`, `xm.style.ensure_wcag_contrast()`.
+
+```{eval-rst}
+.. automodule:: xkcd_matchem.style.layout
+   :members:
+```
 
 ```{eval-rst}
 .. automodule:: xkcd_matchem.style.theme

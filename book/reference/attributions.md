@@ -65,9 +65,10 @@ Used by `xm.compute_xrd()` and `xm.plot_xrd()` to weight Bragg peak intensities 
 | Component | Path / Activation | License | Commercial Use |
 | :--- | :--- | :--- | :--- |
 | **Source code, tests & scripts** | `src/`, `tests/`, `scripts/` | Apache-2.0 (`LICENSE`, `NOTICE`) | Permitted |
-| **Default hand-drawn fonts** | `Patrick Hand` (default), `Comic Neue` (`src/xkcd_matchem/data/fonts/`) | SIL OFL 1.1 (`PatrickHand-OFL.txt`, `ComicNeue-OFL.txt`) | Permitted |
+| **Default hand-drawn fonts** | `Patrick Hand` (library & 3D Studio default), `Comic Neue` (`src/xkcd_matchem/data/fonts/`) | SIL OFL 1.1 (`PatrickHand-OFL.txt`, `ComicNeue-OFL.txt`) | Permitted |
 | **Optional non-commercial font** | `xkcd Script` (`xm.use_xkcd_script()` opt-in; blocked when `XM_COMMERCIAL_SAFE=1`) | CC BY-NC 3.0 (`xkcd-script-LICENSE.txt`) | Non-commercial only |
-| **Documentation & tutorials** | `book/` prose and tutorial notebooks | CC BY 4.0 (`book/LICENSE-CC-BY-4.0.txt`) | Permitted with attribution (note: any figures explicitly rendered with `xkcd Script` carry CC BY-NC 3.0 font terms) |
+| **Documentation prose & tutorials** | `book/` prose and tutorial notebooks | CC BY 4.0 (`book/LICENSE-CC-BY-4.0.txt`) | Permitted with attribution |
+| **Front-facing gallery showcase images** | `book/_static/gallery/*.png`, `*.gif` (rendered via `xm.use_xkcd_script()`) | CC BY-NC 3.0 font terms (`xkcd Script`) | Non-commercial showcase (re-run with default `Patrick Hand` for commercial reuse) |
 
 - **Okabe & Ito CUD Palette**: Okabe, M.; Ito, K. (2002; mod. 2008). *Color Universal Design (CUD)* ([https://jfly.uni-koeln.de/color/](https://jfly.uni-koeln.de/color/)) — colorblind-accessible 8-color default series palette (`xm.OKABE_ITO`).
 - **Jmol Element Colors**: Jmol Development Team; Herráez, A.; Vervelle, N. *Jmol Colors* ([https://jmol.sourceforge.net/jscolors/](https://jmol.sourceforge.net/jscolors/), fallback `#FF1493` for $Z=110\text{–}118$).
