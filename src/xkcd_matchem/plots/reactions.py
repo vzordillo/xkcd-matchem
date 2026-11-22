@@ -20,6 +20,7 @@ import pathlib
 from typing import Any
 
 from matplotlib import axes as maxes
+from matplotlib import colors as mcolors
 from matplotlib import pyplot as plt
 import numpy as np
 from scipy import interpolate
@@ -30,6 +31,7 @@ from xkcd_matchem.core import structure
 from xkcd_matchem.core import trajectory
 from xkcd_matchem.io import loader
 from xkcd_matchem.render import structure2d
+from xkcd_matchem.style import layout
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import theme
 
@@ -137,6 +139,44 @@ def _annotate_elementary_barriers(
             last_min = k
 
 
+def _draw_reaction_states(
+    ax: maxes.Axes,
+    xs: np.ndarray,
+    y_vals: np.ndarray,
+    labels: Sequence[str] | None,
+    span: float,
+    colors_and_fs: tuple[str, str, str, float],
+) -> None:
+    """Draws stationary-state energy rungs and haloed ink state labels."""
+    line_col, ink_col, bg_col, lbl_fs = colors_and_fs
+    for k, x_k in enumerate(xs):
+        y_k = float(y_vals[k])
+        ax.plot(
+            [float(x_k) - 0.22, float(x_k) + 0.22],
+            [y_k, y_k],
+            color=line_col,
+            lw=2.8,
+            solid_capstyle="round",
+        )
+        lbl_txt = labels[k] if (labels and k < len(labels)) else f"S{k}"
+        above = _is_local_peak(y_vals, k)
+        y_text = y_k + 0.05 * span if above else y_k - 0.05 * span
+        s_txt = ax.text(
+            float(x_k),
+            y_text,
+            f"{lbl_txt}\n({y_k:+.2f})",
+            ha="center",
+            va="bottom" if above else "top",
+            fontsize=lbl_fs,
+            color=ink_col,
+            bbox=theme.label_halo_bbox(bg_col, pad=0.06, alpha=0.86),
+            zorder=5.5,
+        )
+        s_patch = s_txt.get_bbox_patch()
+        if s_patch is not None:
+            s_patch.set_sketch_params(0.0, 0.0, 0.0)
+
+
 def plot_reaction_profile(
     energies: Sequence[float] | np.ndarray,
     labels: Sequence[str] | None = None,
@@ -188,28 +228,23 @@ def plot_reaction_profile(
                     alpha=0.78,
                 )
 
-        for k in range(n_pts):
-            ax.plot(
-                [xs[k] - 0.22, xs[k] + 0.22],
-                [y_vals[k], y_vals[k]],
-                color=line_col,
-                lw=2.8,
-                solid_capstyle="round",
-            )
-            lbl_txt = labels[k] if (labels and k < len(labels)) else f"S{k}"
-            above = _is_local_peak(y_vals, k)
-            y_text = (
-                y_vals[k] + 0.05 * span if above else y_vals[k] - 0.05 * span
-            )
-            ax.text(
-                xs[k],
-                y_text,
-                f"{lbl_txt}\n({y_vals[k]:+.2f})",
-                ha="center",
-                va="bottom" if above else "top",
-                fontsize=9.2,
-                color=preset_obj.ink_color,
-            )
+        max_lbl_len = (
+            max((len(str(s)) for s in labels), default=0) if labels else 2
+        )
+        lbl_fs = 7.8 if (n_pts >= 7 or max_lbl_len > 14) else 9.2
+        _draw_reaction_states(
+            ax,
+            xs,
+            y_vals,
+            labels,
+            span,
+            (
+                line_col,
+                preset_obj.ink_color,
+                preset_obj.axes_facecolor,
+                lbl_fs,
+            ),
+        )
 
         if n_pts >= 3 and mode_key == "global":
             _annotate_reaction_barrier(
@@ -220,9 +255,10 @@ def plot_reaction_profile(
                 ax, xs, y_vals, unit, barrier_col, preset_obj.axes_facecolor, sw
             )
 
+        y_pad_frac = 0.38 if (n_pts >= 6 or max_lbl_len > 14) else 0.30
         ax.set_ylim(
-            float(np.min(y_vals)) - 0.30 * span,
-            float(np.max(y_vals)) + 0.32 * span,
+            float(np.min(y_vals)) - y_pad_frac * span,
+            float(np.max(y_vals)) + (y_pad_frac + 0.02) * span,
         )
         ax.set_xlim(-0.55, n_pts - 0.35)
         ax.set_xticks([])
@@ -231,6 +267,7 @@ def plot_reaction_profile(
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
+        layout.avoid_text_overlaps(ax, clamp_to_axes=True)
     return ax
 
 
@@ -344,6 +381,7 @@ def plot_neb(
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
+        layout.avoid_text_overlaps(ax, clamp_to_axes=True)
     return ax
 
 
@@ -571,13 +609,15 @@ def _draw_scheme_canvas(
         list[Any],
         list[Any],
     ],
-    layout: tuple[list[float], list[float], list[float], float, float, float],
+    scheme_layout: tuple[
+        list[float], list[float], list[float], float, float, float
+    ],
     max_h: float,
     style_cfg: tuple[str, str | None, str | None, str, str],
 ) -> None:
     """Renders molecules, hand-drawn arrow, and bounds onto unified axes."""
     r_mols, p_mols, r_proj, p_proj = groups
-    r_offs, p_offs, plus_xs, a_x0, a_x1, total_w = layout
+    r_offs, p_offs, plus_xs, a_x0, a_x1, total_w = scheme_layout
     arrow_key, cond_above, cond_below, ink_col, palette = style_cfg
     raw_m = structure2d.resolve_span_label_metrics(
         ax, total_w, max_h, pad=0.75
@@ -659,31 +699,40 @@ def plot_reaction_scheme(
     r_proj = [structure2d.project_molecule_2d(m) for m in r_mols]
     p_proj = [structure2d.project_molecule_2d(m) for m in p_mols]
     cond_len = _estimate_condition_len(conditions_above, conditions_below)
-    layout = _layout_scheme_participants(
+    scheme_layout = _layout_scheme_participants(
         r_proj, p_proj, max(3.2, 0.28 * float(cond_len) + 1.1)
     )
     max_h = max([float(p[5][1]) for p in r_proj + p_proj] + [2.4])
 
+    preset_obj = theme.get_preset(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             n_parts = len(r_mols) + len(p_mols)
-            fig_w = max(7.4, min(14.0, 0.45 * layout[5] + 1.5 * n_parts))
+            fig_w = max(7.4, min(14.0, 0.45 * scheme_layout[5] + 1.5 * n_parts))
             _, ax = plt.subplots(figsize=(fig_w, 3.6))
-        else:
-            theme.style_existing_axes(ax, preset=preset)
+        theme.style_existing_axes(ax, preset=preset)
         _draw_scheme_canvas(
             ax,
             (r_mols, p_mols, r_proj, p_proj),
-            layout,
+            scheme_layout,
             max_h,
             (
                 arrow_key,
                 conditions_above,
                 conditions_below,
-                theme.get_preset(preset).ink_color,
+                preset_obj.ink_color,
                 palette,
             ),
         )
+        for txt_art in ax.texts:
+            txt_art.set_color(
+                layout.ensure_wcag_contrast(
+                    mcolors.to_hex(txt_art.get_color()),
+                    preset_obj.axes_facecolor,
+                    min_contrast=4.0,
+                )
+            )
         if title:
             ax.set_title(title)
+        layout.avoid_text_overlaps(ax, clamp_to_axes=False)
     return ax

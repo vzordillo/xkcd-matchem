@@ -21,6 +21,7 @@ from matplotlib import axes as maxes
 from matplotlib import pyplot as plt
 
 from xkcd_matchem.core import exceptions
+from xkcd_matchem.style import layout
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import theme
 
@@ -243,12 +244,17 @@ def _compute_label_y_positions(
         return [float(e) for e in energies]
     order = sorted(range(n_lvls), key=lambda i: float(energies[i]))
     y_sorted = [float(energies[i]) for i in order]
-    for k in range(1, n_lvls):
-        gap = y_sorted[k] - y_sorted[k - 1]
-        if gap < min_sep:
-            shift = 0.5 * (min_sep - gap)
-            y_sorted[k - 1] -= shift
-            y_sorted[k] += shift
+    for _ in range(18):
+        moved = False
+        for k in range(1, n_lvls):
+            gap = y_sorted[k] - y_sorted[k - 1]
+            if gap < min_sep - 1e-9:
+                shift = 0.52 * (min_sep - gap)
+                y_sorted[k - 1] -= shift
+                y_sorted[k] += shift
+                moved = True
+        if not moved:
+            break
     out = [0.0] * n_lvls
     for pos, orig_idx in enumerate(order):
         out[orig_idx] = y_sorted[pos]
@@ -615,15 +621,21 @@ def plot_crystal_field(
             ax, d_electrons, spin_state, occ, colors[0], colors[1]
         )
 
+        max_lbl_chars = max(
+            (len(lbl.replace("$", "").replace("\\", "")) for lbl, _, _ in lvls),
+            default=4,
+        )
+        right_pad = max(0.68, 0.26 + 0.042 * float(max_lbl_chars))
         ax.set_xlim(
             -0.06 if show_barycenter else x_left - 0.56,
-            x_right + 0.68,
+            x_right + right_pad,
         )
-        ax.set_ylim(min(all_e) - 0.24 * y_span, max(all_e) + 0.28 * y_span)
+        ax.set_ylim(min(all_e) - 0.26 * y_span, max(all_e) + 0.30 * y_span)
         ax.set_xticks([])
         ax.set_ylabel(f"Relative Energy ({unit})")
         theme.apply_xkcd_spines(ax, preset=preset)
         ax.spines["bottom"].set_visible(False)
         if title:
             ax.set_title(title)
+        layout.avoid_text_overlaps(ax, clamp_to_axes=True)
     return ax
