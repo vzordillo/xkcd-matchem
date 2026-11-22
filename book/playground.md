@@ -5,7 +5,7 @@ Explore molecules, crystals, slabs, coordination polyhedra, multi-frame trajecto
 ## Try This in 30 Seconds
 
 1. **Orbit & zoom:** Drag on the canvas to rotate (`Shift + Drag` to roll, scroll wheel to zoom).
-2. **Snap to crystal axes:** Click **Iso**, **Persp**, **Front**, **Side**, **Top**, or crystallographic **`a`, `b`, `c`, `a*`, `b*`, `c*`** along the top bar.
+2. **Snap to crystal axes:** Click **Iso**, **Persp**, **Front**, **Side**, **Top**, or crystallographic **`a`, `b`, `c`, `a*`, `b*`, `c*`** along the top bar — or click **Reset** (shortcut **`R`**) to return to the starting view, and press **`Space`** to play/pause trajectories.
 3. **Make it yours:** Switch rendering styles (`ball_and_stick`, `spacefill`, `stick`, `polyhedra`), toggle **Bonds**, **Boundary**, **Center**, **Legend**, **Vectors**, or **Isosurface** (with all 8 **Iso Shading** pen-and-ink styles), tile up to `3x3x3` supercells (`na`, `nb`, `nc`), recolor any element with the swatch pickers, swap **White** / **Paper** / **Chalk** backgrounds, or adjust the **xkcd Wiggle** slider.
 4. **Load your own structure:** Click **Open Structure File** to preview a local `.xyz`, `POSCAR`/`.vasp`, `.cif`, `.sdf`/`.mol`, or `.pdb` file right in the browser (files stay completely local on your machine).
 5. **Take it back to Python:** Click **Copy Python** for the exact `xkcd_matchem` script matching your current camera and colors, or click **Download PNG** / **Download SVG** immediately.

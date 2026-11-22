@@ -18,13 +18,13 @@ All **29 native readers** below (plus native writers for `xyz` and `vasp` POSCAR
 | Format Key | Extensions / Filenames | Parsed Type | Supported Scope & Validation |
 | --- | --- | --- | --- |
 | `vasp` | `.poscar`, `.contcar`, `.vasp`, `POSCAR`, `CONTCAR` | `AtomsData` | Applies scalar, 3-component `sx sy sz`, or negative-volume factors to lattice vectors and coordinates; validates VASP 4/5 element headers; native Direct POSCAR writer supported (`xm.save`) |
-| `xdatcar` | `.xdatcar`, `XDATCAR` | `Trajectory` | Multi-step direct-coordinate trajectories |
+| `xdatcar` | `.xdatcar`, `XDATCAR` | `Trajectory` | Multi-step Direct, Cartesian (`Cartesian`/`Kartesian`), and variable-cell NPT trajectories |
 | `doscar` | `.doscar`, `DOSCAR` | `DensityOfStates` | Extracts Fermi level $E_F$ and spin-polarized or unpolarized total DOS (handles fixed-width touching floats) |
 | `eigenval` | `.eigenval`, `EIGENVAL` | `BandStructure` | Accepts optional `cell=` via `xm.io.native.vasp.read_eigenval(..., cell=...)` so reciprocal $k$-distances are weighted properly via $B = 2\pi(A^{-1})^\top$ |
 | `procar` | `.procar`, `PROCAR` | `BandStructure` | Parses projected band weights (`s`, `p`, `d`, `tot`) for orbital fatband dispersion plots (`xm.read_procar`) |
 | `lobster_cohp` | `.lobster`, `.cohp`, `.coop`, `COHPCAR.lobster`, `COOPCAR.lobster`, `COHPCAR`, `COOPCAR` | `CohpData` | Parses LOBSTER projected `-pCOHP`/`-pCOOP` and integrated `-ICOHP` chemical-bonding curves (spin-unpolarized and spin-polarized; also detected by content header) |
-| `phonopy_bands` | `band.yaml`, `.band.yaml` (or YAML with `nqpoint:` + `phonon:` content signature) | `PhononBandStructure` | Zero-dependency Phonopy YAML reader extracting `distance`, high-symmetry `q`-point labels, and phonon branch frequencies in THz |
-| `chgcar` | `.chgcar`, `.locpot`, `CHGCAR`, `LOCPOT`, `AECCAR0`, `AECCAR2` | `VolumetricGrid` | Applies VASP scaling in Cartesian atom mode and reconstructs the 3D FFT grid |
+| `phonopy_bands` | `band.yaml`, `phonopy_bands.yaml`, `.band.yaml` (or YAML with `nqpoint:` + `phonon:` signature) | `PhononBandStructure` | Zero-dependency Phonopy YAML reader extracting `distance`, high-symmetry `q`-point labels, and phonon branch frequencies in THz |
+| `chgcar` | `.chgcar`, `.locpot`, `CHGCAR`, `LOCPOT`, `AECCAR0`, `AECCAR2` | `VolumetricGrid` | Applies VASP scaling in Cartesian atom mode, reconstructs the 3D FFT grid, and normalizes `CHGCAR`/`AECCAR*` by cell volume (`e/A^3`) while keeping `LOCPOT` unscaled (`eV`) |
 | `cif` | `.cif` | `AtomsData` | Multi-block (`xm.io.native.cif.read_cif(..., block=...)`, `xm.read_cif_all`) and explicit or implicit 61-group ITA symmetry expansion with Origin Choice 1/2 handling for `Fd-3m` (#227) and `_atom_site_occupancy` |
 | `qe_in` | `.pwi`, `.in` | `AtomsData` | Requires explicit `CELL_PARAMETERS` when `ibrav != 0`, and explicit `celldm(1)` or `A` when `alat` units are requested |
 | `qe_out` | `.pwo`, QE `.out` (content-detected) | `AtomsData` | Extracts final geometry, cell, total energy, and Fermi level |
@@ -49,7 +49,7 @@ All **29 native readers** below (plus native writers for `xyz` and `vasp` POSCAR
 | `cube` | `.cube`, `.cub` | `VolumetricGrid` | Converts Bohr origin, atomic coordinates, and Bohr-flagged voxel vectors to Angstroms (preserving Angstrom-flagged negative-count grids); slices non-orthogonal grids cleanly via `slice_mesh()` |
 | `gaussian_gjf` | `.gjf`, `.com` | `AtomsData` | Cartesian geometry block |
 | `gaussian_log` | `.log` | `AtomsData` + metadata | Converged geometry, SCF energy trajectory, molecular orbitals, and harmonic IR frequencies |
-| `gaussian_fchk` | `.fchk` | `AtomsData` | Atomic numbers, Cartesian coordinates (Bohr → Å), and total energy (Hartree → eV) |
+| `gaussian_fchk` | `.fchk` | `AtomsData` | Atomic numbers, Cartesian coordinates (Bohr → Å), total energy (Hartree → eV), and `Alpha`/`Beta Orbital Energies` in `metadata["orbitals"]` when present |
 | `orca_inp` | `.inp` | `AtomsData` | Inline `* xyz` geometry blocks and external `* xyzfile` references |
 | `orca_out` | `.orca`, ORCA `.out` (content-detected) | `AtomsData` + metadata | Geometry, molecular orbitals, IR frequencies, and TDDFT UV-Vis transitions |
 
@@ -59,7 +59,7 @@ Behind the playful visuals, core geometry routines avoid common shortcuts that b
 
 - **Skewed & Triclinic Minimum-Image Vectors:** In a periodic crystal, two atoms near opposite box walls can actually be right next to each other across the boundary. Instead of naive fractional rounding (which picks the wrong neighbor in skewed cells), `xm.core.geometry.minimum_image_vector()` applies Gauss/LLL lattice reduction followed by a Gram-bounded integer closest-vector search across periodic axes.
 - **Property-Preserving Supercells:** `AtomsData.repeat()` tiles `charges`, `velocities`, `forces`, `occupancies`, `magnetic_moments`, and `atom_labels`, remaps periodic bond image shifts, and clears single-cell total energies so stale unscaled values never linger.
-- **Periodic RDF & Unwrapped RMSD:** `Trajectory.compute_rdf()` integrates exact spherical-shell volumes $\frac{4\pi}{3}(r_{\text{out}}^3 - r_{\text{in}}^3)$ across all periodic image shells enclosing $r_{\max}$ (with an optional `strict=True` guard enforcing that $r_{\max}$ stays within the Wigner–Seitz inradius—the largest sphere that fits inside the box without encountering self-images). `Trajectory.rmsd()` unwraps periodic boundary jumps before Kabsch superposition and supports atom subsets via `indices=`.
+- **Periodic RDF & Unwrapped RMSD/MSD:** `Trajectory.compute_rdf()` integrates exact spherical-shell volumes $\frac{4\pi}{3}(r_{\text{out}}^3 - r_{\text{in}}^3)$ across all periodic image shells enclosing $r_{\max}$ (with an optional `strict=True` guard enforcing that $r_{\max}$ stays within the Wigner–Seitz inradius—the largest sphere that fits inside the box without encountering self-images). `Trajectory.rmsd()` and `Trajectory.msd()` unwrap periodic boundary jumps across frames (with Kabsch superposition and `indices=` subsetting in `rmsd()`).
 
 ## Optional Framework Adapters
 
