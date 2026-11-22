@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+import io
+import pathlib
 import warnings
 
 import matplotlib
@@ -24,6 +26,7 @@ import pytest
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.style import fonts
 from xkcd_matchem.style import palettes
+from xkcd_matchem.style import patterns
 from xkcd_matchem.style import theme
 
 
@@ -129,3 +132,98 @@ def test_custom_presets_palettes_and_existing_axes() -> None:
     finally:
         assert fonts.set_default_font(None) == "xkcd Script"
         assert fonts.get_default_font() is None
+
+
+def test_fonts_palettes_and_patterns_complete_coverage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Covers error guards and branches in fonts, palettes, and patterns."""
+    matplotlib.use("Agg")
+    # 1. Fonts error branches, fetch_xkcd_script download mocks, use_xkcd_script
+    with pytest.raises(exceptions.StyleError):
+        fonts.get_bundled_font_path("NonExistentFont")
+    with pytest.raises(exceptions.StyleError):
+        fonts.register_font(tmp_path / "missing_font.ttf")
+    with pytest.raises(exceptions.StyleError):
+        fonts.set_default_font("   ")
+
+    try:
+        bundled = fonts.fetch_xkcd_script(cache_dir=None, activate=True)
+        assert bundled.is_file()
+        assert fonts.use_xkcd_script(font_path=bundled) == "xkcd Script"
+    finally:
+        fonts.set_default_font(None)
+
+    def _fail_urlopen(*_args: object, **_kwargs: object) -> object:
+        raise OSError("network unavailable")
+
+    monkeypatch.setattr("urllib.request.urlopen", _fail_urlopen)
+    with pytest.raises(exceptions.StyleError, match="Failed to download"):
+        fonts.fetch_xkcd_script(cache_dir=tmp_path / "err_cache")
+
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *_a, **_k: io.BytesIO(b""),
+    )
+    with pytest.raises(exceptions.StyleError, match="payload was empty"):
+        fonts.fetch_xkcd_script(cache_dir=tmp_path / "empty_cache")
+
+    ttf_bytes = fonts.get_bundled_font_path("xkcd Script").read_bytes()
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda *_a, **_k: io.BytesIO(ttf_bytes),
+    )
+    try:
+        with pytest.warns(UserWarning, match="LICENSE NOTICE"):
+            dl_path = fonts.fetch_xkcd_script(
+                cache_dir=tmp_path / "ok_cache", activate=True
+            )
+        assert dl_path.is_file()
+    finally:
+        fonts.set_default_font(None)
+
+    # 2. Palettes error branches and listings
+    assert "okabe_ito" in palettes.list_palettes()
+    with pytest.raises(exceptions.StyleError):
+        palettes.register_palette("   ", ["#000000"])
+    with pytest.raises(exceptions.StyleError):
+        palettes.register_palette("empty_pal", [])
+    with pytest.raises(exceptions.StyleError):
+        palettes.register_element_palette("   ", {"C": "#000000"})
+    with pytest.raises(exceptions.StyleError):
+        palettes.register_element_palette(
+            "bad_base", {"C": "#000000"}, base="unknown_base"
+        )
+    with pytest.raises(exceptions.StyleError):
+        palettes.get_palette([])
+    with pytest.raises(exceptions.StyleError):
+        palettes.get_palette("unknown_series_palette")
+
+    # 3. Patterns hatch sequences, dotgrid clear, coords, and shade_between
+    assert patterns.resolve_hatch("//") == "//"
+    assert patterns.resolve_hatch([]) is None
+    assert patterns.resolve_hatch(["hatch", "dots"], index=1) == "..."
+    xs0, ys0 = patterns.compute_background_grid_coords(None)
+    assert xs0.size == 0
+    assert ys0.size == 0
+    xs_u, ys_u = patterns.compute_background_grid_coords("unknown_bg")
+    assert xs_u.size == 0
+    assert ys_u.size == 0
+
+    fig, ax = plt.subplots()
+    patterns.apply_background_grid(ax, style="dotgrid")
+    assert len(ax.collections) == 1
+    patterns.clear_background_grid(ax)
+    assert len(ax.collections) == 0
+    patterns.apply_background_grid(
+        ax, style="grid", sketch=(1.1, 80.0, 2.0)
+    )
+    patterns.apply_background_grid(ax, style="blueprint", sketch=True)
+    patterns.apply_background_grid(ax, style="none")
+    patterns.shade_between(ax, [0.0, 1.0], [1.0, 2.0], 0.0, shade="hatch")
+    patterns.shade_between(
+        ax, [0.0, 1.0], [1.0, 2.0], 0.0, shade="solid", vertical=True
+    )
+    plt.close(fig)
+

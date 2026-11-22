@@ -222,3 +222,56 @@ def test_spectroscopy_reaction_thermo_md_accuracy() -> None:
     )
     assert ax_rdf.get_ylim()[0] == pytest.approx(0.0)
     plt.close(ax_rdf.figure)
+
+
+def test_birch_murnaghan_exact_parameter_recovery_and_invariants() -> None:
+    """Verifies 3rd-order Birch-Murnaghan EOS fitting & stationarity."""
+    matplotlib.use("Agg")
+    ev_per_a3_to_gpa = elements.CODATA2022.ev_to_joule * 1e21
+
+    # Test recovery across soft, metallic, and ultra-stiff crystal regimes.
+    regimes = (
+        (-15.25, 28.50, 24.0, 5.20),
+        (-64.80, 45.00, 180.0, 4.15),
+        (-92.40, 11.35, 442.0, 3.65),
+    )
+    for e0_true, v0_true, b0_gpa_true, bp_true in regimes:
+        b0_ev_true = b0_gpa_true / ev_per_a3_to_gpa
+        vols = np.linspace(0.86 * v0_true, 1.16 * v0_true, 11)
+        es = thermo._birch_murnaghan(
+            vols, e0_true, v0_true, b0_ev_true, bp_true
+        )
+
+        # Analytical invariant at V = V0: E(V0) == E0, dE/dV == 0,
+        # and V0 * d2E/dV2 == B0.
+        assert float(
+            thermo._birch_murnaghan(
+                np.array([v0_true]), e0_true, v0_true, b0_ev_true, bp_true
+            )[0]
+        ) == pytest.approx(e0_true, rel=1e-12)
+        dv = 1e-4 * v0_true
+        v_probe = np.array([v0_true - dv, v0_true, v0_true + dv])
+        e_probe = thermo._birch_murnaghan(
+            v_probe, e0_true, v0_true, b0_ev_true, bp_true
+        )
+        p_v0 = -(e_probe[2] - e_probe[0]) / (2.0 * dv)
+        b_v0 = v0_true * (e_probe[2] - 2.0 * e_probe[1] + e_probe[0]) / (dv**2)
+        assert p_v0 == pytest.approx(0.0, abs=1e-7)
+        assert b_v0 * ev_per_a3_to_gpa == pytest.approx(b0_gpa_true, rel=1e-5)
+
+        # Nonlinear least-squares recovery of (E0, V0, B0, B0').
+        popt = thermo._fit_birch_murnaghan(vols, es)
+        assert popt[0] == pytest.approx(e0_true, rel=1e-5)
+        assert popt[1] == pytest.approx(v0_true, rel=1e-5)
+        assert popt[2] * ev_per_a3_to_gpa == pytest.approx(
+            b0_gpa_true, rel=1e-4
+        )
+        assert popt[3] == pytest.approx(bp_true, rel=1e-4)
+
+        ax = thermo.plot_eos(vols, es)
+        summary = ax.texts[0].get_text()
+        assert f"V0 = {v0_true:.2f} A^3" in summary
+        assert f"B0 = {b0_gpa_true:.1f} GPa" in summary
+        assert f"B0' = {bp_true:.2f}" in summary
+        plt.close(ax.figure)
+
