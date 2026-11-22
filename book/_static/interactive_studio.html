@@ -1075,23 +1075,28 @@ canvas#xm-canvas:active { cursor: grabbing; }
     return { backSegs, frontSegs };
   }
 
-  function sampleIsoSurfaceMarks(iso, frontFlags, tones, frontFaces, vProj, proj, toScreen, shade) {
+  function sampleIsoSurfaceMarks(iso, frontFlags, tones, nRots, vProj, proj, toScreen, shade) {
     const backPts = [], frontPts = [];
-    if (!frontFaces.length || (shade !== "stipple" && shade !== "scumble")) {
+    if (!iso.faces.length || (shade !== "stipple" && shade !== "scumble")) {
       return { backPts, frontPts };
     }
-    const target = shade === "stipple" ? 420 : 28;
+    const target = shade === "stipple" ? 1350 : 62;
     for (let k = 0; k < target; k++) {
-      const fIdx = Math.min(iso.faces.length - 1, Math.floor(_isoHash(k * 7 + 1) * iso.faces.length));
+      const fIdx = Math.min(iso.faces.length - 1, Math.floor(((k * 0.6180339887 + 0.13) % 1.0) * iso.faces.length));
       if (!frontFlags[fIdx]) continue;
       const tone = tones[fIdx];
-      const maxT = shade === "stipple" ? 0.64 : 0.60;
+      const maxT = shade === "stipple" ? 0.66 : 0.62;
       if (tone >= maxT) continue;
       const sh = (maxT - tone) / maxT;
-      if (_isoHash(k * 7 + 2) > 0.12 + 0.88 * Math.pow(sh, 1.4)) continue;
+      const nzF = Math.max(0.05, nRots[fIdx] ? nRots[fIdx][2] : 0.5);
+      const uThr = (k * 0.7548776662 + 0.29) % 1.0;
+      const keepP = shade === "stipple" ? Math.pow(nzF, 0.28) * 0.94 * Math.pow(sh, 1.65) : Math.pow(nzF, 0.30) * (0.24 + 0.72 * sh);
+      if (uThr > keepP) continue;
       const [f0, f1, f2] = iso.faces[fIdx];
-      const su = Math.sqrt(_isoHash(k * 7 + 3)), r2 = _isoHash(k * 7 + 4);
-      const w0 = 1 - su, w1 = su * (1 - r2), w2 = su * r2;
+      let r1 = (k * 0.5698402909 + 0.41) % 1.0;
+      let r2 = (k * 0.4142135623 + 0.17) % 1.0;
+      if (r1 + r2 > 1.0) { r1 = 1.0 - r1; r2 = 1.0 - r2; }
+      const w0 = 1.0 - r1 - r2, w1 = r1, w2 = r2;
       const px = w0 * vProj[f0][0] + w1 * vProj[f1][0] + w2 * vProj[f2][0];
       const py = w0 * vProj[f0][1] + w1 * vProj[f1][1] + w2 * vProj[f2][1];
       const pz = w0 * vProj[f0][2] + w1 * vProj[f1][2] + w2 * vProj[f2][2];
@@ -1105,10 +1110,12 @@ canvas#xm-canvas:active { cursor: grabbing; }
         behind = pz < az - 0.03;
       }
       const scPt = toScreen([px, py, pz]);
+      const uS = (k * 0.3027756377 + 0.07) % 1.0;
       const rec = {
         pt: scPt,
-        r: 0.55 + 1.45 * Math.pow(_isoHash(k * 7 + 5), 1.55),
-        aa: 0.24 + 0.24 * _isoHash(k * 7 + 6),
+        r: 0.45 + 0.92 * Math.pow(sh, 0.9) * (0.72 + 0.56 * uS),
+        aa: 0.28 + 0.48 * sh,
+        sh,
         seed: k,
       };
       if (behind) backPts.push(rec);
@@ -1127,6 +1134,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     const vProj = projectList(iso.vertices, pivot, basis, sceneSpan);
     const frontFlags = new Array(iso.faces.length).fill(false);
     const tonesArr = new Array(iso.faces.length).fill(1.0);
+    const nRotsArr = new Array(iso.faces.length).fill(null);
     const triItems = [];
     const frontFaces = [];
 
@@ -1150,16 +1158,20 @@ canvas#xm-canvas:active { cursor: grabbing; }
       const nRot = [dot3(wn, basis[0]) / wnn, dot3(wn, basis[1]) / wnn, dot3(wn, basis[2]) / wnn];
       if (nRot[2] < -0.02) continue;
       frontFlags[fIdx] = true;
+      nRotsArr[fIdx] = nRot;
       frontFaces.push(fIdx);
-      const nd = Math.max(0, dot3(nRot, lu));
-      const spec = Math.pow(Math.max(0, dot3(nRot, hu)), 12);
+      const rawNl = dot3(nRot, lu);
+      const nd = Math.max(0, Math.min(1, (rawNl + 0.12) / 1.12));
+      const nh = Math.max(0, dot3(nRot, hu));
+      const spec = Math.pow(nh, 18);
       const nzF = Math.max(0, nRot[2]);
-      const rimBounce = 0.22 * Math.pow(1 - nzF, 2.2) * (1 - nd);
-      const tone = 0.10 + 0.74 * nd + 0.22 * spec + rimBounce;
+      const coreDip = 0.16 * Math.exp(-Math.pow((rawNl + 0.22) / 0.32, 2)) * Math.pow(nzF, 0.4);
+      const rimBounce = 0.24 * Math.pow(1 - nzF, 2.1) * Math.max(0, -rawNl);
+      const tone = Math.max(0, Math.min(1, 0.08 + 0.78 * nd + 0.24 * spec + rimBounce - coreDip));
       tonesArr[fIdx] = tone;
       const sideInfo = _triDepthAndSide(pA, pB, pC, positions, proj);
       const md = sideInfo.md - 0.12;
-      triItems.push({ depth: md, kind: "iso_tri", pts: [pA, pB, pC], col: iso.color, shade: Math.min(1.3, 0.58 + 0.42 * nd + 0.35 * spec + 0.16 * rimBounce), nz: nRot[2] });
+      triItems.push({ depth: md, kind: "iso_tri", pts: [pA, pB, pC], col: iso.color, shade: Math.min(1.35, 0.36 + 0.64 * nd + 0.42 * spec + 0.22 * rimBounce - 0.12 * coreDip), nz: nRot[2] });
 
       const sp = [toScreen(pA), toScreen(pB), toScreen(pC)];
       const bk = sideInfo.behind ? backB : frontB;
@@ -1225,7 +1237,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
         frontB.contourSegs.push(...mer.frontSegs);
       }
     }
-    const surfMarks = sampleIsoSurfaceMarks(iso, frontFlags, tonesArr, frontFaces, vProj, proj, toScreen, state.isoShade);
+    const surfMarks = sampleIsoSurfaceMarks(iso, frontFlags, tonesArr, nRotsArr, vProj, proj, toScreen, state.isoShade);
     if (state.isoShade === "stipple") {
       backB.stipplePts = surfMarks.backPts;
       frontB.stipplePts = surfMarks.frontPts;
@@ -1322,15 +1334,15 @@ canvas#xm-canvas:active { cursor: grabbing; }
       const gRad = Math.max(0.55 * Math.hypot(bx1 - bx0, by1 - by0), 4);
       tracePolyBatch(item.frontPolys);
       if (shade === "outline") {
-        ctx.fillStyle = shadeHexRgba(item.col, 0.04, 1.12);
+        ctx.fillStyle = shadeHexRgba(item.col, 0.05, 1.12);
       } else {
         const grad = ctx.createRadialGradient(
-          gcx - 0.28 * gRad, gcy - 0.28 * gRad, gRad * 0.06, gcx, gcy, gRad
+          gcx - 0.30 * gRad, gcy - 0.30 * gRad, gRad * 0.05, gcx, gcy, gRad
         );
-        grad.addColorStop(0.0, "rgba(255,255,255,0.26)");
-        grad.addColorStop(0.38, hexToRgba(item.col, 0.09));
-        grad.addColorStop(0.78, shadeHexRgba(item.col, 0.20, 0.85));
-        grad.addColorStop(1.0, hexToRgba(item.col, 0.10));
+        grad.addColorStop(0.0, "rgba(255,255,255,0.44)");
+        grad.addColorStop(0.32, hexToRgba(item.col, 0.08));
+        grad.addColorStop(0.75, shadeHexRgba(item.col, 0.28, 0.72));
+        grad.addColorStop(1.0, hexToRgba(item.col, 0.14));
         ctx.fillStyle = grad;
       }
       ctx.fill();
@@ -1347,7 +1359,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
       });
     } else if (shade === "stipple" && item.stipplePts.length) {
       for (const d of item.stipplePts) {
-        ctx.fillStyle = shadeHexRgba(item.col, d.aa, 0.80);
+        ctx.fillStyle = shadeHexRgba(item.col, d.aa, 0.72);
         ctx.beginPath();
         ctx.arc(d.pt[0], d.pt[1], d.r, 0, Math.PI * 2);
         ctx.fill();
@@ -1358,19 +1370,20 @@ canvas#xm-canvas:active { cursor: grabbing; }
       ctx.save();
       tracePolyBatch(item.frontPolys);
       ctx.clip();
-      ctx.strokeStyle = shadeHexRgba(item.col, 0.34, 0.80);
-      ctx.lineWidth = 0.64;
+      ctx.strokeStyle = shadeHexRgba(item.col, 0.42, 0.74);
+      ctx.lineWidth = 0.58;
       for (const sItem of item.scumblePts) {
         const th0 = _isoHash(sItem.seed * 5 + 3) * Math.PI * 2;
-        const drift = 0.14 * Math.hypot(bw, bh);
-        const rc = 2.4 + 1.8 * _isoHash(sItem.seed * 5 + 4);
+        const drift = 0.22 * Math.hypot(bw, bh);
+        const rc = 5.5 + 3.0 * _isoHash(sItem.seed * 5 + 4);
         ctx.beginPath();
         for (let k = 0; k <= 36; k++) {
           const t = k / 36 - 0.5;
-          const spx = sItem.pt[0] + drift * t * Math.cos(th0 + t * 1.4);
-          const spy = sItem.pt[1] + drift * t * Math.sin(th0 + t * 1.4);
-          const px = spx + rc * Math.cos((t + 0.5) * 26.0 + sItem.seed);
-          const py = spy + rc * Math.sin((t + 0.5) * 26.0 + sItem.seed);
+          const spx = sItem.pt[0] + drift * t * Math.cos(th0 + t * 1.1);
+          const spy = sItem.pt[1] + drift * t * Math.sin(th0 + t * 1.1);
+          const ang = (t + 0.5) * Math.PI * 4.8 + sItem.seed;
+          const px = spx + rc * Math.cos(ang) + 0.18 * rc * Math.sin(2.1 * ang);
+          const py = spy + 0.72 * rc * Math.sin(ang);
           if (k === 0) ctx.moveTo(px, py);
           else ctx.lineTo(px, py);
         }
@@ -1378,9 +1391,16 @@ canvas#xm-canvas:active { cursor: grabbing; }
       }
       ctx.restore();
     }
-    const rimCol = shadeHexRgba(item.col, 0.60, 0.74);
+    const [bx0, by0, bx1, by1] = item.bbox;
+    const rcx = 0.5 * (bx0 + bx1), rcy = 0.5 * (by0 + by1);
     item.rimSegs.forEach((seg, idx) => {
-      drawStrokeWiggle(seg[0], seg[1], rimCol, 1.35, false, Math.max(state.wiggle * 0.65, 0.35), idx + 1);
+      const mx = 0.5 * (seg[0][0] + seg[1][0]) - rcx, my = 0.5 * (seg[0][1] + seg[1][1]) - rcy;
+      const ml = Math.hypot(mx, my) || 1;
+      const litV = (-0.67 * mx - 0.74 * my) / ml;
+      const wRim = litV > 0.22 ? 1.05 : litV < -0.18 ? 1.85 : 1.42;
+      const alRim = litV > 0.22 ? 0.38 : litV < -0.18 ? 0.78 : 0.58;
+      const rimCol = shadeHexRgba(item.col, alRim, litV < -0.18 ? 0.64 : 0.76);
+      drawStrokeWiggle(seg[0], seg[1], rimCol, wRim, false, Math.max(state.wiggle * 0.65, 0.35), idx + 1);
     });
   }
 
@@ -2025,17 +2045,18 @@ canvas#xm-canvas:active { cursor: grabbing; }
           parts.push(`<defs><clipPath id="${cid}"><path d="${sPath}"/></clipPath></defs>`);
           const [bx0, by0, bx1, by1] = art.bbox;
           const bw = Math.max(bx1 - bx0, 1), bh = Math.max(by1 - by0, 1);
-          parts.push(`<g clip-path="url(#${cid})" fill="none" stroke="${art.col}" stroke-opacity="0.34" stroke-width="0.64" stroke-linecap="round">`);
+          parts.push(`<g clip-path="url(#${cid})" fill="none" stroke="${art.col}" stroke-opacity="0.42" stroke-width="0.58" stroke-linecap="round">`);
           for (const sItem of art.scumblePts) {
             const th0 = _isoHash(sItem.seed * 5 + 3) * Math.PI * 2;
-            const drift = 0.14 * Math.hypot(bw, bh);
-            const rc = 2.4 + 1.8 * _isoHash(sItem.seed * 5 + 4);
+            const drift = 0.22 * Math.hypot(bw, bh);
+            const rc = 5.5 + 3.0 * _isoHash(sItem.seed * 5 + 4);
             const cPts = [];
             for (let k = 0; k <= 36; k++) {
               const t = k / 36 - 0.5;
-              const spx = sItem.pt[0] + drift * t * Math.cos(th0 + t * 1.4);
-              const spy = sItem.pt[1] + drift * t * Math.sin(th0 + t * 1.4);
-              cPts.push([spx + rc * Math.cos((t + 0.5) * 26.0 + sItem.seed), spy + rc * Math.sin((t + 0.5) * 26.0 + sItem.seed)]);
+              const spx = sItem.pt[0] + drift * t * Math.cos(th0 + t * 1.1);
+              const spy = sItem.pt[1] + drift * t * Math.sin(th0 + t * 1.1);
+              const ang = (t + 0.5) * Math.PI * 4.8 + sItem.seed;
+              cPts.push([spx + rc * Math.cos(ang) + 0.18 * rc * Math.sin(2.1 * ang), spy + 0.72 * rc * Math.sin(ang)]);
             }
             parts.push(`<polyline points="${_svgPolylinePoints(cPts)}"/>`);
           }
@@ -2056,8 +2077,15 @@ canvas#xm-canvas:active { cursor: grabbing; }
           }
           parts.push("</g>");
         }
+        const [bx0, by0, bx1, by1] = art.bbox;
+        const rcx = 0.5 * (bx0 + bx1), rcy = 0.5 * (by0 + by1);
         for (const seg of art.rimSegs) {
-          parts.push(`<line x1="${seg[0][0].toFixed(1)}" y1="${seg[0][1].toFixed(1)}" x2="${seg[1][0].toFixed(1)}" y2="${seg[1][1].toFixed(1)}" stroke="${art.col}" stroke-opacity="0.58" stroke-width="1.35" stroke-linecap="round"/>`);
+          const mx = 0.5 * (seg[0][0] + seg[1][0]) - rcx, my = 0.5 * (seg[0][1] + seg[1][1]) - rcy;
+          const ml = Math.hypot(mx, my) || 1;
+          const litV = (-0.67 * mx - 0.74 * my) / ml;
+          const wRim = litV > 0.22 ? "1.05" : litV < -0.18 ? "1.85" : "1.42";
+          const alRim = litV > 0.22 ? "0.40" : litV < -0.18 ? "0.78" : "0.58";
+          parts.push(`<line x1="${seg[0][0].toFixed(1)}" y1="${seg[0][1].toFixed(1)}" x2="${seg[1][0].toFixed(1)}" y2="${seg[1][1].toFixed(1)}" stroke="${art.col}" stroke-opacity="${alRim}" stroke-width="${wRim}" stroke-linecap="round"/>`);
         }
       } else if (it.t === "iso_tri") {
         const ptsStr = it.pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");

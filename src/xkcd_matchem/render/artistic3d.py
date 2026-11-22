@@ -146,7 +146,7 @@ def _sample_mesh_surface(
     count: int,
     seed: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Deterministically samples area-weighted 3D triangle barycentrics."""
+    """Deterministically samples stratified R2 blue-noise mesh barycentrics."""
     if len(mesh.faces) == 0 or count <= 0:
         return (
             np.zeros((0,), dtype=np.int64),
@@ -164,12 +164,25 @@ def _sample_mesh_surface(
             np.zeros((0, 3), dtype=np.float64),
             np.zeros((0, 4), dtype=np.float64),
         )
-    rng = np.random.default_rng(seed)
-    f_idx = rng.choice(len(areas), size=count, replace=True, p=areas / tot)
-    su = np.sqrt(rng.random(count))
-    r2 = rng.random(count)
-    bary = np.column_stack([1.0 - su, su * (1.0 - r2), su * r2])
-    attrs = rng.random((count, 4))
+    cdf = np.cumsum(areas) / tot
+    off = np.random.default_rng(seed).random(4)
+    idx = np.arange(count, dtype=np.float64)
+    u_cdf = ((idx + float(off[0])) / float(count)) % 1.0
+    f_idx = np.clip(np.searchsorted(cdf, u_cdf), 0, len(areas) - 1)
+    r1 = (idx * 0.7548776662466927 + float(off[1])) % 1.0
+    r2 = (idx * 0.5698402909980532 + float(off[2])) % 1.0
+    fold = (r1 + r2) > 1.0
+    r1 = np.where(fold, 1.0 - r1, r1)
+    r2 = np.where(fold, 1.0 - r2, r2)
+    bary = np.column_stack([1.0 - r1 - r2, r1, r2])
+    attrs = np.column_stack(
+        [
+            (idx * 0.6180339887498949 + float(off[3])) % 1.0,
+            (idx * 0.4142135623730951 + float(off[1])) % 1.0,
+            (idx * 0.7071067811865476 + float(off[2])) % 1.0,
+            (idx * 0.3027756377319946 + float(off[0])) % 1.0,
+        ]
+    )
     return f_idx, bary, attrs
 
 
@@ -511,13 +524,34 @@ def _clip_xkcd_chords(
     return chords
 
 
+def _split_chord_intervals(
+    ca: float,
+    cb: float,
+    lims: tuple[float, float, float, float],
+    rng: np.random.Generator,
+) -> list[tuple[float, float]]:
+    """Breaks long halftone chords into staggered natural pen flick spans."""
+    max_flick, flick_step, gap, span_ref = lims
+    if cb - ca <= max_flick:
+        return [(ca, cb)]
+    out: list[tuple[float, float]] = []
+    pos = ca + float(rng.uniform(0.0, 0.04) * span_ref)
+    while pos < cb - 0.05 * span_ref:
+        end_p = min(cb, pos + flick_step * float(rng.uniform(0.80, 1.15)))
+        if end_p - pos >= 0.045 * span_ref:
+            out.append((pos, end_p))
+        pos = end_p + gap * float(rng.uniform(0.75, 1.35))
+    return out
+
+
 def _chords_to_comic_flicks(
     chords: Sequence[tuple[float, float, float, float, float]],
     angle_deg: float,
     span: float,
     seed: int,
+    curve_ref: tuple[float, float] = (0.0, 0.5),
 ) -> list[np.ndarray]:
-    """Turns shadow chords into staggered straight-ish comic pen flicks."""
+    """Turns shadow chords into 3D form-wrapping curved pen flicks."""
     if not chords:
         return []
     rad = math.radians(angle_deg)
@@ -525,28 +559,19 @@ def _chords_to_comic_flicks(
     e_v = np.array([-math.sin(rad), math.cos(rad)], dtype=np.float64)
     rng = np.random.default_rng(seed)
     span_ref = max(span, 1.0)
-    max_flick = 0.34 * span_ref
-    flick_step = 0.24 * span_ref
-    gap = 0.032 * span_ref
+    lims = (0.34 * span_ref, 0.24 * span_ref, 0.032 * span_ref, span_ref)
+    c_v, l_r = curve_ref
+    l_r = max(l_r, 0.15)
     ts = np.linspace(0.0, 1.0, 11)
     out: list[np.ndarray] = []
 
     for ca, cb, vk, _, _ in chords:
-        segments: list[tuple[float, float]] = []
-        if cb - ca <= max_flick:
-            segments.append((ca, cb))
-        else:
-            pos = ca + float(rng.uniform(0.0, 0.04) * span_ref)
-            while pos < cb - 0.05 * span_ref:
-                end_p = min(
-                    cb, pos + flick_step * float(rng.uniform(0.80, 1.15))
-                )
-                if end_p - pos >= 0.045 * span_ref:
-                    segments.append((pos, end_p))
-                pos = end_p + gap * float(rng.uniform(0.75, 1.35))
-        for sa, sb in segments:
+        rel_v = float(np.clip((vk - c_v) / l_r, -1.0, 1.0))
+        for sa, sb in _split_chord_intervals(ca, cb, lims, rng):
             length = sb - sa
-            bow = 0.035 * length * math.copysign(1.0, float(rng.uniform(-1, 1)))
+            bow = length * (
+                0.14 * rel_v - 0.03 + float(rng.uniform(-0.015, 0.015))
+            )
             p0 = sa * e_u + vk * e_v
             p1 = sb * e_u + vk * e_v
             pts = (
@@ -648,101 +673,48 @@ def _slice_3d_contour_arcs(
     return all_arcs
 
 
-def _point_in_tris_tones(
-    cands: np.ndarray,
-    sub_tris: np.ndarray,
-    sub_tones: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Evaluates barycentric hit mask cleanly rejecting sliver triangles."""
-    p0 = sub_tris[:, 0, :]
-    v0 = sub_tris[:, 2, :] - p0
-    v1 = sub_tris[:, 1, :] - p0
-    d00 = np.sum(v0 * v0, axis=1)
-    d01 = np.sum(v0 * v1, axis=1)
-    d11 = np.sum(v1 * v1, axis=1)
-    denom = d00 * d11 - d01 * d01
-    scale2 = np.maximum(d00 * d11, 1e-16)
-    valid_tri = (denom > 1e-10) & (denom > 1e-6 * scale2)
-    inv_d = np.where(valid_tri, 1.0 / np.maximum(denom, 1e-16), 0.0)
-
-    hit_chunks: list[np.ndarray] = []
-    tone_chunks: list[np.ndarray] = []
-    for start in range(0, len(cands), 512):
-        chunk = cands[start : start + 512]
-        v2 = chunk[:, None, :] - p0[None, :, :]
-        d20 = np.sum(v2 * v0[None, :, :], axis=2)
-        d21 = np.sum(v2 * v1[None, :, :], axis=2)
-        u = (d11[None, :] * d20 - d01[None, :] * d21) * inv_d[None, :]
-        v = (d00[None, :] * d21 - d01[None, :] * d20) * inv_d[None, :]
-        inside = (
-            valid_tri[None, :]
-            & (u >= -1e-5)
-            & (v >= -1e-5)
-            & (u + v <= 1.0 + 1e-5)
-        )
-        has_tri = np.any(inside, axis=1)
-        if np.any(has_tri):
-            tri_idx = np.argmax(inside[has_tri], axis=1)
-            hit_chunks.append(chunk[has_tri])
-            tone_chunks.append(sub_tones[tri_idx])
-    if not hit_chunks:
-        return (
-            np.zeros((0, 2), dtype=np.float64),
-            np.zeros((0,), dtype=np.float64),
-        )
-    return np.vstack(hit_chunks), np.concatenate(tone_chunks)
-
-
-def _scumble_tangent_basis(
+def _scumble_light_tangent(
     vn_pt: np.ndarray,
-    lobe_axis: np.ndarray,
-    meridian_axis: np.ndarray,
+    light_dir: np.ndarray,
+    fallback_ax: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Returns orthonormal 3D tangent frame ``(t1, t2)`` on surface point."""
-    t1 = lobe_axis - float(np.dot(lobe_axis, vn_pt)) * vn_pt
-    n1 = float(np.linalg.norm(t1))
+    """Builds 3D surface tangent basis aligned along shadow terminator."""
+    e_along = np.cross(vn_pt, light_dir)
+    n1 = float(np.linalg.norm(e_along))
     if n1 < 1e-3:
-        t1 = meridian_axis - float(np.dot(meridian_axis, vn_pt)) * vn_pt
-        n1 = float(np.linalg.norm(t1))
-    t1 = t1 / max(n1, 1e-12)
-    t2 = np.cross(vn_pt, t1)
-    return t1, t2
+        e_along = fallback_ax - float(np.dot(fallback_ax, vn_pt)) * vn_pt
+        n1 = float(np.linalg.norm(e_along))
+    e_along = e_along / max(n1, 1e-12)
+    e_across = np.cross(vn_pt, e_along)
+    return e_along, e_across
 
 
-def _make_curl_3d_loop(
+def _make_woven_scumble_skein(
     anchor_2d_z: tuple[np.ndarray, float],
     vn_pt: np.ndarray,
-    axes_pair: tuple[np.ndarray, np.ndarray],
-    sh_s: float,
-    span_ref: float,
-    curl_seed: int,
+    axes_ctx: tuple[np.ndarray, np.ndarray],
+    skein_cfg: tuple[float, float, float, float, int],
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Generates one surface-locked circular scumble trajectory."""
+    """Builds one loose overlapping circulism skein along 3D shadow band."""
     c_xy, c_z = anchor_2d_z
-    t1, t2 = _scumble_tangent_basis(vn_pt, axes_pair[0], axes_pair[1])
+    e_a, e_b = _scumble_light_tangent(vn_pt, axes_ctx[0], axes_ctx[1])
+    rx, ry, drift_len, n_turns, curl_seed = skein_cfg
     rng = np.random.default_rng(curl_seed)
-    th0 = float(rng.uniform(0.0, 2.0 * math.pi))
-    dth = float(rng.uniform(-1.6, 1.6))
-    drift = (0.14 + 0.14 * sh_s) * span_ref
-    ts = np.linspace(-0.5, 0.5, 56)
-    th_arr = th0 + ts * dth
-    sp_u = drift * ts * np.cos(th_arr)
-    sp_v = drift * ts * np.sin(th_arr)
-    omega = 2.0 * math.pi * (3.8 + 2.2 * sh_s)
     phi = float(rng.uniform(0.0, 2.0 * math.pi))
-    rc = (
-        (0.030 - 0.010 * sh_s)
-        * span_ref
-        * (0.82 + 0.30 * np.sin(2.0 * math.pi * (ts + 0.5) + phi))
-    )
-    du = sp_u + rc * np.cos(omega * (ts + 0.5) + phi)
-    dv = sp_v + rc * np.sin(omega * (ts + 0.5) + phi)
+    wob = float(rng.uniform(0.0, 2.0 * math.pi))
+    ts = np.linspace(-0.5, 0.5, 44)
+    sp_u = drift_len * ts
+    sp_v = 0.22 * drift_len * np.sin(math.pi * ts + wob)
+    omega = 2.0 * math.pi * n_turns
+    ang = omega * (ts + 0.5) + phi
+    du = sp_u + rx * np.cos(ang) + 0.18 * rx * np.sin(2.1 * omega * ts)
+    dv = sp_v + ry * np.sin(ang + 0.35 * np.sin(math.pi * ts))
     pts_xy = (
         c_xy[None, :]
-        + du[:, None] * t1[:2][None, :]
-        + dv[:, None] * t2[:2][None, :]
+        + du[:, None] * e_a[:2][None, :]
+        + dv[:, None] * e_b[:2][None, :]
     )
-    pts_z = c_z + du * float(t1[2]) + dv * float(t2[2])
+    pts_z = c_z + du * float(e_a[2]) + dv * float(e_b[2])
     return pts_xy, pts_z
 
 
@@ -793,25 +765,31 @@ def _clip_chosen_scumbles(
             np.ndarray | None,
             float,
         ],
+        tuple[float, float, float, float],
         int,
     ],
 ) -> list[np.ndarray]:
-    """Builds and clips 3D surface scumble curls for chosen face anchors."""
-    tris, w, vn, sh, sel = samples
-    span, lobe_idx, occ_ctx, seed_lobe = cfg
+    """Builds and clips 3D surface circulism skeins for chosen anchors."""
+    tris, w, vn, _, sel = samples
+    span, lobe_idx, occ_ctx, skein_frac, seed_lobe = cfg
+    light_d = _light_vectors()[0]
     pts_2d = np.sum(layer.xy_v[tris[chosen]] * w[chosen, :, None], axis=1)
     pts_z = np.sum(layer.depth_v[tris[chosen]] * w[chosen], axis=1)
     span_ref = max(span, 1.0)
-    min_vis = 0.016 * span_ref
+    min_vis = 0.015 * span_ref
     curls: list[np.ndarray] = []
     for pos, k_idx in enumerate(chosen):
-        px_arr, pz_arr = _make_curl_3d_loop(
+        px_arr, pz_arr = _make_woven_scumble_skein(
             (pts_2d[pos], float(pts_z[pos])),
             vn[k_idx],
-            (layer.lobe_axis, layer.meridian_axis),
-            float(sh[k_idx]),
-            span_ref,
-            seed_lobe * 1009 + int(sel[k_idx]),
+            (light_d, layer.lobe_axis),
+            (
+                skein_frac[0] * span_ref,
+                skein_frac[1] * span_ref,
+                skein_frac[2] * span_ref,
+                skein_frac[3],
+                seed_lobe * 1009 + int(sel[k_idx]),
+            ),
         )
         occ = _is_occluded_mask(
             px_arr, pz_arr, lobe_idx, occ_ctx, cull_over_atoms=True
@@ -833,10 +811,14 @@ def _sample_wandering_scumbles(
         np.ndarray | None,
         float,
     ],
-    seed_lobe: int,
+    web_cfg: tuple[
+        int, int, int, float, float, float, float, float, float
+    ],
 ) -> list[np.ndarray]:
-    """Generates surface-anchored, silhouette-clipped scribble curls."""
-    f_idx, bary, attrs = _sample_mesh_surface(layer.mesh, 360, seed_lobe)
+    """Generates woven surface-anchored circulism loops across shadows."""
+    f_idx, bary, attrs = _sample_mesh_surface(
+        layer.mesh, int(web_cfg[1]), int(web_cfg[0])
+    )
     if len(f_idx) == 0:
         return []
     active_f = np.zeros(len(layer.mesh.faces), dtype=bool)
@@ -850,21 +832,28 @@ def _sample_wandering_scumbles(
     vn = np.sum(layer.vn_rot[tris] * w[:, :, None], axis=1)
     vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-12)
     sh = np.clip(
-        (0.60 - _compute_front_tones(vn, *_light_vectors())) / 0.60,
+        (0.62 - _compute_front_tones(vn, *_light_vectors())) / 0.62,
         0.0,
         1.0,
     )
-    nz_jac = np.clip(vn[:, 2], 0.0, 1.0)
+    nz_fac = np.clip(vn[:, 2], 0.04, 1.0) ** 0.30
     chosen = np.flatnonzero(
-        (sh > 0.04) & (attrs[sel, 0] < 0.30 * nz_jac * (0.12 + sh**1.4))
-    )[:28]
+        (sh > web_cfg[3])
+        & (attrs[sel, 0] < nz_fac * (web_cfg[4] + 0.72 * (sh**1.25)))
+    )[: int(web_cfg[2])]
     if len(chosen) == 0:
         return []
     return _clip_chosen_scumbles(
         layer,
         (tris, w, vn, sh, sel),
         chosen,
-        (span, lobe_idx, occ_ctx, seed_lobe),
+        (
+            span,
+            lobe_idx,
+            occ_ctx,
+            (web_cfg[5], web_cfg[6], web_cfg[7], web_cfg[8]),
+            int(web_cfg[0]),
+        ),
     )
 
 
@@ -883,7 +872,7 @@ def _is_occluded_mask(
     *,
     cull_over_atoms: bool,
 ) -> np.ndarray:
-    """Returns boolean mask where points are hidden by atoms or front lobes."""
+    """Returns True for points occluded by foreground lobes or front atoms."""
     lobe_z_bufs, gspec, atom_xy, atom_depth, atom_radii, mean_z = occ_ctx
     _, _, x0, y0, dx, dy, res = gspec
     ix = np.clip(
@@ -911,15 +900,13 @@ def _is_occluded_mask(
         d2 = (xy_pts[:, 0:1] - atom_xy[None, :, 0]) ** 2 + (
             xy_pts[:, 1:2] - atom_xy[None, :, 1]
         ) ** 2
-        if cull_over_atoms:
-            occ |= np.any(d2 < (atom_radii[None, :] * 1.02) ** 2, axis=1)
-        else:
-            back_atom = (d2 < (atom_radii[None, :] * 1.03) ** 2) & (
-                z_eff[:, None]
-                < (atom_depth[None, :] + 0.42 * atom_radii[None, :])
-            )
-            front_atom = d2 < (atom_radii[None, :] * 0.90) ** 2
-            occ |= np.any(back_atom | front_atom, axis=1)
+        r_mul = 1.02 if cull_over_atoms else 1.01
+        z_off = 0.58 if cull_over_atoms else 0.45
+        in_disk = d2 < (atom_radii[None, :] * r_mul) ** 2
+        atom_in_front = z_eff[:, None] < (
+            atom_depth[None, :] + z_off * atom_radii[None, :]
+        )
+        occ |= np.any(in_disk & atom_in_front, axis=1)
     return occ
 
 
@@ -976,29 +963,46 @@ def _stipple_rgba_and_sizes(
     attrs_uv: np.ndarray,
     sh_k: np.ndarray,
     ink_col: str,
-    s_alpha: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Computes variable dot sizes and per-dot RGBA from permanent traits."""
-    skew = attrs_uv[:, 0] ** 1.55
-    sizes = (0.50 + 4.20 * skew) * (0.72 + 0.38 * sh_k)
-    rgb = np.asarray(mcolors.to_rgb(ink_col), dtype=np.float64)
-    alphas = np.clip(
-        s_alpha
-        * (0.72 + 0.46 * attrs_uv[:, 1])
-        * (0.65 + 0.45 * sh_k),
-        0.20,
-        0.52,
+    """Computes shadow-graded fine-liner micro-dot sizes and crisp RGBA."""
+    sizes = 0.36 + 2.35 * (sh_k**1.05) * (0.68 + 0.64 * attrs_uv[:, 0])
+    if len(sizes) >= 4:
+        std_v = float(np.std(sizes))
+        if 1e-6 < std_v < 0.50:
+            mean_v = float(np.mean(sizes))
+            sizes = np.clip(
+                mean_v + (sizes - mean_v) * (0.50 / std_v), 0.35, 4.20
+            )
+    rgb = np.asarray(
+        mcolors.to_rgb(_ink_hex(ink_col, charcoal_mix=0.22)),
+        dtype=np.float64,
     )
+    alphas = np.clip(0.30 + 0.46 * sh_k + 0.10 * attrs_uv[:, 1], 0.28, 0.78)
     rgba = np.empty((len(sh_k), 4), dtype=np.float64)
     rgba[:, :3] = rgb[None, :]
     rgba[:, 3] = alphas
-    return sizes, rgba
+    return np.asarray(sizes, dtype=np.float64), rgba
+
+
+def _stipple_shadow_weights(
+    vn: np.ndarray,
+    light_dir: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Computes 3-zone shadow intensity and gentle limb foreshortening."""
+    raw_nl = vn @ light_dir
+    nz = np.clip(vn[:, 2], 0.0, 1.0)
+    base_sh = np.clip((0.30 - raw_nl) / 0.96, 0.0, 1.0)
+    core_b = 0.26 * np.exp(-(((raw_nl + 0.22) / 0.30) ** 2))
+    rim_e = 0.20 * ((1.0 - nz) ** 2.4) * np.clip(-raw_nl, 0.0, 1.0)
+    sh = np.clip(base_sh + core_b - rim_e, 0.0, 1.0)
+    nz_fac = np.clip(nz, 0.04, 1.0) ** 0.28
+    return sh, nz_fac
 
 
 def _sample_stipple_marks(
     layer: MeshLayerInput,
     sub_mask: np.ndarray,
-    cfg_s: tuple[str, float, int],
+    cfg_s: tuple[str, int],
     occ_ctx: tuple[
         list[np.ndarray],
         tuple[np.ndarray, np.ndarray, float, float, float, float, int],
@@ -1009,14 +1013,14 @@ def _sample_stipple_marks(
     ],
     seed_lobe: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Generates 3D-surface-anchored coherent fine-liner stipple points."""
-    ink_col, s_alpha, lobe_idx = cfg_s
+    """Generates blue-noise surface-anchored fine-liner stipple micro-dots."""
+    ink_col, lobe_idx = cfg_s
     empty: tuple[np.ndarray, np.ndarray, np.ndarray] = (
         np.zeros((0, 2), dtype=np.float64),
         np.zeros((0,), dtype=np.float64),
         np.zeros((0, 4), dtype=np.float64),
     )
-    f_idx, bary, attrs = _sample_mesh_surface(layer.mesh, 4600, seed_lobe)
+    f_idx, bary, attrs = _sample_mesh_surface(layer.mesh, 6800, seed_lobe)
     if len(f_idx) == 0:
         return empty
     active_f = np.zeros(len(layer.mesh.faces), dtype=bool)
@@ -1029,20 +1033,13 @@ def _sample_stipple_marks(
     w = bary[sel]
     vn = np.sum(layer.vn_rot[tris] * w[:, :, None], axis=1)
     vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-12)
-    sh = np.clip(
-        (0.64 - _compute_front_tones(vn, *_light_vectors())) / 0.64,
-        0.0,
-        1.0,
-    )
-    nz_jac = np.clip(vn[:, 2], 0.0, 1.0)
-    keep = (sh > 0.015) & (attrs[sel, 0] < nz_jac * (0.04 + 0.94 * (sh**1.65)))
+    sh, nz_fac = _stipple_shadow_weights(vn, _light_vectors()[0])
+    keep = (sh > 0.05) & (attrs[sel, 0] < nz_fac * (0.95 * (sh**1.75)))
     if not np.any(keep):
         return empty
 
     pts_2d = np.sum(layer.xy_v[tris[keep]] * w[keep, :, None], axis=1)
     pts_z = np.sum(layer.depth_v[tris[keep]] * w[keep], axis=1)
-    sh_k = sh[keep]
-    attrs_uv = attrs[sel][keep, 1:3]
     occ = _is_occluded_mask(
         pts_2d, pts_z, lobe_idx, occ_ctx, cull_over_atoms=True
     )
@@ -1050,7 +1047,7 @@ def _sample_stipple_marks(
     if len(pts_2d) == 0:
         return empty
     sizes, rgba = _stipple_rgba_and_sizes(
-        attrs_uv[~occ], sh_k[~occ], ink_col, s_alpha
+        attrs[sel][keep][~occ, 1:3], sh[keep][~occ], ink_col
     )
     return pts_2d, sizes, rgba
 
@@ -1071,13 +1068,19 @@ def _compute_front_tones(
     light_dir: np.ndarray,
     half_dir: np.ndarray,
 ) -> np.ndarray:
-    """Computes smooth 3D form tones with highlight and reflected rim."""
-    ndotl = np.clip(n_front @ light_dir, 0.0, 1.0)
-    spec = np.clip(n_front @ half_dir, 0.0, 1.0) ** 12
+    """Computes 3-zone 3D form tones with core shadow & reflected rim."""
+    raw_nl = n_front @ light_dir
+    ndotl = np.clip((raw_nl + 0.12) / 1.12, 0.0, 1.0)
+    spec = np.clip(n_front @ half_dir, 0.0, 1.0) ** 18
     nz_f = np.clip(n_front[:, 2], 0.0, 1.0)
-    rim_bounce = 0.22 * ((1.0 - nz_f) ** 2.2) * (1.0 - ndotl)
+    core_dip = 0.16 * np.exp(-(((raw_nl + 0.22) / 0.32) ** 2)) * (nz_f**0.4)
+    rim_bounce = 0.24 * ((1.0 - nz_f) ** 2.1) * np.clip(-raw_nl, 0.0, 1.0)
     return np.asarray(
-        np.clip(0.10 + 0.74 * ndotl + 0.22 * spec + rim_bounce, 0.0, 1.0),
+        np.clip(
+            0.08 + 0.78 * ndotl + 0.24 * spec + rim_bounce - core_dip,
+            0.0,
+            1.0,
+        ),
         dtype=np.float64,
     )
 
@@ -1272,32 +1275,42 @@ def _shade_lobe_hits(
     light_dir: np.ndarray,
     half_dir: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Evaluates per-pixel Phong 3D color and volumetric alpha."""
+    """Evaluates 3-zone Blinn-Phong color, core shadow, and specular wash."""
     norms = np.linalg.norm(n_hit, axis=1, keepdims=True)
     n_unit = n_hit / np.maximum(norms, 1e-12)
-    ndotl = np.clip(n_unit @ light_dir, 0.0, 1.0)
-    spec = np.clip(n_unit @ half_dir, 0.0, 1.0) ** 16
+    raw_nl = n_unit @ light_dir
+    ndotl = np.clip((raw_nl + 0.12) / 1.12, 0.0, 1.0)
+    nh = np.clip(n_unit @ half_dir, 0.0, 1.0)
+    spec = (nh**14) * 0.55 + (nh**52) * 0.75
     nz_h = np.clip(n_unit[:, 2], 0.0, 1.0)
-    rim = 0.24 * ((1.0 - nz_h) ** 2.2) * (1.0 - ndotl)
+    core_sh = np.exp(-(((raw_nl + 0.22) / 0.34) ** 2)) * (nz_h**0.4)
+    rim = 0.26 * ((1.0 - nz_h) ** 2.0) * np.clip(-raw_nl, 0.0, 1.0)
 
     rgb_base = np.asarray(mcolors.to_rgb(hex_col), dtype=np.float64)
-    lit = 0.16 + 0.84 * rgb_base[None, :] * (
-        (0.48 + 0.52 * ndotl + 0.20 * rim)[:, None]
+    shade_f = np.clip(
+        0.30 + 0.72 * ndotl + 0.22 * rim - 0.16 * core_sh, 0.18, 1.08
     )
-    px_rgb = np.clip(lit + (0.68 * spec)[:, None] * (1.0 - lit), 0.0, 1.0)
+    lit = np.clip(
+        rgb_base[None, :] * shade_f[:, None] + (0.12 * (ndotl**2))[:, None],
+        0.0,
+        1.0,
+    )
+    px_rgb = np.clip(
+        lit + np.clip(spec, 0.0, 0.92)[:, None] * (1.0 - lit), 0.0, 1.0
+    )
 
     if shade_key == "solid":
-        base_a = alpha
+        base_a = alpha * 1.06
     elif shade_key == "outline":
-        base_a = alpha * 0.10
+        base_a = alpha * 0.14
     else:
-        base_a = alpha * 0.46
-    core_band = (1.0 - ndotl) * nz_h
-    spec_boost = (0.14 if shade_key != "outline" else 0.0) * spec
+        base_a = alpha * 0.62
+    form_a = 0.48 + 0.68 * ((1.0 - ndotl) * (nz_h**0.65)) + 0.24 * core_sh
+    spec_a = (0.18 if shade_key != "outline" else 0.08) * (nh**44)
     px_a = np.clip(
-        base_a * (0.62 + 0.62 * core_band) + spec_boost,
+        base_a * form_a + spec_a,
         0.0,
-        min(0.80, alpha + 0.16),
+        min(0.80, alpha + 0.21),
     )
     return px_rgb, px_a
 
@@ -1467,6 +1480,16 @@ def _append_tapered_strokes(
         )
 
 
+def _hatch_curve_ref(
+    tris_2d: np.ndarray, angle_deg: float
+) -> tuple[float, float]:
+    """Computes transverse projection center and radius for form hatching."""
+    rad = math.radians(angle_deg)
+    e_v = np.array([-math.sin(rad), math.cos(rad)], dtype=np.float64)
+    v_all = tris_2d.reshape(-1, 2) @ e_v
+    return float(np.mean(v_all)), max(0.5 * float(np.ptp(v_all)), 0.15)
+
+
 def _emit_hatch_strokes(
     layer: MeshLayerInput,
     sub_mask: np.ndarray,
@@ -1489,7 +1512,7 @@ def _emit_hatch_strokes(
     line_batches: list[LineBatch],
     seed_base: int,
 ) -> None:
-    """Appends feathered comic pen flicks for parallel and cross hatching."""
+    """Appends feathered 3D form-wrapping pen flicks for parallel/crosshatch."""
     xkcd_sketch = (0.80, 90.0, 2.0)
     sp = 0.048 * max(span, 1.0)
     min_vis = 0.020 * max(span, 1.0)
@@ -1503,13 +1526,25 @@ def _emit_hatch_strokes(
         seed=seed_base + 1,
     )
     f1 = _clip_strokes_occlusion(
-        _chords_to_comic_flicks(c1, 38.0, span, seed=seed_base + 2),
+        _chords_to_comic_flicks(
+            c1,
+            38.0,
+            span,
+            seed=seed_base + 2,
+            curve_ref=_hatch_curve_ref(layer.tris_2d, 38.0),
+        ),
         lobe_idx,
         occ_ctx,
         min_vis,
     )
     _append_tapered_strokes(
-        f1, ink_col, 0.62, 0.72 * s_alpha, z_stroke, xkcd_sketch, line_batches
+        f1,
+        ink_col,
+        0.62,
+        min(0.46, 0.72 * s_alpha),
+        z_stroke,
+        xkcd_sketch,
+        line_batches,
     )
     if shade_key == "hatch":
         cd = _clip_xkcd_chords(
@@ -1522,50 +1557,55 @@ def _emit_hatch_strokes(
             seed=seed_base + 3,
         )
         fd = _clip_strokes_occlusion(
-            _chords_to_comic_flicks(cd, 38.0, span, seed=seed_base + 4),
+            _chords_to_comic_flicks(
+                cd,
+                38.0,
+                span,
+                seed=seed_base + 4,
+                curve_ref=_hatch_curve_ref(layer.tris_2d, 38.0),
+            ),
             lobe_idx,
             occ_ctx,
             min_vis,
         )
         _append_tapered_strokes(
-            fd, ink_col, 0.76, s_alpha, z_stroke, xkcd_sketch, line_batches
+            fd,
+            ink_col,
+            0.76,
+            min(0.48, s_alpha),
+            z_stroke,
+            xkcd_sketch,
+            line_batches,
         )
         return
 
-    c2 = _clip_xkcd_chords(
-        layer.tris_2d[sub_mask & (layer.tones < 0.45)],
-        bound_tris,
-        angle_deg=-50.0,
-        spacing=sp,
-        span=span,
-        seed=seed_base + 5,
-    )
-    f2 = _clip_strokes_occlusion(
-        _chords_to_comic_flicks(c2, -50.0, span, seed=seed_base + 6),
-        lobe_idx,
-        occ_ctx,
-        min_vis,
-    )
-    _append_tapered_strokes(
-        f2, ink_col, 0.68, 0.88 * s_alpha, z_stroke, xkcd_sketch, line_batches
-    )
-    c3 = _clip_xkcd_chords(
-        layer.tris_2d[sub_mask & (layer.tones < 0.26)],
-        bound_tris,
-        angle_deg=-4.0,
-        spacing=sp * 1.12,
-        span=span,
-        seed=seed_base + 7,
-    )
-    f3 = _clip_strokes_occlusion(
-        _chords_to_comic_flicks(c3, -4.0, span, seed=seed_base + 8),
-        lobe_idx,
-        occ_ctx,
-        min_vis,
-    )
-    _append_tapered_strokes(
-        f3, ink_col, 0.60, 0.78 * s_alpha, z_stroke, xkcd_sketch, line_batches
-    )
+    for ang, t_max, sp_m, sd_off, lw_h, al_h in (
+        (-50.0, 0.45, 1.0, 5, 0.68, min(0.46, 0.88 * s_alpha)),
+        (-4.0, 0.26, 1.12, 7, 0.60, min(0.44, 0.78 * s_alpha)),
+    ):
+        ck = _clip_xkcd_chords(
+            layer.tris_2d[sub_mask & (layer.tones < t_max)],
+            bound_tris,
+            angle_deg=ang,
+            spacing=sp * sp_m,
+            span=span,
+            seed=seed_base + sd_off,
+        )
+        fk = _clip_strokes_occlusion(
+            _chords_to_comic_flicks(
+                ck,
+                ang,
+                span,
+                seed=seed_base + sd_off + 1,
+                curve_ref=_hatch_curve_ref(layer.tris_2d, ang),
+            ),
+            lobe_idx,
+            occ_ctx,
+            min_vis,
+        )
+        _append_tapered_strokes(
+            fk, ink_col, lw_h, al_h, z_stroke, xkcd_sketch, line_batches
+        )
 
 
 def _emit_contour_strokes(
@@ -1589,85 +1629,63 @@ def _emit_contour_strokes(
     line_batches: list[LineBatch],
     seed_base: int,
 ) -> None:
-    """Appends coaxial 3D principal-axis latitude & meridian contour rings."""
+    """Appends shadow-swelling coaxial 3D latitude & meridian contour rings."""
     xkcd_sketch = (0.80, 90.0, 2.0)
     sp = 0.056 * max(span, 1.0)
     min_vis = 0.022 * max(span, 1.0)
     front_ids = np.flatnonzero(layer.front_mask)
 
-    lat_n = layer.lobe_axis
-    arcs1 = _clip_strokes_occlusion(
-        _slice_3d_contour_arcs(
-            layer.mesh,
-            layer.verts_cam,
-            layer.xy_v,
-            front_ids[sub_mask & (layer.tones < 0.68)],
-            lat_n,
-            spacing=sp * 1.15,
-            span=span,
-            seed=seed_base + 9,
-        ),
-        lobe_idx,
-        occ_ctx,
-        min_vis,
-    )
-    _append_tapered_strokes(
-        arcs1,
-        ink_col,
-        0.68,
-        0.78 * s_alpha,
-        z_stroke,
-        xkcd_sketch,
-        line_batches,
-    )
-
-    arcs_core = _clip_strokes_occlusion(
-        _slice_3d_contour_arcs(
-            layer.mesh,
-            layer.verts_cam,
-            layer.xy_v,
-            front_ids[sub_mask & (layer.tones < 0.36)],
-            lat_n,
-            spacing=sp,
-            span=span,
-            offset_frac=0.5,
-            seed=seed_base + 10,
-        ),
-        lobe_idx,
-        occ_ctx,
-        min_vis,
-    )
-    _append_tapered_strokes(
-        arcs_core, ink_col, 0.76, s_alpha, z_stroke, xkcd_sketch, line_batches
-    )
-    if shade_key == "cross_contour":
-        u_mer2 = np.cross(layer.lobe_axis, layer.meridian_axis)
-        mer_n = 0.80 * layer.meridian_axis + 0.60 * u_mer2
-        mer_n /= max(float(np.linalg.norm(mer_n)), 1e-12)
-        arcs2 = _clip_strokes_occlusion(
+    for t_max, sp_m, off_f, lw_t, al_t, sd_off in (
+        (0.70, 1.15, 0.0, 0.48, min(0.46, 0.58 * s_alpha), 9),
+        (0.48, 1.15, 0.0, 0.68, min(0.48, 0.85 * s_alpha), 9),
+        (0.30, 1.00, 0.5, 0.80, min(0.49, 0.98 * s_alpha), 10),
+    ):
+        arcs = _clip_strokes_occlusion(
             _slice_3d_contour_arcs(
                 layer.mesh,
                 layer.verts_cam,
                 layer.xy_v,
-                front_ids[sub_mask & (layer.tones < 0.48)],
-                mer_n,
-                spacing=sp * 1.08,
+                front_ids[sub_mask & (layer.tones < t_max)],
+                layer.lobe_axis,
+                spacing=sp * sp_m,
                 span=span,
-                seed=seed_base + 11,
+                offset_frac=off_f,
+                seed=seed_base + sd_off,
             ),
             lobe_idx,
             occ_ctx,
             min_vis,
         )
         _append_tapered_strokes(
-            arcs2,
-            ink_col,
-            0.66,
-            0.86 * s_alpha,
-            z_stroke,
-            xkcd_sketch,
-            line_batches,
+            arcs, ink_col, lw_t, al_t, z_stroke, xkcd_sketch, line_batches
         )
+
+    if shade_key == "cross_contour":
+        u_mer2 = np.cross(layer.lobe_axis, layer.meridian_axis)
+        mer_n = 0.80 * layer.meridian_axis + 0.60 * u_mer2
+        mer_n /= max(float(np.linalg.norm(mer_n)), 1e-12)
+        for t_max, lw_t, al_t in (
+            (0.56, 0.50, min(0.45, 0.68 * s_alpha)),
+            (0.34, 0.72, min(0.48, 0.90 * s_alpha)),
+        ):
+            arcs2 = _clip_strokes_occlusion(
+                _slice_3d_contour_arcs(
+                    layer.mesh,
+                    layer.verts_cam,
+                    layer.xy_v,
+                    front_ids[sub_mask & (layer.tones < t_max)],
+                    mer_n,
+                    spacing=sp * 1.08,
+                    span=span,
+                    seed=seed_base + 11,
+                ),
+                lobe_idx,
+                occ_ctx,
+                min_vis,
+            )
+            _append_tapered_strokes(
+                arcs2, ink_col, lw_t, al_t, z_stroke, xkcd_sketch, line_batches
+            )
 
 
 def _append_lobe_art_strokes(
@@ -1729,25 +1747,142 @@ def _append_lobe_art_strokes(
         pts, sz, rgba = _sample_stipple_marks(
             layer,
             sub_mask,
-            (ink_col, s_alpha, lobe_idx),
+            (ink_col, lobe_idx),
             occ_ctx,
             seed_lobe=seed_base + 500,
         )
         if len(pts) > 0:
             dot_batches.append((pts, sz, rgba, z_stroke))
     elif shade_key == "scumble":
-        curls = _sample_wandering_scumbles(
-            layer,
-            sub_mask,
-            span,
-            lobe_idx,
-            occ_ctx,
-            seed_lobe=seed_base + 700,
+        scum_layers = (
+            (
+                (
+                    seed_base + 700, 520, 52, 0.18, 0.18,
+                    0.056, 0.038, 0.19, 2.35,
+                ),
+                0.54,
+                min(0.42, 0.72 * s_alpha),
+            ),
+            (
+                (
+                    seed_base + 731, 420, 38, 0.44, 0.00,
+                    0.040, 0.028, 0.14, 2.85,
+                ),
+                0.68,
+                min(0.48, 0.94 * s_alpha),
+            ),
         )
-        if curls:
-            line_batches.append(
-                (curls, ink_col, 0.64, 0.80 * s_alpha, z_stroke, None)
+        for cfg_w, lw_s, al_s in scum_layers:
+            curls = _sample_wandering_scumbles(
+                layer, sub_mask, span, lobe_idx, occ_ctx, cfg_w
             )
+            if curls:
+                line_batches.append(
+                    (curls, ink_col, lw_s, al_s, z_stroke, None)
+                )
+
+
+def _append_highlight_arc(
+    seg: np.ndarray,
+    lit_val: np.ndarray,
+    c_xy: np.ndarray,
+    cfg: tuple[str, str, float, float],
+    line_batches: list[LineBatch],
+) -> None:
+    """Adds a sunlit inset specular crescent for clean outline/solid modes."""
+    hex_col, shade_key, span, z_sil = cfg
+    if shade_key not in ("outline", "solid"):
+        return
+    for arc_seg in _split_visible_runs(
+        seg, ~(lit_val > 0.58), 0.08 * max(span, 1.0)
+    ):
+        core = arc_seg[1:-1] if len(arc_seg) >= 6 else arc_seg
+        inset_arc = c_xy[None, :] + 0.82 * (core - c_xy[None, :])
+        smoothed = _smooth_polyline(inset_arc, passes=2)
+        if shade_key == "outline":
+            entry: LineBatch = (
+                [smoothed], _rim_hex(hex_col), 1.22, 0.34, z_sil,
+                (0.5, 80.0, 2.0),
+            )
+        else:
+            entry = ([smoothed], "#FFFFFF", 1.35, 0.62, z_sil, None)
+        line_batches.append(entry)
+
+
+def _append_single_rim_tiers(
+    seg: np.ndarray,
+    c_xy: np.ndarray,
+    cfg: tuple[str, str, float, float, float],
+    line_batches: list[LineBatch],
+) -> None:
+    """Splits one silhouette loop into sunlit, mid, and shadow-belly strokes."""
+    hex_col, shade_key, span, alpha, z_sil = cfg
+    diff_v = seg - c_xy[None, :]
+    norms = np.maximum(np.linalg.norm(diff_v, axis=1, keepdims=True), 1e-12)
+    lit_val = (diff_v / norms) @ np.array([-0.668, 0.744], dtype=np.float64)
+    rim_col = _rim_hex(hex_col)
+    sh_col = _ink_hex(hex_col, charcoal_mix=0.35)
+    min_run = 0.015 * max(span, 1.0)
+    tiers = (
+        (
+            lit_val > 0.22,
+            1.22,
+            float(np.clip(alpha + 0.10, 0.26, 0.40)),
+            rim_col,
+        ),
+        (
+            (lit_val >= -0.22) & (lit_val <= 0.28),
+            1.50,
+            float(np.clip(alpha + 0.30, 0.42, 0.60)),
+            rim_col,
+        ),
+        (
+            lit_val < -0.16,
+            1.92 if z_sil > 20.0 else 1.72,
+            float(np.clip(alpha + 0.48, 0.58, 0.80)),
+            sh_col,
+        ),
+    )
+    added = False
+    for mask_t, lw_t, al_t, col_t in tiers:
+        runs = _split_visible_runs(seg, ~mask_t, min_run)
+        if runs:
+            line_batches.append((runs, col_t, lw_t, al_t, z_sil, None))
+            added = True
+    if not added:
+        al_fb = float(np.clip(alpha + 0.34, 0.30, 0.64))
+        line_batches.append(([seg], rim_col, 1.40, al_fb, z_sil, None))
+    _append_highlight_arc(
+        seg, lit_val, c_xy, (hex_col, shade_key, span, z_sil), line_batches
+    )
+
+
+def _append_modulated_silhouettes(
+    ly: MeshLayerInput,
+    vis_sils: Sequence[np.ndarray],
+    cfg: tuple[str, float, float],
+    occ_ctx: tuple[
+        list[np.ndarray],
+        tuple[np.ndarray, np.ndarray, float, float, float, float, int],
+        np.ndarray | None,
+        np.ndarray | None,
+        np.ndarray | None,
+        float,
+    ],
+    line_batches: list[LineBatch],
+) -> None:
+    """Appends light- and depth-weighted lobe silhouettes and rim highlights."""
+    shade_key, span, alpha = cfg
+    z_sil = 41.0
+    c_xy = np.mean(ly.tris_2d.reshape(-1, 2), axis=0)
+    _, _, atom_xy, atom_depth, _, mean_z = occ_ctx
+    if atom_xy is not None and atom_depth is not None:
+        near = int(np.argmin(np.sum((atom_xy - c_xy) ** 2, axis=1)))
+        if mean_z < float(atom_depth[near]) - 0.03:
+            z_sil = 1.5
+    rim_cfg = (ly.hex_col, shade_key, span, alpha, z_sil)
+    for seg in vis_sils:
+        _append_single_rim_tiers(seg, c_xy, rim_cfg, line_batches)
 
 
 def _build_lobe_batches(
@@ -1796,22 +1931,8 @@ def _build_lobe_batches(
             _split_visible_runs(s_xy, occ, 0.025 * max(span, 1.0))
         )
     if vis_sils:
-        z_sil = 41.0
-        _, _, atom_xy, atom_depth, _, mean_z = occ_ctx
-        if atom_xy is not None and atom_depth is not None:
-            c_xy = np.mean(ly.tris_2d.reshape(-1, 2), axis=0)
-            near = int(np.argmin(np.sum((atom_xy - c_xy) ** 2, axis=1)))
-            if mean_z < float(atom_depth[near]) - 0.03:
-                z_sil = 1.5
-        line_batches.append(
-            (
-                vis_sils,
-                _rim_hex(ly.hex_col),
-                1.40,
-                float(np.clip(alpha + 0.34, 0.30, 0.64)),
-                z_sil,
-                None,
-            )
+        _append_modulated_silhouettes(
+            ly, vis_sils, cfg, occ_ctx, line_batches
         )
 
 
