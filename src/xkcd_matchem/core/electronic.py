@@ -46,6 +46,8 @@ class BandGapResult:
         ``"spin_degenerate"``, or ``"fermi_level"``.
       occupation_threshold: Occupation cutoff (or ``0.0`` for Fermi level).
       note: Human-readable explanation of the gap classification.
+      fermi_tolerance_ev: Energy tolerance in eV used when
+        ``convention == "fermi_level"`` (``None`` for occupation conventions).
     """
 
     fundamental_gap: float | None
@@ -58,12 +60,15 @@ class BandGapResult:
     convention: str
     occupation_threshold: float
     note: str
+    fermi_tolerance_ev: float | None = None
 
 
 def _indeterminate_gap(
     convention: str,
     threshold: float,
     note: str,
+    *,
+    fermi_tolerance_ev: float | None = None,
 ) -> BandGapResult:
     """Builds an indeterminate ``BandGapResult``."""
     return BandGapResult(
@@ -77,6 +82,7 @@ def _indeterminate_gap(
         convention=convention,
         occupation_threshold=threshold,
         note=note,
+        fermi_tolerance_ev=fermi_tolerance_ev,
     )
 
 
@@ -84,6 +90,8 @@ def _metallic_gap(
     convention: str,
     threshold: float,
     note: str,
+    *,
+    fermi_tolerance_ev: float | None = None,
 ) -> BandGapResult:
     """Builds a metallic zero-gap ``BandGapResult``."""
     return BandGapResult(
@@ -97,6 +105,7 @@ def _metallic_gap(
         convention=convention,
         occupation_threshold=threshold,
         note=note,
+        fermi_tolerance_ev=fermi_tolerance_ev,
     )
 
 
@@ -106,6 +115,8 @@ def _compute_insulator_gaps(
     convention: str,
     threshold: float,
     note_suffix: str,
+    *,
+    fermi_tolerance_ev: float | None = None,
 ) -> BandGapResult:
     """Computes direct and indirect gaps from validated occupied state masks."""
     unocc_mask = ~occ_mask
@@ -114,12 +125,14 @@ def _compute_insulator_gaps(
             convention,
             threshold,
             "Indeterminate: no occupied states present in band window.",
+            fermi_tolerance_ev=fermi_tolerance_ev,
         )
     if not np.any(unocc_mask):
         return _indeterminate_gap(
             convention,
             threshold,
             "Indeterminate: no unoccupied states present in band window.",
+            fermi_tolerance_ev=fermi_tolerance_ev,
         )
     vbm = float(np.max(eigs[occ_mask]))
     cbm = float(np.min(eigs[unocc_mask]))
@@ -129,6 +142,7 @@ def _compute_insulator_gaps(
             convention,
             threshold,
             "Metallic: conduction and valence bands overlap in energy.",
+            fermi_tolerance_ev=fermi_tolerance_ev,
         )
     direct_vals: list[float] = []
     for k_idx in range(eigs.shape[1]):
@@ -144,6 +158,7 @@ def _compute_insulator_gaps(
             convention,
             threshold,
             "Indeterminate: no k-point contains both occupied and empty bands.",
+            fermi_tolerance_ev=fermi_tolerance_ev,
         )
     direct_gap = float(min(direct_vals))
     kind = "Direct" if abs(direct_gap - indirect_gap) <= 1e-5 else "Indirect"
@@ -158,6 +173,7 @@ def _compute_insulator_gaps(
         convention=convention,
         occupation_threshold=threshold,
         note=f"{kind} {note_suffix}",
+        fermi_tolerance_ev=fermi_tolerance_ev,
     )
 
 
@@ -256,32 +272,35 @@ class BandStructure:
 
     def _analyze_fermi_gap(
         self,
-        occ_threshold: float | None,
+        fermi_tolerance_ev: float,
     ) -> BandGapResult:
         """Evaluates spectral band gap relative to ``fermi_energy``."""
-        threshold = 0.0 if occ_threshold is None else float(occ_threshold)
+        tol = float(fermi_tolerance_ev)
         if not math.isfinite(self.fermi_energy):
             return _indeterminate_gap(
                 "fermi_level",
-                threshold,
+                0.0,
                 "Indeterminate: non-finite Fermi energy.",
+                fermi_tolerance_ev=tol,
             )
         ef = float(self.fermi_energy)
         band_min = np.min(self.eigenvalues, axis=1)
         band_max = np.max(self.eigenvalues, axis=1)
-        if bool(np.any((band_min < ef - 1e-4) & (band_max > ef + 1e-4))):
+        if bool(np.any((band_min < ef - tol) & (band_max > ef + tol))):
             return _metallic_gap(
                 "fermi_level",
-                threshold,
+                0.0,
                 "Metallic: band disperses across Fermi energy.",
+                fermi_tolerance_ev=tol,
             )
-        occ_mask = self.eigenvalues <= ef + 1e-6
+        occ_mask = self.eigenvalues <= ef + tol
         return _compute_insulator_gaps(
             self.eigenvalues,
             occ_mask,
             "fermi_level",
-            threshold,
+            0.0,
             "spectral gap from Fermi-level partitioning.",
+            fermi_tolerance_ev=tol,
         )
 
     def _analyze_occupation_gap(
@@ -346,6 +365,7 @@ class BandStructure:
         occupation_scale: str = "auto",
         occ_threshold: float | None = None,
         smearing_tol: float = 0.05,
+        fermi_tolerance_ev: float = 1e-4,
     ) -> BandGapResult:
         """Analyzes fundamental, direct, and indirect band gaps rigorously.
 
@@ -354,16 +374,20 @@ class BandStructure:
             ``"spin_polarized"`` (max occ ~ 1), ``"spin_degenerate"``
             (max occ ~ 2), or ``"fermi_level"`` (ignore ``occupations``).
           occ_threshold: Optional explicit occupation threshold overriding
-            ``0.5 * f_max``.
+            ``0.5 * f_max`` (valid only for occupation-based analysis).
           smearing_tol: Fractional smearing tolerance in ``[0, 0.5)`` so
             weakly thermally smeared insulators are not misclassified as metals.
+          fermi_tolerance_ev: Non-negative energy tolerance in eV for
+            Fermi-level crossing detection and occupied-state partitioning
+            when ``occupation_scale="fermi_level"`` or ``occupations is None``.
 
         Returns:
           ``BandGapResult`` detailing gap values, VBM/CBM, and convention.
 
         Raises:
-          StructureError: If ``occupation_scale``, ``occ_threshold``, or
-            ``smearing_tol`` is invalid.
+          StructureError: If ``occupation_scale``, ``occ_threshold``,
+            ``smearing_tol``, or ``fermi_tolerance_ev`` is invalid, or if
+            ``occ_threshold`` is passed for Fermi-level analysis.
         """
         scale_key = occupation_scale.strip().lower()
         valid_scales = (
@@ -377,12 +401,27 @@ class BandStructure:
                 f"Unsupported occupation_scale {occupation_scale!r}; "
                 f"expected one of {valid_scales}."
             )
-        if not (math.isfinite(smearing_tol) and 0.0 <= smearing_tol < 0.5):
+        if isinstance(smearing_tol, bool) or not (
+            math.isfinite(smearing_tol) and 0.0 <= smearing_tol < 0.5
+        ):
             raise exceptions.StructureError(
                 "smearing_tol must be finite and within [0.0, 0.5)."
             )
-        if occ_threshold is not None and not (
-            math.isfinite(occ_threshold) and occ_threshold > 0.0
+        if isinstance(fermi_tolerance_ev, bool) or not (
+            math.isfinite(fermi_tolerance_ev) and fermi_tolerance_ev >= 0.0
+        ):
+            raise exceptions.StructureError(
+                "fermi_tolerance_ev must be finite and non-negative."
+            )
+        use_fermi = self.occupations is None or scale_key == "fermi_level"
+        if use_fermi and occ_threshold is not None:
+            raise exceptions.StructureError(
+                "occ_threshold is only valid for occupation-based band-gap "
+                "analysis; use fermi_tolerance_ev for Fermi-level analysis."
+            )
+        if occ_threshold is not None and (
+            isinstance(occ_threshold, bool)
+            or not (math.isfinite(occ_threshold) and occ_threshold > 0.0)
         ):
             raise exceptions.StructureError(
                 "occ_threshold must be finite and strictly positive."
@@ -391,12 +430,15 @@ class BandStructure:
             np.isfinite(self.eigenvalues)
         ):
             return _indeterminate_gap(
-                "fermi_level" if self.occupations is None else scale_key,
+                "fermi_level" if use_fermi else scale_key,
                 0.0 if occ_threshold is None else float(occ_threshold),
                 "Indeterminate: empty or non-finite eigenvalue array.",
+                fermi_tolerance_ev=(
+                    float(fermi_tolerance_ev) if use_fermi else None
+                ),
             )
         if self.occupations is None or scale_key == "fermi_level":
-            return self._analyze_fermi_gap(occ_threshold)
+            return self._analyze_fermi_gap(float(fermi_tolerance_ev))
         return self._analyze_occupation_gap(
             self.occupations, scale_key, occ_threshold, smearing_tol
         )

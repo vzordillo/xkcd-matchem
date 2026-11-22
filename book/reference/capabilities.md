@@ -46,12 +46,12 @@ All native parsers convert incoming file values into one uniform internal unit s
 | `energy` | Electronvolt | eV | Total energies, eigenvalues, barriers, and formation energies; convert via `convert_energy()`. |
 | `force` | eV per Angstrom | eV/Å | Cartesian atomic force vectors stored on `AtomsData.forces`. |
 | `pressure` | Gigapascal | GPa | Bulk modulus `B₀` and pressure curves (`birch_murnaghan_pressure`); convert via `convert_pressure()`. |
-| `time` | Femtosecond | fs | Canonical MD time unit; convert `fs`/`ps`/`ns` via `convert_time()` (note: extXYZ comment tags may label `ps` explicitly in metadata). |
+| `time` | Femtosecond | fs | Canonical MD time unit; convert `fs`/`ps`/`ns` via `convert_time()`. LAMMPS `.lammpstrj` stores raw integer step counters in `metadata["timesteps"]` (`times=None` until converted to `fs` via `read_lammpstrj(..., timestep_size=..., time_unit=...)`); extXYZ `read_xyz_trajectory(..., time_unit=...)` converts `time=` to `fs` when `time_unit` is given on call or in frame headers and marks `metadata["time_unit"] = "unspecified"` otherwise; `plot_md_timeseries()` labels the x-axis `"Time (<unit>)"`, `"Time"`, `"Timestep"`, or `"Frame Index"` accordingly. |
 | `reciprocal_length` | Inverse Angstrom | Å⁻¹ | Crystallographic `2π` physics convention `B = 2π (A⁻¹)ᵀ` used in Brillouin zones and `k`-paths. |
 | `temperature` | Kelvin | K | Instantaneous thermostat temperatures in MD trajectories. |
 | `potential` | Volt | V | Electrochemical and battery potentials (`V vs. SHE`, `V vs. Li/Li⁺`, etc.). |
 
-Analytical routines and exporters can attach structured provenance records using the frozen dataclass `xm.core.units.ScientificProvenance(algorithm, units, source, parser, parameters, assumptions, package_version)` and serialize them cleanly with `.to_dict()`.
+Analytical routines and exporters can attach deeply immutable structured provenance records (`MappingProxyType` mappings, `tuple` sequences, and read-only NumPy arrays) using the frozen dataclass `xm.core.units.ScientificProvenance(algorithm, units, source, parser, parameters, assumptions, package_version)` and serialize them cleanly (including NumPy scalars/arrays, `Path` objects, and nested containers) with `.to_dict()`.
 
 ## Explicit Physical Assumptions & Method Boundaries
 
@@ -83,7 +83,7 @@ $$g_{\alpha\alpha}(r_k) = \left\langle \frac{n_{\text{pairs}}(r_{\text{in},k} \l
 `BandStructure.analyze_band_gap()` returns a `BandGapResult` that makes band-gap semantics explicit instead of silently conflating occupations with $E_F$:
 
 - **`"spin_polarized"`** (`max(occ) ~ 1.0`) and **`"spin_degenerate"`** (`max(occ) ~ 2.0`): determined from stored Kohn–Sham `occupations` with automatic or user-specified `occupation_scale` and `occ_threshold`. Finite-temperature Fermi–Dirac/Gaussian smearing is handled cleanly via `smearing_tol` so lightly smeared insulators are not misclassified as metals.
-- **`"fermi_level"`**: used only when `occupations is None`, partitioning bands relative to `fermi_energy` ($E \le E_F$ occupied, $E > E_F$ unoccupied).
+- **`"fermi_level"`**: used when `occupations is None` or `occupation_scale="fermi_level"`, partitioning bands relative to `fermi_energy` using `fermi_tolerance_ev` (default `1e-4` eV: bands dispersing across $[E_F - \Delta E_{\mathrm{tol}},\, E_F + \Delta E_{\mathrm{tol}}]$ are metallic, and states with $E \le E_F + \Delta E_{\mathrm{tol}}$ are occupied). Passing `occ_threshold` in Fermi-level mode raises `StructureError` so occupation cutoffs and energy tolerances are never conflated.
 - **Direct, indirect & indeterminate states:** Reports `fundamental_gap`, `direct_gap` ($\min_k(E_{\mathrm{CBM},k} - E_{\mathrm{VBM},k})$), `indirect_gap` ($\min E_{\mathrm{CBM}} - \max E_{\mathrm{VBM}}$), `vbm`, `cbm`, `is_metallic`, and `is_indeterminate` (returning `fundamental_gap=None` when all bands are filled, all are empty, or occupation data are ambiguous). Backwards-compatible `BandStructure.band_gap()` delegates to `analyze_band_gap()` and returns `0.0` for metallic or indeterminate inputs.
 
 ### 5. Bundled `water_to_ice.xyz` MLIP Sample Qualification

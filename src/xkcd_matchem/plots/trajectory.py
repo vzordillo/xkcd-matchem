@@ -34,6 +34,27 @@ from xkcd_matchem.render import structure3d
 from xkcd_matchem.style import theme
 
 
+def _resolve_timeseries_xaxis(
+    traj: trajectory.Trajectory,
+) -> tuple[np.ndarray, str]:
+    """Resolves MD x-axis coordinates and unit, step, or frame-index label."""
+    if traj.times is not None:
+        raw_tu = traj.metadata.get("time_unit")
+        tu = str(raw_tu).strip() if isinstance(raw_tu, str) else ""
+        if tu and tu.lower() not in ("unspecified", "unknown", "none"):
+            return traj.times, f"Time ({tu})"
+        return traj.times, "Time"
+    if "timesteps" in traj.metadata and traj.metadata["timesteps"] is not None:
+        steps = np.asarray(traj.metadata["timesteps"], dtype=np.float64)
+        if steps.shape != (len(traj),):
+            raise exceptions.StructureError(
+                f"metadata['timesteps'] shape {steps.shape} must match "
+                f"trajectory length ({len(traj)},)."
+            )
+        return steps, "Timestep"
+    return np.arange(len(traj), dtype=np.float64), "Frame Index"
+
+
 def plot_md_timeseries(
     traj: trajectory.Trajectory,
     ax: maxes.Axes | None = None,
@@ -46,11 +67,7 @@ def plot_md_timeseries(
     """Plots energy, temperature, pressure, or RMSD along an MD trajectory."""
     if len(traj) == 0:
         raise exceptions.StructureError("Trajectory has zero frames.")
-    xs = (
-        traj.times
-        if traj.times is not None
-        else np.arange(len(traj), dtype=np.float64)
-    )
+    xs, x_label = _resolve_timeseries_xaxis(traj)
     q_key = quantity.lower()
     if q_key == "rmsd":
         ys = traj.rmsd(ref_index=0)
@@ -107,7 +124,7 @@ def plot_md_timeseries(
                 label=f"{running_window}-pt mean",
             )
             ax.legend(loc="best", frameon=True)
-        ax.set_xlabel("Time / Step")
+        ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
