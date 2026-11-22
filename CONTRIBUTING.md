@@ -37,7 +37,7 @@ Verify your environment before making changes:
 | Directory | Purpose |
 | :--- | :--- |
 | `src/xkcd_matchem/core/` | Scientific data models, geometry, neighbors, bonding, XRD, isosurfaces, Brillouin zones, Wulff shapes (zero Matplotlib imports) |
-| `src/xkcd_matchem/data/` | Verified scientific tables (CODATA 2022, IUPAC/CIAAW, BODR, Alvarez/Mantina, Cromer–Mann), 62 ITA space groups, 17 bundled samples, fonts, and `viewer.html` |
+| `src/xkcd_matchem/data/` | Verified scientific tables (CODATA 2022, IUPAC/CIAAW, BODR, Alvarez/Mantina, Cromer–Mann), 61 ITA space groups, 17 bundled samples, fonts, and `viewer.html` |
 | `src/xkcd_matchem/io/` | Format auto-detection, 29 zero-dependency native parsers, and optional lazy ecosystem adapters (ASE, pymatgen, RDKit, cclib, MDAnalysis, MDTraj) |
 | `src/xkcd_matchem/style/` | Presets, 4-tier stroke hierarchy, colorblind-safe Okabe–Ito & Jmol palettes, bundled font handling, background grids, and hatched fills |
 | `src/xkcd_matchem/render/` | Low-level 2D/3D drawing primitives, pen-and-ink 3D shading, icons, callouts, and offline Interactive 3D Studio HTML exporter |

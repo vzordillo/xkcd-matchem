@@ -63,7 +63,7 @@ Behind the playful visuals, core geometry routines avoid common shortcuts that b
 
 ## Optional Framework Adapters
 
-When you need specialized force-field topologies or proprietary file formats outside the built-in parsers, install the optional bridges via `pip install "xkcd-matchem[ase,pymatgen,qm,rdkit,md]"`:
+When you need specialized force-field topologies or proprietary file formats outside the built-in parsers, install the optional bridges via `pip install "xkcd-matchem[ase,pymatgen,qm,rdkit,md] @ git+https://github.com/vzordillo/xkcd-matchem.git"` (or `pip install -e ".[ase,pymatgen,qm,rdkit,md]"` from a local clone; bare PyPI installs will work once the first release is tagged):
 
 - **ASE:** `xm.from_ase(ase_atoms)`, `xm.to_ase(atoms)`, `xm.io.read_via_ase(path)`
 - **pymatgen:** `xm.from_pymatgen(struct_or_mol)`, `xm.to_pymatgen(atoms)`
