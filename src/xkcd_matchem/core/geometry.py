@@ -324,7 +324,10 @@ def cell_vectors_from_parameters(
     return np.vstack([va, vb, vc])
 
 
-def _reduce_lattice_basis(basis: np.ndarray) -> np.ndarray:
+def _reduce_lattice_basis(
+    basis: np.ndarray,
+    delta: float = 0.75,
+) -> np.ndarray:
     """Applies Gauss/LLL lattice reduction to a 1D-3D basis matrix."""
     red = np.array(basis, dtype=np.float64, copy=True)
     n_vec = red.shape[0]
@@ -346,7 +349,7 @@ def _reduce_lattice_basis(basis: np.ndarray) -> np.ndarray:
 
     k = 1
     iters = 0
-    while k < n_vec and iters < 200:
+    while k < n_vec and iters < 1000:
         iters += 1
         ortho, mu = _gram_schmidt(red)
         for j in range(k - 1, -1, -1):
@@ -355,7 +358,7 @@ def _reduce_lattice_basis(basis: np.ndarray) -> np.ndarray:
                 red[k] -= q * red[j]
                 ortho, mu = _gram_schmidt(red)
         lhs = float(np.dot(ortho[k], ortho[k]))
-        rhs = (0.75 - mu[k, k - 1] ** 2) * float(
+        rhs = (delta - mu[k, k - 1] ** 2) * float(
             np.dot(ortho[k - 1], ortho[k - 1])
         )
         if lhs < rhs:
@@ -364,6 +367,37 @@ def _reduce_lattice_basis(basis: np.ndarray) -> np.ndarray:
         else:
             k += 1
     return red
+
+
+def lll_reduce_cell(cell: np.ndarray, delta: float = 0.75) -> np.ndarray:
+    """Reduces row lattice vectors via Lenstra-Lenstra-Lovasz (LLL) reduction.
+
+    Preserves the exact integer lattice span while bounding basis skewness for
+    ill-conditioned real-space or reciprocal-space cells.
+
+    Args:
+      cell: Basis matrix of shape ``(3, 3)`` or ``(M, 3)`` (``1 <= M <= 3``)
+        whose rows are lattice vectors.
+      delta: Lovasz reduction parameter strictly within ``(0.25, 1.0)``.
+
+    Returns:
+      LLL-reduced float64 basis matrix of matching shape.
+
+    Raises:
+      StructureError: If ``cell`` shape is invalid or ``delta`` is out of range.
+    """
+    if not (math.isfinite(delta) and 0.25 < delta < 1.0):
+        raise exceptions.StructureError(
+            "LLL delta parameter must lie strictly within (0.25, 1.0)."
+        )
+    arr = np.asarray(cell, dtype=np.float64)
+    if arr.ndim != 2 or arr.shape[1] != 3 or arr.shape[0] not in (1, 2, 3):
+        raise exceptions.StructureError(
+            f"Expected (M, 3) lattice basis with 1 <= M <= 3, got {arr.shape}."
+        )
+    if not np.all(np.isfinite(arr)):
+        raise exceptions.StructureError("Lattice basis must be finite.")
+    return _reduce_lattice_basis(arr, delta=delta)
 
 
 def _integer_shift_grid(bounds: list[int]) -> np.ndarray:

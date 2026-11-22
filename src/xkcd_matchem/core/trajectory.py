@@ -19,6 +19,7 @@ from collections.abc import Sequence
 import dataclasses
 import math
 from typing import Any
+import warnings
 
 import numpy as np
 
@@ -100,6 +101,31 @@ def compute_tetrahedral_order(
     return float(np.mean(q_vals))
 
 
+def _validate_variable_cell_mode(mode: str) -> str:
+    """Validates trajectory periodic unwrapping coordinate mode."""
+    key = mode.strip().lower()
+    if key not in ("cartesian", "fractional"):
+        raise exceptions.StructureError(
+            f"Unsupported variable_cell_mode {mode!r}; "
+            "expected 'cartesian' or 'fractional'."
+        )
+    return key
+
+
+def _frame_lossless_unwrapped(
+    frame: structure.AtomsData,
+) -> np.ndarray | None:
+    """Returns explicit unwrapped Cartesian coordinates if stored on frame."""
+    raw_u = frame.metadata.get("unwrapped_positions")
+    if raw_u is not None:
+        arr = np.asarray(raw_u, dtype=np.float64)
+        if arr.shape == frame.positions.shape and np.all(np.isfinite(arr)):
+            return arr
+    if bool(frame.metadata.get("coords_unwrapped", False)):
+        return frame.positions
+    return None
+
+
 @dataclasses.dataclass
 class Trajectory:
     """Multi-frame atomic trajectory for MD simulations or NEB reaction paths.
@@ -151,19 +177,93 @@ class Trajectory:
         """Retrieves a single frame by index."""
         return self.frames[index]
 
-    def _unwrapped_positions(self, idx_arr: np.ndarray) -> list[np.ndarray]:
-        """Unwraps periodic coordinates cumulatively across frames."""
-        unwrapped = [self.frames[0].positions[idx_arr].copy()]
+    def _unwrapped_positions(
+        self,
+        idx_arr: np.ndarray,
+        *,
+        variable_cell_mode: str = "cartesian",
+    ) -> list[np.ndarray]:
+        """Unwraps periodic coordinates across frames.
+
+        Prefers lossless ``frame.metadata["unwrapped_positions"]`` or direct
+        ``coords_unwrapped=True`` coordinates when present on all frames.
+        Otherwise reconstructs cumulative trajectories from frame-to-frame
+        minimum-image displacements under the Nyquist sampling assumption
+        (inter-frame displacement strictly below the Wigner-Seitz inradius),
+        emitting a ``UserWarning`` if any jump exceeds 45% of that inradius.
+        """
+        mode = _validate_variable_cell_mode(variable_cell_mode)
+        lossless = [_frame_lossless_unwrapped(f) for f in self.frames]
+        if lossless and all(arr is not None for arr in lossless):
+            return [
+                arr[idx_arr].copy() for arr in lossless if arr is not None
+            ]
+
+        first_f = self.frames[0]
+        unwrapped = [first_f.positions[idx_arr].copy()]
+        s_unwrapped = (
+            first_f.positions[idx_arr] @ np.linalg.inv(first_f.cell)
+            if mode == "fractional" and first_f.cell is not None
+            else None
+        )
+        worst_frame = -1
+        worst_r_ws = 0.0
+        worst_step = 0.0
+        worst_ratio = 0.45
+
         for k in range(1, len(self.frames)):
-            prev_raw = self.frames[k - 1].positions[idx_arr]
-            cur_frame = self.frames[k]
-            cur_raw = cur_frame.positions[idx_arr]
-            delta = cur_raw - prev_raw
-            if cur_frame.cell is not None and any(cur_frame.pbc):
-                delta = geometry.minimum_image_vector(
-                    delta, cur_frame.cell, cur_frame.pbc
+            prev_f = self.frames[k - 1]
+            cur_f = self.frames[k]
+            prev_raw = prev_f.positions[idx_arr]
+            cur_raw = cur_f.positions[idx_arr]
+            has_pbc = cur_f.cell is not None and any(cur_f.pbc)
+            if (
+                mode == "fractional"
+                and has_pbc
+                and cur_f.cell is not None
+                and prev_f.cell is not None
+                and s_unwrapped is not None
+            ):
+                s_prev = prev_raw @ np.linalg.inv(prev_f.cell)
+                s_cur = cur_raw @ np.linalg.inv(cur_f.cell)
+                mic_disp = geometry.minimum_image_vector(
+                    (s_cur - s_prev) @ cur_f.cell, cur_f.cell, cur_f.pbc
                 )
-            unwrapped.append(unwrapped[-1] + delta)
+                s_unwrapped = s_unwrapped + mic_disp @ np.linalg.inv(
+                    cur_f.cell
+                )
+                unwrapped.append(
+                    np.asarray(s_unwrapped @ cur_f.cell, dtype=np.float64)
+                )
+            else:
+                delta = cur_raw - prev_raw
+                if has_pbc and cur_f.cell is not None:
+                    delta = geometry.minimum_image_vector(
+                        delta, cur_f.cell, cur_f.pbc
+                    )
+                mic_disp = delta
+                unwrapped.append(unwrapped[-1] + delta)
+
+            if has_pbc and cur_f.cell is not None and mic_disp.size:
+                r_ws = geometry.max_min_image_radius(cur_f.cell, cur_f.pbc)
+                max_step = float(np.max(np.linalg.norm(mic_disp, axis=1)))
+                if math.isfinite(r_ws) and r_ws > 0.0:
+                    ratio = max_step / r_ws
+                    if ratio > worst_ratio:
+                        worst_ratio = ratio
+                        worst_frame = k
+                        worst_r_ws = r_ws
+                        worst_step = max_step
+
+        if worst_frame >= 0:
+            warnings.warn(
+                f"Frame {worst_frame} minimum-image jump ({worst_step:.3f} A) "
+                f"exceeds 45% of Wigner-Seitz inradius ({worst_r_ws:.3f} A); "
+                "sampling may violate the Nyquist displacement bound. Supply "
+                "LAMMPS ix/iy/iz image flags or xu/yu/zu unwrapped positions.",
+                UserWarning,
+                stacklevel=3,
+            )
         return unwrapped
 
     def _resolve_selection(
@@ -208,23 +308,35 @@ class Trajectory:
         ref_index: int = 0,
         indices: Sequence[int] | None = None,
         unwrap: bool = True,
+        *,
+        variable_cell_mode: str = "cartesian",
     ) -> np.ndarray:
         """Computes Kabsch-aligned RMSD relative to a reference frame.
 
         Args:
           ref_index: Reference frame index.
           indices: Optional atom indices to select for alignment and RMSD.
-          unwrap: Whether to unwrap periodic displacements across frames first.
+          unwrap: Whether to unwrap periodic displacements across frames first
+            (under the Nyquist displacement bound ``|dr| < r_WS`` unless
+            lossless unwrapped positions or image flags are present).
+          variable_cell_mode: Unwrapping coordinate frame for variable-cell
+            trajectories (``"cartesian"`` or ``"fractional"``).
 
         Returns:
           1D float64 RMSD array in Angstrom of shape ``(n_frames,)``.
         """
+        _validate_variable_cell_mode(variable_cell_mode)
         if not self.frames:
             return np.zeros((0,), dtype=np.float64)
         ref_idx, idx_arr = self._resolve_selection(ref_index, indices)
         n_ref = len(self.frames[ref_idx])
         if unwrap and all(len(f) == n_ref for f in self.frames):
-            coords = np.stack(self._unwrapped_positions(idx_arr), axis=0)
+            coords = np.stack(
+                self._unwrapped_positions(
+                    idx_arr, variable_cell_mode=variable_cell_mode
+                ),
+                axis=0,
+            )
         else:
             coords = np.stack(
                 [f.positions[idx_arr] for f in self.frames], axis=0
@@ -251,18 +363,25 @@ class Trajectory:
         indices: Sequence[int] | None = None,
         unwrap: bool = True,
         remove_com: bool = False,
+        *,
+        variable_cell_mode: str = "cartesian",
     ) -> np.ndarray:
         """Computes periodic-unwrapped mean-squared displacement (MSD).
 
         Args:
           ref_index: Reference frame index ``t_0``.
           indices: Optional atom indices to include in the MSD average.
-          unwrap: Whether to unwrap periodic boundary jumps cumulatively first.
+          unwrap: Whether to unwrap periodic boundary jumps cumulatively first
+            (subject to the Nyquist displacement bound ``|dr| < r_WS`` unless
+            explicit unwrapped positions or image flags are stored).
           remove_com: Subtract overall center-of-mass drift before MSD.
+          variable_cell_mode: Unwrapping coordinate frame for variable-cell
+            trajectories (``"cartesian"`` or ``"fractional"``).
 
         Returns:
           1D float64 MSD array in squared Angstrom of shape ``(n_frames,)``.
         """
+        _validate_variable_cell_mode(variable_cell_mode)
         if not self.frames:
             return np.zeros((0,), dtype=np.float64)
         ref_idx, idx_arr = self._resolve_selection(ref_index, indices)
@@ -270,7 +389,12 @@ class Trajectory:
         if remove_com and all(len(f) == n_ref for f in self.frames):
             all_idx = np.arange(n_ref, dtype=np.int64)
             full_coords = (
-                np.stack(self._unwrapped_positions(all_idx), axis=0)
+                np.stack(
+                    self._unwrapped_positions(
+                        all_idx, variable_cell_mode=variable_cell_mode
+                    ),
+                    axis=0,
+                )
                 if unwrap
                 else np.stack([f.positions for f in self.frames], axis=0)
             )
@@ -279,7 +403,12 @@ class Trajectory:
             com = np.einsum("fni,n->fi", full_coords, masses) / tot_m
             coords = (full_coords - com[:, None, :])[:, idx_arr, :]
         elif unwrap and all(len(f) == n_ref for f in self.frames):
-            coords = np.stack(self._unwrapped_positions(idx_arr), axis=0)
+            coords = np.stack(
+                self._unwrapped_positions(
+                    idx_arr, variable_cell_mode=variable_cell_mode
+                ),
+                axis=0,
+            )
         else:
             coords = np.stack(
                 [f.positions[idx_arr] for f in self.frames], axis=0
@@ -321,6 +450,8 @@ class Trajectory:
         sym_a: str,
         sym_b: str,
         r_max: float,
+        *,
+        same_species_correction: bool = True,
     ) -> tuple[np.ndarray, int, float]:
         """Collects periodic pair distances up to ``r_max`` using cKDTree."""
         idx_ab = [
@@ -330,7 +461,10 @@ class Trajectory:
         n_b = sum(1 for i in idx_ab if frame.symbols[i] == sym_b)
         if n_a == 0 or n_b == 0:
             return np.zeros((0,), dtype=np.float64), 0, 0.0
-        pair_count = float(n_a * n_b)
+        if sym_a == sym_b and n_a > 1 and same_species_correction:
+            pair_count = float(n_a * (n_a - 1))
+        else:
+            pair_count = float(n_a * n_b)
         sub_frame = (
             frame
             if len(idx_ab) == len(frame)
@@ -368,11 +502,18 @@ class Trajectory:
         start: int = 0,
         stop: int | None = None,
         strict: bool = False,
+        *,
+        same_species_correction: bool = True,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Computes the radial distribution function ``g(r)`` for a 3D cell.
 
-        Uses exact spherical-shell volumes ``(4*pi/3)*(r_out^3 - r_in^3)`` and
-        evaluates periodic image shells up to ``r_max``.
+        Evaluates the exact finite-size shell estimator across frames::
+
+            g_AB(r_k) = < V * dn_AB(r_k) / (N_pairs * dV_shell(r_k)) >
+
+        with ``dV_shell(r_k) = (4*pi/3) * (r_k1^3 - r_k0^3)`` and
+        ``N_pairs = N_A * (N_A - 1)`` when ``sym_a == sym_b``, ``N_A > 1``,
+        and ``same_species_correction=True``, or ``N_A * N_B`` otherwise.
 
         Args:
           pair: Tuple of element symbols ``(sym_a, sym_b)``.
@@ -382,6 +523,8 @@ class Trajectory:
           stop: Exclusive last frame index to include.
           strict: If True, reject ``r_max`` exceeding the Wigner-Seitz
             minimum-image inradius.
+          same_species_correction: Use exact ``N_A * (N_A - 1)`` distinct pair
+            count for same-species ``g_AA(r)`` when ``N_A > 1``.
 
         Returns:
           Tuple ``(r_centers, g_r)`` of 1D float64 arrays.
@@ -421,9 +564,13 @@ class Trajectory:
                         f"{r_ws:.2f} A; pass strict=False for multi-image RDF."
                     )
             dists, n_a, pair_count = self._frame_pair_distances(
-                frame, sym_a, sym_b, r_max
+                frame,
+                sym_a,
+                sym_b,
+                r_max,
+                same_species_correction=same_species_correction,
             )
-            if n_a == 0:
+            if n_a == 0 or pair_count <= 0.0:
                 continue
             rho = pair_count / frame.volume()
             norm_accum += 1.0

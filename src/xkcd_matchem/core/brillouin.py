@@ -17,13 +17,17 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 import dataclasses
+import importlib
 import math
+from typing import Any
 
 import numpy as np
 from scipy import spatial
 
 from xkcd_matchem.core import exceptions
+from xkcd_matchem.core import geometry
 from xkcd_matchem.core import structure
+from xkcd_matchem.data import elements
 
 
 @dataclasses.dataclass(frozen=True)
@@ -57,7 +61,11 @@ class BrillouinZone:
         ``"hexagonal"``, ``"cubic"``, or ``"general"``).
       high_symmetry_points: Mapping of point names to Cartesian ``k`` (A^-1).
       default_path: Canonical ordered k-point label tour.
-      volume: First Brillouin zone volume in A^-3.
+      volume: Exact convex-hull Brillouin zone volume in A^-3.
+      expected_volume: Analytical ``(2*pi)^3 / |det(A_p)|`` volume in A^-3.
+      volume_error_rel: Relative error ``|V - V_expected| / V_expected``.
+      classification_method: Path classifier (``"heuristic"`` or
+        ``"seekpath"``).
     """
 
     vertices: np.ndarray
@@ -66,7 +74,10 @@ class BrillouinZone:
     lattice_system: str
     high_symmetry_points: dict[str, np.ndarray]
     default_path: tuple[str, ...]
-    volume: float
+    volume: float = 0.0
+    expected_volume: float = 0.0
+    volume_error_rel: float = 0.0
+    classification_method: str = "heuristic"
 
 
 def _has_translation(
@@ -154,39 +165,79 @@ def _reduce_conventional_cell(atoms: structure.AtomsData) -> np.ndarray:
 
 def _lll_reduce_rows(basis: np.ndarray) -> np.ndarray:
     """Applies 3D LLL lattice basis reduction while preserving lattice span."""
-    b_mat = np.array(basis, dtype=np.float64, copy=True)
-    n_vec = b_mat.shape[0]
-    for _ in range(40):
-        changed = False
-        q_mat = np.zeros_like(b_mat)
-        mu = np.zeros((n_vec, n_vec), dtype=np.float64)
-        for i in range(n_vec):
-            vec = b_mat[i].copy()
-            for j in range(i):
-                denom = max(float(np.dot(q_mat[j], q_mat[j])), 1e-18)
-                mu[i, j] = float(np.dot(b_mat[i], q_mat[j])) / denom
-                vec -= mu[i, j] * q_mat[j]
-            q_mat[i] = vec
-        for i in range(1, n_vec):
-            for j in range(i - 1, -1, -1):
-                q_ij = round(float(mu[i, j]))
-                if q_ij != 0:
-                    b_mat[i] -= q_ij * b_mat[j]
-                    mu[i, : j + 1] -= q_ij * mu[j, : j + 1]
-                    changed = True
-        swapped = False
-        for k in range(n_vec - 1):
-            lhs = float(np.dot(q_mat[k + 1], q_mat[k + 1]))
-            rhs = (0.75 - mu[k + 1, k] ** 2) * float(
-                np.dot(q_mat[k], q_mat[k])
-            )
-            if lhs < rhs - 1e-12:
-                b_mat[[k, k + 1]] = b_mat[[k + 1, k]]
-                swapped = True
-                break
-        if not changed and not swapped:
-            break
-    return b_mat
+    return geometry.lll_reduce_cell(basis)
+
+
+def _load_seekpath_module(backend_key: str) -> Any | None:
+    """Resolves optional ``seekpath`` module according to ``backend_key``."""
+    if backend_key not in ("heuristic", "seekpath", "auto"):
+        raise exceptions.StructureError(
+            f"Unsupported Brillouin zone backend {backend_key!r}; "
+            "expected 'heuristic', 'seekpath', or 'auto'."
+        )
+    if backend_key == "heuristic":
+        return None
+    try:
+        return importlib.import_module("seekpath")
+    except ImportError as exc:
+        if backend_key == "seekpath":
+            raise exceptions.OptionalDependencyError(
+                "Brillouin zone backend='seekpath' requires the optional "
+                "'seekpath' package (pip install seekpath)."
+            ) from exc
+        return None
+
+
+def _classify_with_seekpath(
+    source: structure.AtomsData | np.ndarray | Sequence[Sequence[float]],
+    raw_cell: np.ndarray,
+    use_primitive: bool,
+    sk_mod: Any,
+) -> tuple[np.ndarray, np.ndarray, str, dict[str, np.ndarray], tuple[str, ...]]:
+    """Standardizes primitive cell and k-path via SeeK-path."""
+    if isinstance(source, structure.AtomsData) and len(source) > 0:
+        frac_pos = source.fractional_positions().tolist()
+        numbers = [
+            elements.get_element(sym).atomic_number for sym in source.symbols
+        ]
+    else:
+        frac_pos = [[0.0, 0.0, 0.0]]
+        numbers = [1]
+    sk_res = sk_mod.get_path((raw_cell.tolist(), frac_pos, numbers))
+    prim = (
+        np.asarray(sk_res["primitive_lattice"], dtype=np.float64)
+        if use_primitive and "primitive_lattice" in sk_res
+        else raw_cell
+    )
+    recip = 2.0 * math.pi * np.linalg.inv(prim).T
+    bravais_map = {
+        "cF": "fcc",
+        "cI": "bcc",
+        "cP": "cubic",
+        "hP": "hexagonal",
+    }
+    raw_bravais = str(sk_res.get("bravais_lattice", "general"))
+    sys_name = bravais_map.get(raw_bravais, raw_bravais.lower())
+    sym_pts: dict[str, np.ndarray] = {}
+    for raw_lbl, frac_k in sk_res.get("point_coords", {}).items():
+        lbl = "G" if raw_lbl == "GAMMA" else str(raw_lbl)
+        sym_pts[lbl] = np.asarray(
+            np.asarray(frac_k, dtype=np.float64) @ recip, dtype=np.float64
+        )
+    if "G" not in sym_pts:
+        sym_pts["G"] = np.zeros(3, dtype=np.float64)
+    walk: list[str] = []
+    for seg in sk_res.get("path", ()):
+        u_lbl = "G" if seg[0] == "GAMMA" else str(seg[0])
+        v_lbl = "G" if seg[1] == "GAMMA" else str(seg[1])
+        if not walk:
+            walk.extend([u_lbl, v_lbl])
+        elif walk[-1] == u_lbl:
+            walk.append(v_lbl)
+        else:
+            walk.extend([u_lbl, v_lbl])
+    path = tuple(walk) if walk else ("G",)
+    return prim, recip, sys_name, sym_pts, path
 
 
 def _classify_bravais(
@@ -319,9 +370,18 @@ def _enumerate_brillouin_planes(
     recip: np.ndarray,
 ) -> list[tuple[tuple[int, int, int], np.ndarray, float]]:
     """Enumerates shortest unique Bragg bisectors from LLL-reduced basis."""
-    reduced_b = _lll_reduce_rows(recip)
-    rng = np.arange(-3, 4, dtype=np.int64)
-    g1, g2, g3 = np.meshgrid(rng, rng, rng, indexing="ij")
+    reduced_b = geometry.lll_reduce_cell(recip)
+    b_norms = np.linalg.norm(reduced_b, axis=1)
+    r_cover = 0.5 * float(np.sum(b_norms))
+    g_cut = 2.0 * r_cover * (1.0 + 1e-6)
+    gram_inv = np.linalg.inv(reduced_b @ reduced_b.T)
+    diag_inv = np.maximum(np.diag(gram_inv), 0.0)
+    bounds = [
+        min(max(int(math.ceil(g_cut * math.sqrt(float(d)) + 1e-9)), 3), 64)
+        for d in diag_inv
+    ]
+    ranges = [np.arange(-b, b + 1, dtype=np.int64) for b in bounds]
+    g1, g2, g3 = np.meshgrid(ranges[0], ranges[1], ranges[2], indexing="ij")
     grid = np.column_stack([g1.ravel(), g2.ravel(), g3.ravel()])
     abs_grid = np.abs(grid)
     gcd_vals = np.gcd(np.gcd(abs_grid[:, 0], abs_grid[:, 1]), abs_grid[:, 2])
@@ -329,7 +389,7 @@ def _enumerate_brillouin_planes(
 
     g_vecs = prim_rays.astype(np.float64) @ reduced_b
     g_norms = np.linalg.norm(g_vecs, axis=1)
-    valid = g_norms > 1e-12
+    valid = (g_norms > 1e-12) & (g_norms <= g_cut)
     g_vecs = g_vecs[valid]
     g_norms = g_norms[valid]
     unit_normals = g_vecs / g_norms[:, None]
@@ -346,51 +406,10 @@ def _enumerate_brillouin_planes(
     return plane_entries
 
 
-def compute_brillouin_zone(
-    source: structure.AtomsData | np.ndarray | Sequence[Sequence[float]],
-    *,
-    use_primitive: bool = True,
-) -> BrillouinZone:
-    """Computes the Wigner-Seitz first Brillouin zone in reciprocal space.
-
-    Args:
-      source: Periodic ``AtomsData`` crystal or ``(3, 3)`` real-space lattice
-        matrix in Angstrom.
-      use_primitive: Automatically reduce F/I/C-centered conventional cells to
-        their standard primitive cells before constructing the BZ.
-
-    Returns:
-      ``BrillouinZone`` containing vertices, active facets, volume, and
-      high-symmetry k-points in inverse Angstrom.
-
-    Raises:
-      StructureError: If input lacks a valid 3D periodic unit cell.
-    """
-    if isinstance(source, structure.AtomsData):
-        if source.cell is None or not any(source.pbc):
-            raise exceptions.StructureError(
-                "Brillouin zone requires a periodic 3D crystal structure."
-            )
-        prim = (
-            _reduce_conventional_cell(source)
-            if use_primitive
-            else np.asarray(source.cell, dtype=np.float64)
-        )
-    else:
-        try:
-            prim = np.asarray(source, dtype=np.float64)
-        except (TypeError, ValueError) as exc:
-            raise exceptions.StructureError(
-                "Lattice cell must be a non-singular (3, 3) matrix."
-            ) from exc
-    if prim.shape != (3, 3) or abs(float(np.linalg.det(prim))) < 1e-12:
-        raise exceptions.StructureError(
-            "Lattice cell must be a non-singular (3, 3) matrix."
-        )
-
-    recip = 2.0 * math.pi * np.linalg.inv(prim).T
-    plane_entries = _enumerate_brillouin_planes(prim, recip)
-
+def _build_bz_polyhedron(
+    plane_entries: list[tuple[tuple[int, int, int], np.ndarray, float]],
+) -> tuple[np.ndarray, tuple[BrillouinFacet, ...]]:
+    """Intersects Bragg half-spaces and extracts area-sorted BZ facets."""
     normals = np.vstack([entry[1] for entry in plane_entries])
     dists = np.array([entry[2] for entry in plane_entries], dtype=np.float64)
     halfspaces = np.column_stack([normals, -dists])
@@ -402,7 +421,6 @@ def compute_brillouin_zone(
         max(float(np.max(np.abs(raw_verts))), 1.0) if raw_verts.size else 1.0
     )
     verts = _deduplicate_points_3d(raw_verts, tol=1e-7 * v_scale)
-
     facets: list[BrillouinFacet] = []
     for hkl_v, n_v, d_v in plane_entries:
         on_plane = np.abs(verts @ n_v - d_v) <= 1e-6 * max(d_v, 1.0)
@@ -419,16 +437,89 @@ def compute_brillouin_zone(
                     area=area,
                 )
             )
-
     facets.sort(key=lambda f: -f.area)
-    volume = sum(f.area * f.distance for f in facets) / 3.0
-    sys_name, sym_pts, path = _classify_bravais(prim, recip)
+    return verts, tuple(facets)
+
+
+def compute_brillouin_zone(
+    source: structure.AtomsData | np.ndarray | Sequence[Sequence[float]],
+    *,
+    use_primitive: bool = True,
+    backend: str = "heuristic",
+) -> BrillouinZone:
+    """Computes the Wigner-Seitz first Brillouin zone in reciprocal space.
+
+    Args:
+      source: Periodic ``AtomsData`` crystal or ``(3, 3)`` real-space lattice
+        matrix in Angstrom.
+      use_primitive: Automatically reduce F/I/C-centered conventional cells to
+        their standard primitive cells before constructing the BZ.
+      backend: Symmetry/path classifier: ``"heuristic"``, ``"seekpath"``, or
+        ``"auto"`` (uses ``seekpath`` if installed, else ``"heuristic"``).
+
+    Returns:
+      ``BrillouinZone`` containing vertices, active facets, exact convex-hull
+      volume, expected analytical volume, and high-symmetry k-points in A^-1.
+
+    Raises:
+      StructureError: If input lacks a valid 3D cell or ``backend`` is unknown.
+      OptionalDependencyError: If ``backend="seekpath"`` and ``seekpath`` is
+        not installed.
+    """
+    sk_mod = _load_seekpath_module(backend.strip().lower())
+    if isinstance(source, structure.AtomsData):
+        if source.cell is None or not any(source.pbc):
+            raise exceptions.StructureError(
+                "Brillouin zone requires a periodic 3D crystal structure."
+            )
+        raw_cell = np.asarray(source.cell, dtype=np.float64)
+        heur_prim = (
+            _reduce_conventional_cell(source) if use_primitive else raw_cell
+        )
+    else:
+        try:
+            raw_cell = np.asarray(source, dtype=np.float64)
+        except (TypeError, ValueError) as exc:
+            raise exceptions.StructureError(
+                "Lattice cell must be a non-singular (3, 3) matrix."
+            ) from exc
+        heur_prim = raw_cell
+    if (
+        raw_cell.shape != (3, 3)
+        or abs(float(np.linalg.det(raw_cell))) < 1e-12
+    ):
+        raise exceptions.StructureError(
+            "Lattice cell must be a non-singular (3, 3) matrix."
+        )
+
+    if sk_mod is not None:
+        prim, recip, sys_name, sym_pts, path = _classify_with_seekpath(
+            source, raw_cell, use_primitive, sk_mod
+        )
+        method_used = "seekpath"
+    else:
+        prim = heur_prim
+        recip = 2.0 * math.pi * np.linalg.inv(prim).T
+        sys_name, sym_pts, path = _classify_bravais(prim, recip)
+        method_used = "heuristic"
+
+    verts, facets = _build_bz_polyhedron(
+        _enumerate_brillouin_planes(prim, recip)
+    )
+    volume = float(spatial.ConvexHull(verts).volume)
+    expected_volume = ((2.0 * math.pi) ** 3) / abs(float(np.linalg.det(prim)))
+    volume_error_rel = abs(volume - expected_volume) / max(
+        expected_volume, 1e-30
+    )
     return BrillouinZone(
         vertices=verts,
-        facets=tuple(facets),
+        facets=facets,
         reciprocal_cell=recip,
         lattice_system=sys_name,
         high_symmetry_points=sym_pts,
         default_path=path,
         volume=volume,
+        expected_volume=expected_volume,
+        volume_error_rel=volume_error_rel,
+        classification_method=method_used,
     )
