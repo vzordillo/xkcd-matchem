@@ -24,6 +24,7 @@ from typing import Any
 
 import matplotlib
 from matplotlib import axes as maxes
+from matplotlib import colors as mcolors
 from matplotlib import pyplot as plt
 
 from xkcd_matchem.core import exceptions
@@ -302,6 +303,127 @@ def get_preset(name: str | ThemePreset = "classic") -> ThemePreset:
     return PRESETS[key]
 
 
+def _linearize_channel(val: float) -> float:
+    """Linearizes one sRGB channel in ``[0, 1]`` for WCAG 2.1 luminance."""
+    return val / 12.92 if val <= 0.03928 else ((val + 0.055) / 1.055) ** 2.4
+
+
+def relative_luminance(color: Any) -> float:
+    """Computes WCAG 2.1 relative luminance in ``[0, 1]``."""
+    r, g, b = mcolors.to_rgb(color)
+    return (
+        0.2126 * _linearize_channel(float(r))
+        + 0.7152 * _linearize_channel(float(g))
+        + 0.0722 * _linearize_channel(float(b))
+    )
+
+
+def wcag_contrast_ratio(fg_color: Any, bg_color: Any) -> float:
+    """Computes WCAG 2.1 contrast ratio in ``[1, 21]`` between two colors."""
+    lum_fg = relative_luminance(fg_color)
+    lum_bg = relative_luminance(bg_color)
+    hi = max(lum_fg, lum_bg)
+    lo = min(lum_fg, lum_bg)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def is_dark_background(color: Any) -> bool:
+    """Returns ``True`` when a canvas or fill color has dark WCAG luminance."""
+    return relative_luminance(color) < 0.18
+
+
+def blend_colors(color_a: Any, color_b: Any, weight_b: float) -> str:
+    """Linearly blends ``color_a`` toward ``color_b`` by ``weight_b``."""
+    ra, ga, ba = mcolors.to_rgb(color_a)
+    rb, gb, bb = mcolors.to_rgb(color_b)
+    w = max(0.0, min(1.0, float(weight_b)))
+    return mcolors.to_hex(
+        (
+            ra + (rb - ra) * w,
+            ga + (gb - ga) * w,
+            ba + (bb - ba) * w,
+        )
+    )
+
+
+def best_contrast_text(
+    bg_color: Any,
+    *,
+    dark: str = palettes.INK,
+    light: str = "#FFFFFF",
+) -> str:
+    """Returns ``dark`` or ``light`` whichever yields higher WCAG contrast."""
+    dark_cr = wcag_contrast_ratio(dark, bg_color)
+    light_cr = wcag_contrast_ratio(light, bg_color)
+    best_col, best_cr = (
+        (dark, dark_cr) if dark_cr >= light_cr else (light, light_cr)
+    )
+    if best_cr >= 4.5:
+        return best_col
+    if wcag_contrast_ratio("#000000", bg_color) >= wcag_contrast_ratio(
+        "#FFFFFF", bg_color
+    ):
+        return "#000000"
+    return "#FFFFFF"
+
+
+def ensure_wcag_color(
+    fg_color: Any,
+    bg_color: Any,
+    *,
+    min_ratio: float = 4.5,
+) -> str:
+    """Nudges ``fg_color`` toward white/ink until WCAG contrast >= min_ratio."""
+    fg_hex = mcolors.to_hex(fg_color)
+    if wcag_contrast_ratio(fg_hex, bg_color) >= min_ratio:
+        return fg_hex
+    target = "#FFFFFF" if is_dark_background(bg_color) else palettes.INK
+    lo, hi = 0.0, 1.0
+    for _ in range(14):
+        mid = 0.5 * (lo + hi)
+        cand = blend_colors(fg_hex, target, mid)
+        if wcag_contrast_ratio(cand, bg_color) >= min_ratio:
+            hi = mid
+        else:
+            lo = mid
+    return blend_colors(fg_hex, target, hi)
+
+
+def guide_color(preset: str | ThemePreset = "classic") -> str:
+    """Returns a theme-adapted muted reference-line color."""
+    bg_ax = get_preset(preset).axes_facecolor
+    if bg_ax.lower() == patterns.BLUEPRINT_BG.lower():
+        return patterns.BLUEPRINT_GRID
+    if is_dark_background(bg_ax):
+        return "#94A3B8"
+    return palettes.MUTED_GRAY
+
+
+def accent_color(
+    preset: str | ThemePreset = "classic",
+    *,
+    light: str = "#0072B2",
+    dark: str = "#56B4E9",
+) -> str:
+    """Returns a theme-adapted accent color readable on light or dark themes."""
+    bg_ax = get_preset(preset).axes_facecolor
+    return dark if is_dark_background(bg_ax) else light
+
+
+def prepare_figure_canvas(
+    ax: maxes.Axes,
+    preset: str | ThemePreset = "classic",
+) -> None:
+    """Aligns figure/axes background face/edge colors and disables sketch."""
+    resolved = get_preset(preset)
+    ax.set_facecolor(resolved.axes_facecolor)
+    ax.patch.set_sketch_params(0.0, 0.0, 0.0)
+    if ax.figure is not None:
+        ax.figure.patch.set_facecolor(resolved.figure_facecolor)
+        ax.figure.patch.set_edgecolor(resolved.figure_facecolor)
+        ax.figure.patch.set_sketch_params(0.0, 0.0, 0.0)
+
+
 def build_rc_params(
     preset: str | ThemePreset = "classic",
     font: str | None = None,
@@ -348,6 +470,18 @@ def build_rc_params(
     series_colors = list(
         palettes.get_palette("okabe_ito" if palette is None else palette)
     )
+    dark_bg = is_dark_background(bg_ax)
+    if palette is None and dark_bg:
+        series_colors = [
+            ink_col if col.lower() in ("#000000", "black") else col
+            for col in series_colors
+        ]
+    if bg_ax.lower() == patterns.BLUEPRINT_BG.lower():
+        grid_col = patterns.BLUEPRINT_GRID
+    elif dark_bg:
+        grid_col = "#94A3B8"
+    else:
+        grid_col = palettes.MUTED_GRAY
     rc: dict[str, Any] = {
         "font.family": font_chain,
         "font.size": theme.font_size,
@@ -355,6 +489,7 @@ def build_rc_params(
         "axes.labelsize": theme.font_size,
         "axes.titleweight": "normal",
         "axes.titlepad": 10.0,
+        "axes.titlecolor": ink_col,
         "axes.edgecolor": ink_col,
         "axes.facecolor": bg_ax,
         "axes.labelcolor": ink_col,
@@ -366,15 +501,20 @@ def build_rc_params(
         "axes.prop_cycle": matplotlib.cycler(  # type: ignore[attr-defined]
             color=series_colors
         ),
-        "grid.color": palettes.MUTED_GRAY,
+        "grid.color": grid_col,
         "grid.alpha": theme.grid_alpha,
         "grid.linestyle": "--",
         "xtick.color": ink_col,
+        "xtick.labelcolor": ink_col,
         "ytick.color": ink_col,
+        "ytick.labelcolor": ink_col,
         "xtick.labelsize": theme.font_size,
         "ytick.labelsize": theme.font_size,
         "xtick.major.width": max(1.0, theme.linewidth * 0.8),
         "ytick.major.width": max(1.0, theme.linewidth * 0.8),
+        "legend.facecolor": bg_ax,
+        "legend.edgecolor": ink_col,
+        "legend.labelcolor": ink_col,
         "text.color": ink_col,
         "figure.facecolor": bg_fig,
         "figure.edgecolor": bg_fig,
@@ -394,6 +534,7 @@ def build_rc_params(
         "mathtext.default": "regular",
         "mathtext.fallback": "stixsans",
         "pdf.fonttype": 42,
+        "ps.fonttype": 42,
         "svg.fonttype": "path",
     }
     if overrides is not None:
@@ -539,6 +680,79 @@ def _straighten_axis_gridlines(ax: maxes.Axes) -> None:
     ax.yaxis.set_tick_params(which="both", grid_sketch_params=0.0)
 
 
+def _style_figure_titles(
+    fig: Any,
+    resolved: ThemePreset,
+    font_chain: list[str],
+) -> None:
+    """Aligns figure suptitle and sup-axis label colors/fonts if present."""
+    for attr in ("_suptitle", "_supxlabel", "_supylabel"):
+        txt = getattr(fig, attr, None)
+        if txt is not None:
+            txt.set_color(resolved.ink_color)
+            txt.set_fontfamily(font_chain)
+
+
+def _style_axes_legend(
+    ax: maxes.Axes,
+    resolved: ThemePreset,
+    font_chain: list[str],
+) -> None:
+    """Aligns an existing Axes legend frame and text colors with theme."""
+    leg = ax.get_legend()
+    if leg is None:
+        return
+    frame = leg.get_frame()
+    if frame is not None:
+        frame.set_facecolor(resolved.axes_facecolor)
+        frame.set_edgecolor(resolved.ink_color)
+        frame.set_sketch_params(0.0, 0.0, 0.0)
+    for txt in leg.get_texts():
+        txt.set_color(resolved.ink_color)
+        txt.set_fontfamily(font_chain)
+    leg_title = leg.get_title()
+    if leg_title is not None:
+        leg_title.set_color(resolved.ink_color)
+        leg_title.set_fontfamily(font_chain)
+
+
+def _style_attached_colorbars(
+    ax: maxes.Axes,
+    resolved: ThemePreset,
+    font_chain: list[str],
+) -> None:
+    """Aligns ticks, labels, and outlines for colorbars attached to ``ax``."""
+    seen: set[int] = set()
+    for artist in (*ax.collections, *ax.images, *ax.patches):
+        cbar = getattr(artist, "colorbar", None)
+        if cbar is None:
+            continue
+        cb_ax = getattr(cbar, "ax", None)
+        if cb_ax is None or id(cb_ax) in seen:
+            continue
+        seen.add(id(cb_ax))
+        cb_ax.set_facecolor(resolved.axes_facecolor)
+        cb_ax.patch.set_sketch_params(0.0, 0.0, 0.0)
+        cb_ax.tick_params(
+            colors=resolved.ink_color,
+            labelcolor=resolved.ink_color,
+            width=max(1.0, resolved.linewidth * 0.8),
+            labelsize=resolved.font_size,
+        )
+        for spine in cb_ax.spines.values():
+            spine.set_edgecolor(resolved.ink_color)
+        outline = getattr(cbar, "outline", None)
+        if outline is not None:
+            outline.set_edgecolor(resolved.ink_color)
+        for lbl in (
+            list(cb_ax.get_xticklabels())
+            + list(cb_ax.get_yticklabels())
+            + [cb_ax.xaxis.label, cb_ax.yaxis.label, cb_ax.title]
+        ):
+            lbl.set_fontfamily(font_chain)
+            lbl.set_color(resolved.ink_color)
+
+
 def style_existing_axes(
     ax: maxes.Axes,
     preset: str | ThemePreset = "classic",
@@ -546,8 +760,9 @@ def style_existing_axes(
     """Applies preset fonts, ink colors, and sketch parameters onto an Axes.
 
     Useful when callers pass pre-created ``fig, ax = plt.subplots(...)`` from
-    outside an ``xkcd_style()`` context so ticks, labels, and spines match
-    uniformly in the same comic-style typeface.
+    outside an ``xkcd_style()`` context so ticks, labels, spines, legends,
+    attached colorbars, and figure suptitles match uniformly in the same
+    comic-style typeface and palette.
 
     Args:
       ax: Target Matplotlib ``Axes`` (mutated in place).
@@ -558,12 +773,9 @@ def style_existing_axes(
     """
     resolved = get_preset(preset)
     font_chain = fonts.resolve_font_chain(_resolve_active_font(resolved))
-    ax.set_facecolor(resolved.axes_facecolor)
-    ax.patch.set_sketch_params(0.0, 0.0, 0.0)
+    prepare_figure_canvas(ax, preset=resolved)
     if ax.figure is not None:
-        ax.figure.patch.set_facecolor(resolved.figure_facecolor)
-        ax.figure.patch.set_edgecolor(resolved.figure_facecolor)
-        ax.figure.patch.set_sketch_params(0.0, 0.0, 0.0)
+        _style_figure_titles(ax.figure, resolved, font_chain)
     for spine in ax.spines.values():
         spine.set_linewidth(resolved.linewidth)
         spine.set_edgecolor(resolved.ink_color)
@@ -574,6 +786,7 @@ def style_existing_axes(
         )
     ax.tick_params(
         colors=resolved.ink_color,
+        labelcolor=resolved.ink_color,
         width=max(1.0, resolved.linewidth * 0.8),
         labelsize=resolved.font_size,
     )
@@ -581,10 +794,18 @@ def style_existing_axes(
     for label_artist in (
         list(ax.get_xticklabels())
         + list(ax.get_yticklabels())
-        + [ax.xaxis.label, ax.yaxis.label, ax.title]
+        + [
+            ax.xaxis.label,
+            ax.yaxis.label,
+            ax.xaxis.get_offset_text(),
+            ax.yaxis.get_offset_text(),
+            ax.title,
+        ]
     ):
         label_artist.set_fontfamily(font_chain)
         label_artist.set_color(resolved.ink_color)
+    _style_axes_legend(ax, resolved, font_chain)
+    _style_attached_colorbars(ax, resolved, font_chain)
     return ax
 
 

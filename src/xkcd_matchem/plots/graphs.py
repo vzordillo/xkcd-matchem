@@ -304,6 +304,7 @@ def _draw_all_graph_edges(
             pair_totals[key] = pair_totals.get(key, 0) + 1
 
     pair_seen: dict[tuple[int, int], int] = {}
+    pbc_col = "#56B4E9" if theme.is_dark_background(bg_color) else "#0072B2"
     for idx_e, (u, v, lbl) in enumerate(norm_edges):
         if u >= n_nodes or v >= n_nodes:
             continue
@@ -329,7 +330,7 @@ def _draw_all_graph_edges(
             directed=directed,
             dashed=is_dash,
             rad=rad,
-            color="#0072B2" if is_dash else ink_col,
+            color=pbc_col if is_dash else ink_col,
             ink_col=ink_col,
             linewidth=sw.overlay if is_dash else sw.primary,
             label=lbl,
@@ -354,6 +355,44 @@ def _resolve_node_color(
     return series[(idx + 1) % len(series)]
 
 
+def _draw_pill_node(
+    ax: maxes.Axes,
+    pos: tuple[float, float],
+    label: str,
+    col: str,
+    colors: tuple[str, str, bool],
+    z_node: float,
+) -> None:
+    """Draws one rounded-pill graph node with theme-adapted contrast."""
+    ink_col, bg_color, dark_bg = colors
+    pill_bg = (
+        theme.blend_colors(col, bg_color, 0.62)
+        if dark_bg
+        else primitives.lighten_hex(col, 0.62)
+    )
+    pill_txt = (
+        ink_col
+        if theme.wcag_contrast_ratio(ink_col, pill_bg) >= 4.5
+        else theme.best_contrast_text(pill_bg)
+    )
+    ax.text(
+        pos[0],
+        pos[1],
+        label,
+        ha="center",
+        va="center",
+        fontsize=9.5,
+        color=pill_txt,
+        bbox={
+            "boxstyle": "round,pad=0.45",
+            "facecolor": pill_bg,
+            "edgecolor": ink_col,
+            "linewidth": 1.6,
+        },
+        zorder=z_node + 1.0,
+    )
+
+
 def _draw_graph_nodes(
     ax: maxes.Axes,
     nodes: Sequence[str],
@@ -363,6 +402,7 @@ def _draw_graph_nodes(
     ink_col: str,
     node_shape: str = "circle",
     *,
+    bg_color: str = palettes.PAPER,
     image_flags: Sequence[bool] | None = None,
     node_depths: Sequence[float] | np.ndarray | None = None,
 ) -> float:
@@ -378,6 +418,8 @@ def _draw_graph_nodes(
     )
     base_r = max(0.085, min(0.14, 0.48 / max(math.sqrt(n_nodes), 2.8))) * scale
     use_pill = node_shape.strip().lower() == "pill"
+    dark_bg = theme.is_dark_background(bg_color)
+    pbc_edge = "#56B4E9" if dark_bg else "#0072B2"
     order = (
         sorted(range(n_nodes), key=lambda i: float(node_depths[i]))
         if node_depths is not None and len(node_depths) == n_nodes
@@ -395,21 +437,8 @@ def _draw_graph_nodes(
         )
         z_node = 5.0 + 0.05 * rank
         if use_pill:
-            ax.text(
-                cx,
-                cy,
-                raw_lbl,
-                ha="center",
-                va="center",
-                fontsize=9.5,
-                color=ink_col,
-                bbox={
-                    "boxstyle": "round,pad=0.45",
-                    "facecolor": primitives.lighten_hex(col, 0.62),
-                    "edgecolor": ink_col,
-                    "linewidth": 1.6,
-                },
-                zorder=z_node + 1.0,
+            _draw_pill_node(
+                ax, (cx, cy), raw_lbl, col, (ink_col, bg_color, dark_bg), z_node
             )
             continue
         fill_col = primitives.lighten_hex(col, 0.42) if is_img else col
@@ -419,7 +448,7 @@ def _draw_graph_nodes(
                 (cx, cy),
                 radius=r_draw,
                 facecolor=fill_col,
-                edgecolor="#0072B2" if is_img else ink_col,
+                edgecolor=pbc_edge if is_img else ink_col,
                 linestyle="--" if is_img else "-",
                 linewidth=1.45 if is_img else 1.7,
                 zorder=z_node,
@@ -442,7 +471,7 @@ def _draw_graph_nodes(
             ha="center",
             va="center",
             fontsize=7.6 if is_img else 8.4,
-            color=primitives.contrast_text_color(mcolors.to_hex(fill_col)),
+            color=theme.best_contrast_text(mcolors.to_hex(fill_col)),
             zorder=z_node + 0.02,
         )
     return base_r
@@ -546,6 +575,7 @@ def plot_graph_network(
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.4, 5.0))
+            theme.prepare_figure_canvas(ax, preset=preset_obj)
         else:
             theme.style_existing_axes(ax, preset=preset)
         if background_grid:
@@ -566,7 +596,14 @@ def plot_graph_network(
             ),
         )
         base_r = _draw_graph_nodes(
-            ax, nodes, xy, node_colors, series, ink_col, node_shape=node_shape
+            ax,
+            nodes,
+            xy,
+            node_colors,
+            series,
+            ink_col,
+            node_shape=node_shape,
+            bg_color=preset_obj.axes_facecolor,
         )
         _set_graph_limits(ax, xy, base_r, node_shape)
         ax.set_aspect("equal")
@@ -663,7 +700,9 @@ def _add_structure_graph_overlays(
     preset: str | theme.ThemePreset,
 ) -> None:
     """Adds optional unit-cell guide and periodic-edge legend to a graph."""
-    ink_col = theme.get_preset(preset).ink_color
+    preset_obj = theme.get_preset(preset)
+    ink_col = preset_obj.ink_color
+    pbc_col = theme.accent_color(preset_obj)
     sw = theme.stroke_weights(preset)
     if (
         show_cell
@@ -705,7 +744,7 @@ def _add_structure_graph_overlays(
                 mlines.Line2D(
                     [],
                     [],
-                    color="#0072B2",
+                    color=pbc_col,
                     lw=sw.overlay,
                     linestyle="--",
                     label="Periodic edge",
@@ -718,6 +757,7 @@ def _add_structure_graph_overlays(
                 ncol=2,
                 frameon=False,
                 fontsize=8.8,
+                labelcolor=ink_col,
             )
 
 
@@ -800,6 +840,7 @@ def _render_closed_cell_graph(
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.4, 5.0))
+            theme.prepare_figure_canvas(ax, preset=preset_obj)
         else:
             theme.style_existing_axes(ax, preset=preset)
         if background_grid:
@@ -819,6 +860,7 @@ def _render_closed_cell_graph(
             node_cols,
             series,
             ink_col,
+            bg_color=preset_obj.axes_facecolor,
             image_flags=is_img,
             node_depths=depth,
         )
