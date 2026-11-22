@@ -211,6 +211,7 @@ def test_save_figure_png_svg_pdf_and_fonttypes(
             ax.set_xlabel("X Axis")
             ax.set_ylabel("Y Axis")
             ax.legend(frameon=True)
+            fig.tight_layout()
 
         # 1. Opaque PNG (tight=True and tight=False) -> zero white border leak
         _assert_png_border_matches(
