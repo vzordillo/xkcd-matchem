@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     AtomsData = core.AtomsData
     BACKGROUND_STYLES = style.BACKGROUND_STYLES
     Badge = layout.Badge
+    BandGapResult = core.BandGapResult
     BandStructure = core.BandStructure
     Board = layout.Board
     Bond = core.Bond
@@ -58,6 +59,7 @@ if TYPE_CHECKING:
     ElementRecord = data.ElementRecord
     GraphicalAbstractLayout = layout.GraphicalAbstractLayout
     HydrogenBond = core.HydrogenBond
+    INTERNAL_UNITS = core.INTERNAL_UNITS
     InteractiveView = render.InteractiveView
     IsosurfaceMesh = core.IsosurfaceMesh
     MatchemError = core.MatchemError
@@ -72,6 +74,7 @@ if TYPE_CHECKING:
     PhononBandStructure = core.PhononBandStructure
     SHADE_STYLES = style.SHADE_STYLES
     ScatteringCoeffs = data.ScatteringCoeffs
+    ScientificProvenance = core.ScientificProvenance
     ScrollCard = layout.ScrollCard
     Spectrum = core.Spectrum
     StrokeHierarchy = style.StrokeHierarchy
@@ -98,6 +101,9 @@ if TYPE_CHECKING:
     compute_tetrahedral_order = core.compute_tetrahedral_order
     compute_wulff_shape = core.compute_wulff_shape
     compute_xrd = core.compute_xrd
+    convert_energy = core.convert_energy
+    convert_pressure = core.convert_pressure
+    convert_time = core.convert_time
     create_conference_poster = layout.create_conference_poster
     create_graphical_abstract = layout.create_graphical_abstract
     create_mechanism_comic = layout.create_mechanism_comic
@@ -226,6 +232,7 @@ __all__ = [
     "AtomsData",
     "BACKGROUND_STYLES",
     "Badge",
+    "BandGapResult",
     "BandStructure",
     "Board",
     "Bond",
@@ -247,6 +254,7 @@ __all__ = [
     "ElementRecord",
     "GraphicalAbstractLayout",
     "HydrogenBond",
+    "INTERNAL_UNITS",
     "InteractiveView",
     "IsosurfaceMesh",
     "MatchemError",
@@ -261,6 +269,7 @@ __all__ = [
     "PhononBandStructure",
     "SHADE_STYLES",
     "ScatteringCoeffs",
+    "ScientificProvenance",
     "ScrollCard",
     "Spectrum",
     "StrokeHierarchy",
@@ -288,6 +297,9 @@ __all__ = [
     "compute_tetrahedral_order",
     "compute_wulff_shape",
     "compute_xrd",
+    "convert_energy",
+    "convert_pressure",
+    "convert_time",
     "core",
     "create_conference_poster",
     "create_graphical_abstract",
@@ -438,6 +450,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "AtomsData": (_CORE, "AtomsData"),
     "BACKGROUND_STYLES": (_STYLE, "BACKGROUND_STYLES"),
     "Badge": (_LAYOUT, "Badge"),
+    "BandGapResult": (_CORE, "BandGapResult"),
     "BandStructure": (_CORE, "BandStructure"),
     "Board": (_LAYOUT, "Board"),
     "Bond": (_CORE, "Bond"),
@@ -459,6 +472,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "ElementRecord": (_DATA, "ElementRecord"),
     "GraphicalAbstractLayout": (_LAYOUT, "GraphicalAbstractLayout"),
     "HydrogenBond": (_CORE, "HydrogenBond"),
+    "INTERNAL_UNITS": (_CORE, "INTERNAL_UNITS"),
     "InteractiveView": (_RENDER, "InteractiveView"),
     "IsosurfaceMesh": (_CORE, "IsosurfaceMesh"),
     "MatchemError": (_CORE, "MatchemError"),
@@ -473,6 +487,7 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "PhononBandStructure": (_CORE, "PhononBandStructure"),
     "SHADE_STYLES": (_STYLE, "SHADE_STYLES"),
     "ScatteringCoeffs": (_DATA, "ScatteringCoeffs"),
+    "ScientificProvenance": (_CORE, "ScientificProvenance"),
     "ScrollCard": (_LAYOUT, "ScrollCard"),
     "Spectrum": (_CORE, "Spectrum"),
     "StrokeHierarchy": (_STYLE, "StrokeHierarchy"),
@@ -502,6 +517,9 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "compute_tetrahedral_order": (_CORE, "compute_tetrahedral_order"),
     "compute_wulff_shape": (_CORE, "compute_wulff_shape"),
     "compute_xrd": (_CORE, "compute_xrd"),
+    "convert_energy": (_CORE, "convert_energy"),
+    "convert_pressure": (_CORE, "convert_pressure"),
+    "convert_time": (_CORE, "convert_time"),
     "create_conference_poster": (_LAYOUT, "create_conference_poster"),
     "create_graphical_abstract": (_LAYOUT, "create_graphical_abstract"),
     "create_mechanism_comic": (_LAYOUT, "create_mechanism_comic"),
