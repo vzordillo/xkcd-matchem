@@ -3,7 +3,7 @@
 [![CI](https://github.com/vzordillo/xkcd-matchem/actions/workflows/ci.yml/badge.svg)](https://github.com/vzordillo/xkcd-matchem/actions/workflows/ci.yml)
 [![Docs](https://github.com/vzordillo/xkcd-matchem/actions/workflows/docs.yml/badge.svg)](https://github.com/vzordillo/xkcd-matchem/actions/workflows/docs.yml)
 [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/vzordillo/xkcd-matchem/main?urlpath=lab%2Ftree%2Fbook%2Ftutorials%2F01_quickstart_and_themes.ipynb)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/downloads/)
 [![Code License: Apache-2.0](https://img.shields.io/badge/code-Apache--2.0-green.svg)](LICENSE)
 
 **A clean, approachable xkcd-style Python suite for visualizing molecules, crystals, electronic structure, spectra, reactions, and trajectories — with 29 zero-dependency file readers and an offline Interactive 3D Studio.**
