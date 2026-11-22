@@ -47,7 +47,7 @@ pip install "xkcd-matchem[ase,pymatgen,rdkit,animation] @ git+https://github.com
 ```
 
 :::{tip}
-Want to run the tutorials in your browser with zero local setup? Launch the repository directly on **[Binder](https://mybinder.org/v2/gh/vzordillo/xkcd-matchem/main?urlpath=lab%2Ftree%2Fbook%2Ftutorials%2F01_quickstart_and_themes.ipynb)**, or explore structures immediately in the zero-dependency **[Interactive 3D Studio](playground.md)** — no WebGL plugin, JavaScript build step, or remote server needed.
+Want to run the tutorials in your browser with zero local setup? Open any tutorial directly in **Google Colab** (using the rocket button at the top right of each tutorial page — the first code cell auto-installs `xkcd-matchem`), launch the repository on **[Binder](https://mybinder.org/v2/gh/vzordillo/xkcd-matchem/main?urlpath=lab%2Ftree%2Fbook%2Ftutorials%2F01_quickstart_and_themes.ipynb)**, or explore structures immediately in the zero-dependency **[Interactive 3D Studio](playground.md)** — no WebGL plugin, JavaScript build step, or remote server needed.
 :::
 
 ## Contributor & Documentation Setup
