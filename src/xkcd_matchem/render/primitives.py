@@ -560,6 +560,8 @@ def draw_polyhedron_faces(
     base_zorder: float = 1.5,
 ) -> None:
     """Draws depth-sorted translucent triangular polyhedron facets."""
+    if not faces:
+        return
     ordered = sorted(
         faces,
         key=lambda tri: float(
@@ -679,6 +681,13 @@ def draw_origin_tripod(
         zorder=zorder + 0.3,
     )
     order = sorted(range(3), key=lambda k: float(depths[k + 1]))
+    leader_lw = round(
+        max(
+            1.05,
+            0.70 * float(matplotlib.rcParams.get("lines.linewidth", 1.8)),
+        ),
+        2,
+    )
     for rank, k in enumerate(order):
         dx = float(tips_2d[k + 1][0] - tips_2d[0][0])
         dy = float(tips_2d[k + 1][1] - tips_2d[0][1])
@@ -691,7 +700,7 @@ def draw_origin_tripod(
                 arrowprops={
                     "arrowstyle": "-|>,head_length=0.35,head_width=0.22",
                     "color": axis_colors[k],
-                    "lw": 1.8,
+                    "lw": leader_lw,
                 },
                 zorder=zorder + 0.05 * rank,
             )
@@ -761,13 +770,10 @@ def draw_crystal_axes(
       zorder: Base z-order above the structure and unit cell.
     """
     cell_arr = np.asarray(cell, dtype=np.float64)
-    unit_vecs = np.array(
-        [
-            cell_arr[k] / max(float(np.linalg.norm(cell_arr[k])), 1e-12)
-            for k in range(3)
-        ],
-        dtype=np.float64,
+    row_norms = np.maximum(
+        np.linalg.norm(cell_arr, axis=1, keepdims=True), 1e-12
     )
+    unit_vecs = cell_arr / row_norms
     basis = geometry.rotation_matrix(
         camera.azimuth, camera.elevation, camera.roll
     )
@@ -777,6 +783,13 @@ def draw_crystal_axes(
     arrow_len = size_frac * min(x_span, y_span)
     vecs = proj[:, :2] * arrow_len
     ox, oy = _crystal_axes_origin(ax, vecs, location)
+    leader_lw = round(
+        max(
+            1.05,
+            0.70 * float(matplotlib.rcParams.get("lines.linewidth", 1.8)),
+        ),
+        2,
+    )
 
     ax.scatter([ox], [oy], s=18.0, color=_resolve_ink(), zorder=zorder + 0.4)
     for rank, k in enumerate(sorted(range(3), key=lambda i: float(proj[i, 2]))):
@@ -792,7 +805,7 @@ def draw_crystal_axes(
             arrowprops={
                 "arrowstyle": "-|>,head_length=0.35,head_width=0.22",
                 "color": colors[k],
-                "lw": 1.85,
+                "lw": leader_lw,
             },
             zorder=zorder + 0.05 * rank,
         )
@@ -855,7 +868,7 @@ def draw_unit_cell_box(
                     [float(corners_2d[i_idx][1]), float(corners_2d[j_idx][1])],
                     color="#777777",
                     linestyle=(0, (4, 3)),
-                    linewidth=linewidth * 0.85,
+                    linewidth=max(0.75, round(0.65 * linewidth, 2)),
                     zorder=1.0,
                 )
     if draw_front:
@@ -949,19 +962,25 @@ def draw_miller_plane(
     if show_label:
         centroid = np.mean(poly_2d, axis=0)
         lbl_z = zorder + 0.2 if label_zorder is None else label_zorder
-        ax.text(
+        bg = str(matplotlib.rcParams.get("axes.facecolor", palettes.PAPER))
+        ink = resolve_ink()
+        edge_clean = ensure_readable_text_color(edgecolor, bg)
+        badge = ax.text(
             float(centroid[0]),
             float(centroid[1]),
             _format_hkl_label(hkl),
             fontsize=9.5,
-            color=edgecolor,
+            color=ink,
             ha="center",
             va="center",
             bbox={
                 "boxstyle": "round,pad=0.2",
-                "facecolor": palettes.PAPER,
-                "edgecolor": edgecolor,
+                "facecolor": bg,
+                "edgecolor": edge_clean,
                 "alpha": 0.90,
             },
             zorder=lbl_z,
         )
+        bbox_patch = badge.get_bbox_patch()
+        if bbox_patch is not None:
+            bbox_patch.set_sketch_params(0.0, 0.0, 0.0)

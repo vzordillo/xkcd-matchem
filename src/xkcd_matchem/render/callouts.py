@@ -67,7 +67,7 @@ def draw_curved_arrow(
             ha="center",
             va="center",
             fontsize=10.0,
-            color=col,
+            color=ink,
             zorder=19.0,
         )
 

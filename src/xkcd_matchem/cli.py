@@ -337,6 +337,10 @@ def _cmd_render(args: argparse.Namespace) -> int:
         raise TypeError(f"Cannot render non-structure input {args.input!r}.")
     palette = _parse_color_overrides(args.colors, base_palette=args.palette)
     rep = tuple(int(v) for v in args.supercell)
+    if any(v <= 0 for v in rep):
+        raise ValueError(
+            f"--supercell factors must be positive integers, got {rep}."
+        )
     if atoms.is_periodic and rep != (1, 1, 1):
         atoms = atoms.repeat((rep[0], rep[1], rep[2]))
     cam = _resolve_cli_camera(args)
@@ -375,6 +379,10 @@ def _cmd_view(args: argparse.Namespace) -> int:
         int(args.supercell[1]),
         int(args.supercell[2]),
     )
+    if any(v <= 0 for v in rep):
+        raise ValueError(
+            f"--supercell factors must be positive integers, got {rep}."
+        )
     cam = _resolve_cli_camera(args)
     out_target = args.output
     if out_target is None and args.backend == "html":

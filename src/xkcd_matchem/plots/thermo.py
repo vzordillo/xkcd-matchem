@@ -126,6 +126,10 @@ def plot_phase_diagram_2d(
     """Plots a binary A-B convex hull formation-energy phase diagram."""
     xs = np.asarray(compositions, dtype=np.float64)
     ys = np.asarray(energies, dtype=np.float64)
+    if xs.ndim != 1 or ys.ndim != 1 or xs.shape != ys.shape or xs.size == 0:
+        raise exceptions.StructureError(
+            "Binary phase diagram requires non-empty matching 1D arrays."
+        )
     lower_indices = _lower_hull_indices(xs, ys)
     hull_sorted = sorted(lower_indices, key=lambda idx: float(xs[idx]))
     hull_x = xs[hull_sorted]
@@ -257,6 +261,10 @@ def plot_eos(
     """Plots energy vs volume with an optional 3rd-order Birch-Murnaghan fit."""
     vs = np.asarray(volumes, dtype=np.float64)
     es = np.asarray(energies, dtype=np.float64)
+    if vs.ndim != 1 or es.ndim != 1 or vs.shape != es.shape or vs.size == 0:
+        raise exceptions.StructureError(
+            "EOS plot requires non-empty matching 1D volume & energy arrays."
+        )
     series = palettes.get_palette(palette)
     pts_col = series[1 % len(series)]
     fit_col = series[5 % len(series)]
@@ -376,7 +384,7 @@ def plot_pourbaix(
                 closed=True,
                 facecolor=col,
                 edgecolor=ink_col,
-                linewidth=1.45,
+                linewidth=round(0.80 * sw.primary, 2),
                 alpha=0.28,
                 hatch=hatch,
                 zorder=2,

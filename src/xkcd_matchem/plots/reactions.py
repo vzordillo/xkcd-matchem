@@ -56,6 +56,7 @@ def _draw_barrier_span(
     unit: str,
     barrier_col: str,
     bg_color: str,
+    sw: theme.StrokeHierarchy,
 ) -> None:
     """Draws one activation-energy arrow and badge between minimum and peak."""
     e_ref = float(y_vals[ref_idx])
@@ -65,14 +66,14 @@ def _draw_barrier_span(
         "",
         xy=(xs[peak_idx], y_vals[peak_idx]),
         xytext=(xs[peak_idx], e_ref),
-        arrowprops={"arrowstyle": "<->", "color": ink_col, "lw": 1.10},
+        arrowprops={"arrowstyle": "<->", "color": ink_col, "lw": sw.leader},
     )
     ref_line = ax.plot(
         [xs[ref_idx] + 0.22, xs[peak_idx] + 0.10],
         [e_ref, e_ref],
         color=barrier_col,
         linestyle=":",
-        lw=0.95,
+        lw=sw.guide,
     )[0]
     ref_line.set_sketch_params(0.0, 0.0, 0.0)
     txt = ax.text(
@@ -103,6 +104,7 @@ def _annotate_reaction_barrier(
     unit: str,
     barrier_col: str,
     bg_color: str,
+    sw: theme.StrokeHierarchy,
 ) -> None:
     """Draws global activation-energy arrow from preceding minimum to max."""
     peak_idx = int(np.argmax(y_vals))
@@ -110,7 +112,7 @@ def _annotate_reaction_barrier(
         return
     ref_idx = int(np.argmin(y_vals[:peak_idx]))
     _draw_barrier_span(
-        ax, xs, y_vals, ref_idx, peak_idx, unit, barrier_col, bg_color
+        ax, xs, y_vals, ref_idx, peak_idx, unit, barrier_col, bg_color, sw
     )
 
 
@@ -121,6 +123,7 @@ def _annotate_elementary_barriers(
     unit: str,
     barrier_col: str,
     bg_color: str,
+    sw: theme.StrokeHierarchy,
 ) -> None:
     """Draws an Ea arrow for each interior barrier relative to prior min."""
     last_min = 0
@@ -129,7 +132,7 @@ def _annotate_elementary_barriers(
             last_min = k
         elif y_vals[k] > y_vals[k - 1] and y_vals[k] >= y_vals[k + 1]:
             _draw_barrier_span(
-                ax, xs, y_vals, last_min, k, unit, barrier_col, bg_color
+                ax, xs, y_vals, last_min, k, unit, barrier_col, bg_color, sw
             )
             last_min = k
 
@@ -210,11 +213,11 @@ def plot_reaction_profile(
 
         if n_pts >= 3 and mode_key == "global":
             _annotate_reaction_barrier(
-                ax, xs, y_vals, unit, barrier_col, preset_obj.axes_facecolor
+                ax, xs, y_vals, unit, barrier_col, preset_obj.axes_facecolor, sw
             )
         elif n_pts >= 3 and mode_key == "elementary":
             _annotate_elementary_barriers(
-                ax, xs, y_vals, unit, barrier_col, preset_obj.axes_facecolor
+                ax, xs, y_vals, unit, barrier_col, preset_obj.axes_facecolor, sw
             )
 
         ax.set_ylim(

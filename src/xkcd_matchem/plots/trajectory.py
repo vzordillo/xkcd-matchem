@@ -44,6 +44,8 @@ def plot_md_timeseries(
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots energy, temperature, pressure, or RMSD along an MD trajectory."""
+    if len(traj) == 0:
+        raise exceptions.StructureError("Trajectory has zero frames.")
     xs = (
         traj.times
         if traj.times is not None
@@ -122,6 +124,12 @@ def plot_rdf(
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots a radial distribution function ``g(r)`` with ``g(r)=1`` guide."""
+    r_arr = np.asarray(r_vals, dtype=np.float64)
+    g_arr = np.asarray(g_vals, dtype=np.float64)
+    if r_arr.shape != g_arr.shape:
+        raise exceptions.StructureError(
+            "r_vals and g_vals must have identical shapes."
+        )
     disp_unit = (
         "$\\mathrm{\\AA}$" if unit.strip() in ("A", "Angstrom") else unit
     )
@@ -133,25 +141,25 @@ def plot_rdf(
             _, ax = plt.subplots(figsize=(6.0, 4.0))
         else:
             theme.style_existing_axes(ax, preset=preset)
-        ax.plot(r_vals, g_vals, color=color, lw=sw.primary)
-        ax.fill_between(r_vals, 0.0, g_vals, color=color, alpha=0.18)
+        ax.plot(r_arr, g_arr, color=color, lw=sw.primary)
+        ax.fill_between(r_arr, 0.0, g_arr, color=color, alpha=0.18)
         g_line = ax.axhline(
             1.0, color=palettes.MUTED_GRAY, linestyle="--", lw=sw.guide
         )
         g_line.set_sketch_params(0.0, 0.0, 0.0)
-        if len(g_vals) > 0 and len(r_vals) >= 2:
-            peak_idx = int(np.argmax(g_vals))
-            r_span = max(float(r_vals[-1] - r_vals[0]), 1e-6)
-            near_right = float(r_vals[peak_idx]) > float(r_vals[0]) + (
+        if len(g_arr) > 0 and len(r_arr) >= 2:
+            peak_idx = int(np.argmax(g_arr))
+            r_span = max(float(r_arr[-1] - r_arr[0]), 1e-6)
+            near_right = float(r_arr[peak_idx]) > float(r_arr[0]) + (
                 0.68 * r_span
             )
-            text_x = float(r_vals[peak_idx]) + (
+            text_x = float(r_arr[peak_idx]) + (
                 -0.14 * r_span if near_right else 0.12 * r_span
             )
             ann = ax.annotate(
-                f"$r_1$ = {r_vals[peak_idx]:.2f} {disp_unit}",
-                xy=(float(r_vals[peak_idx]), float(g_vals[peak_idx])),
-                xytext=(text_x, float(g_vals[peak_idx]) * 0.9),
+                f"$r_1$ = {r_arr[peak_idx]:.2f} {disp_unit}",
+                xy=(float(r_arr[peak_idx]), float(g_arr[peak_idx])),
+                xytext=(text_x, float(g_arr[peak_idx]) * 0.9),
                 ha="right" if near_right else "left",
                 color=ink_col,
                 bbox=theme.label_halo_bbox(
@@ -167,8 +175,8 @@ def plot_rdf(
             patch = ann.get_bbox_patch()
             if patch is not None:
                 patch.set_sketch_params(0.0, 0.0, 0.0)
-        if len(r_vals) >= 2:
-            ax.set_xlim(float(r_vals[0]), float(r_vals[-1]))
+        if len(r_arr) >= 2:
+            ax.set_xlim(float(r_arr[0]), float(r_arr[-1]))
         ax.set_ylim(bottom=0.0)
         ax.set_xlabel(f"Pair Distance $r$ ({disp_unit})")
         ax.set_ylabel("$g(r)$")
@@ -188,12 +196,13 @@ def plot_rmsd(
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots a precomputed RMSD curve vs simulation time."""
+    sw = theme.stroke_weights(preset)
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.0, 3.8))
         else:
             theme.style_existing_axes(ax, preset=preset)
-        ax.plot(times, rmsd_vals, color=color, lw=2.0)
+        ax.plot(times, rmsd_vals, color=color, lw=sw.primary)
         ax.set_xlabel(f"Time ({time_unit})")
         ax.set_ylabel("RMSD ($\\mathrm{\\AA}$)")
         theme.apply_xkcd_spines(ax, preset=preset)
