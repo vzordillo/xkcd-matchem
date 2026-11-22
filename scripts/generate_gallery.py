@@ -563,13 +563,32 @@ def _export_docs_assets() -> None:
     shutil.copy2(ttf_src, fonts_dir / "xkcd-script.ttf")
 
     xm.export_interactive_html(
-        "tio2_slab.poscar",
+        "water_homo.cube",
         _BOOK_STATIC / "interactive_studio.html",
         include_bundled_samples=True,
-        style="polyhedra",
-        polyhedra=("Ti", "O"),
-        name="TiO2 (110) Polyhedra (tio2_slab.poscar)",
+        iso_shade="crosshatch",
     )
+
+
+def _fig_to_rgb_array(
+    fig: matplotlib.figure.Figure,
+    dpi: int = 220,
+) -> np.ndarray:
+    """Renders a Matplotlib Figure into an exact full-color RGB NumPy array."""
+    buf = io.BytesIO()
+    fig.patch.set_sketch_params(0.0, 0.0, 0.0)
+    for ax in fig.axes:
+        ax.patch.set_sketch_params(0.0, 0.0, 0.0)
+    fig.savefig(
+        buf,
+        format="png",
+        dpi=dpi,
+        facecolor=fig.get_facecolor(),
+        edgecolor=fig.get_facecolor(),
+    )
+    buf.seek(0)
+    with Image.open(buf) as raw:
+        return np.asarray(raw.convert("RGB"))
 
 
 def _fig_to_pil(fig: matplotlib.figure.Figure) -> Image.Image:
@@ -1541,6 +1560,371 @@ def _make_xkcd_comics_gallery(out_dir: pathlib.Path) -> None:
         plt.close(fig)
 
 
+def _make_scicomm_templates_gallery(out_dir: pathlib.Path) -> None:
+    """Generates showcase of Graphical Abstract, Talk Slide & Comic recipes."""
+    bands, _ = _load_aligned_si_bands_dos()
+    neb = xm.load_trajectory("sn2_neb.xyz")
+    cam_sn2 = xm.Camera(azimuth=-115.0, elevation=20.0, perspective=0.25)
+
+    ga = xm.create_graphical_abstract(
+        title="Rutile TiO2 (110) -> Sabatier Activity",
+        takeaway="Optimal *H binding energy sits right at the volcano apex",
+        panels=2,
+        size_mm=(136.0, 76.5),
+        arrow_label="DFT",
+        dpi=240,
+    )
+    xm.plot_coordination(
+        "tio2_slab.poscar",
+        "Ti",
+        "O",
+        supercell=(2, 1, 1),
+        show_cell=False,
+        ax=ga.left_ax,
+        preset="graphical_abstract",
+        title="TiO2 Octahedra",
+    )
+    ga.left_ax.title.set_fontsize(8.8)
+    if ga.right_ax is not None:
+        xm.plot_volcano(
+            [-0.75, -0.35, -0.05, 0.25, 0.65],
+            [-2.9, -1.35, -0.35, -1.25, -3.1],
+            labels=["Ru", "Rh", "Pt", "Pd", "Au"],
+            ylabel="Limiting Potential (V)",
+            ax=ga.right_ax,
+            preset="graphical_abstract",
+            title="HER Volcano",
+        )
+        leg_ga = ga.right_ax.get_legend()
+        if leg_ga is not None:
+            leg_ga.remove()
+        ga.right_ax.set_xlim(-1.05, 0.88)
+        ga.right_ax.set_ylim(-3.65, 0.35)
+        ga.right_ax.tick_params(labelsize=6.8)
+        ga.right_ax.xaxis.label.set_fontsize(7.4)
+        ga.right_ax.yaxis.label.set_fontsize(7.4)
+        ga.right_ax.title.set_fontsize(8.8)
+    img_ga = _fig_to_rgb_array(ga.figure, dpi=240)
+    plt.close(ga.figure)
+
+    slide = xm.create_talk_slide(
+        title="Silicon Bands & Charged-Defect Levels",
+        subtitle="Self-consistent DFT bands paired with defect thermodynamics",
+        takeaway="Indirect 1.12 eV gap sets the p-type V_Si stability window",
+        layout="two_column",
+        preset="talk_16x9",
+        character="ponytail",
+        speech="Look at V_Si (+2/0)!",
+        dpi=200,
+    )
+    for ax_s in (slide.axes["left"], slide.axes["right"]):
+        pos_s = ax_s.get_position()
+        ax_s.set_position(
+            [pos_s.x0, pos_s.y0 + 0.032, pos_s.width, pos_s.height - 0.032]
+        )
+    xm.plot_bands(
+        bands,
+        ax=slide.axes["left"],
+        ylim=(-5.5, 4.5),
+        preset="talk_16x9",
+        title="Si Band Structure",
+    )
+    slide.axes["left"].set_xlabel("Wavevector Path", fontsize=11.0, labelpad=3)
+    slide.axes["left"].set_ylabel(r"$E - E_F$ (eV)", fontsize=11.0)
+    xm.plot_defect_formation(
+        _SILICON_DEFECTS,
+        band_gap=1.12,
+        ax=slide.axes["right"],
+        preset="talk_16x9",
+        title="Si Defect Levels",
+    )
+    slide.axes["right"].set_xlabel(
+        r"$E_F - E_{\mathrm{VBM}}$ (eV)", fontsize=11.0, labelpad=3
+    )
+    slide.axes["right"].set_ylabel(r"Formation Energy $E^f$ (eV)", fontsize=11)
+    leg_def = slide.axes["right"].get_legend()
+    if leg_def is not None:
+        for txt_l in leg_def.get_texts():
+            txt_l.set_fontsize(9.5)
+    img_slide = _fig_to_rgb_array(slide.figure, dpi=200)
+    plt.close(slide.figure)
+
+    comic = xm.create_mechanism_comic(
+        captions=(
+            "1. Backside Approach",
+            "2. Pentacoordinate TS!",
+            "3. Walden Inversion",
+        ),
+        speeches=(
+            "Cl- lines up...",
+            "Look at that barrier!",
+            "Inversion complete!",
+        ),
+        characters=("cueball", "ponytail", "goggles"),
+        poses=("stand", "point", "cheer"),
+        title=None,
+        figsize=(14.6, 4.2),
+    )
+    xm.render_structure_3d(
+        neb[0],
+        ax=comic.inset_axes[0],
+        camera=cam_sn2,
+        show_cell=False,
+    )
+    xm.plot_neb(neb, ax=comic.inset_axes[1])
+    comic.inset_axes[1].set_ylim(-0.08, 1.16)
+    comic.inset_axes[1].tick_params(labelsize=7.5)
+    comic.inset_axes[1].set_xlabel("")
+    comic.inset_axes[1].set_ylabel("eV", fontsize=8.0)
+    xm.render_structure_3d(
+        neb[-1],
+        ax=comic.inset_axes[2],
+        camera=cam_sn2,
+        show_cell=False,
+    )
+    img_comic = _fig_to_rgb_array(comic.figure, dpi=200)
+    plt.close(comic.figure)
+
+    with xm.xkcd_style("classic"):
+        fig = plt.figure(figsize=(16.0, 9.8), dpi=175)
+        fig.patch.set_facecolor(xm.style.PAPER)
+        gs = fig.add_gridspec(
+            2,
+            2,
+            height_ratios=[1.04, 0.96],
+            width_ratios=[1.0, 1.0],
+            hspace=0.22,
+            wspace=0.06,
+        )
+        ax_ga = fig.add_subplot(gs[0, 0])
+        ax_sl = fig.add_subplot(gs[0, 1])
+        ax_cm = fig.add_subplot(gs[1, :])
+
+        for ax_p, img_p, heading, framed in (
+            (
+                ax_ga,
+                img_ga,
+                "A. Journal TOC Abstract — create_graphical_abstract()",
+                True,
+            ),
+            (
+                ax_sl,
+                img_slide,
+                "B. 16:9 Talk Slide + Presenter — create_talk_slide()",
+                True,
+            ),
+            (
+                ax_cm,
+                img_comic,
+                "C. 3-Panel SN2 Mechanism Strip — create_mechanism_comic()",
+                False,
+            ),
+        ):
+            ax_p.imshow(img_p, interpolation="lanczos")
+            ax_p.set_xticks([])
+            ax_p.set_yticks([])
+            ax_p.set_title(heading, fontsize=11.8, pad=7.0)
+            for sp in ax_p.spines.values():
+                sp.set_visible(framed)
+                if framed:
+                    sp.set_color("#94A3B8")
+                    sp.set_linewidth(1.1)
+                    sp.set_sketch_params(0.0, 0.0, 0.0)
+
+        fig.suptitle(
+            "Turnkey SciComm Templates: Graphical Abstracts, 16:9 Talk Slides "
+            "& Mechanism Comics",
+            fontsize=15.0,
+            y=0.975,
+        )
+        fig.subplots_adjust(
+            left=0.025, right=0.975, top=0.905, bottom=0.02
+        )
+        xm.save_figure(
+            fig, out_dir / "scicomm_layout_templates.png", dpi=175
+        )
+        plt.close(fig)
+
+
+def _synthesize_reversible_cv() -> tuple[np.ndarray, np.ndarray]:
+    """Synthesizes a classic reversible Fe(CN)6 3-/4- cyclic voltammogram."""
+    e_fwd = np.linspace(0.00, 0.72, 160)
+    e_rev = np.linspace(0.72, 0.00, 160)
+    # Forward anodic oxidation peak near E_pa ~ 0.39 V with diffusion tail.
+    u_a = (e_fwd - 0.382) / 0.036
+    j_fwd = (
+        0.10
+        + 2.45 * np.exp(-0.5 * u_a**2) * (1.0 + 0.30 * np.tanh(u_a))
+        + 0.78
+        / (1.0 + np.exp(-18.0 * (e_fwd - 0.405)))
+        * (1.0 / np.sqrt(1.0 + np.maximum(e_fwd - 0.39, 0.0) * 6.5))
+    )
+    # Reverse cathodic reduction peak near E_pc ~ 0.33 V with smooth join.
+    u_c = (e_rev - 0.338) / 0.036
+    j_end = float(j_fwd[-1])
+    join_w = np.exp(-((0.72 - e_rev) / 0.055) ** 2)
+    j_rev_core = (
+        -0.12
+        - 2.40 * np.exp(-0.5 * u_c**2) * (1.0 - 0.30 * np.tanh(u_c))
+        - 0.72
+        / (1.0 + np.exp(18.0 * (e_rev - 0.315)))
+        * (1.0 / np.sqrt(1.0 + np.maximum(0.33 - e_rev, 0.0) * 6.5))
+    )
+    j_rev = (1.0 - join_w) * j_rev_core + join_w * j_end
+    return np.concatenate([e_fwd, e_rev]), np.concatenate([j_fwd, j_rev])
+
+
+def _synthesize_lfp_battery() -> tuple[
+    np.ndarray, np.ndarray, np.ndarray, np.ndarray
+]:
+    """Synthesizes LiFePO4 galvanostatic discharge/charge hysteresis curves."""
+    v_grid = np.linspace(2.65, 3.95, 220)
+    q_chg = 158.0 / (1.0 + np.exp(-(v_grid - 3.46) / 0.022)) + 3.2 * (
+        v_grid - 2.65
+    )
+    q_chg = q_chg - float(q_chg[0])
+    q_chg = q_chg * (162.0 / float(q_chg[-1]))
+
+    q_dis_asc = 158.0 / (1.0 + np.exp(-(v_grid - 3.39) / 0.022)) + 3.2 * (
+        v_grid - 2.65
+    )
+    q_dis_asc = q_dis_asc - float(q_dis_asc[0])
+    q_dis_asc = q_dis_asc * (162.0 / float(q_dis_asc[-1]))
+    # Keep Discharge monotonically below Charge on the shared capacity axis.
+    q_dis = q_dis_asc[::-1]
+    v_dis = v_grid[::-1]
+    return q_dis, v_dis, q_chg, v_grid
+
+
+def _make_electrochem_crystalfield_nmr_gallery(out_dir: pathlib.Path) -> None:
+    """Generates 2x3 crystal-field, CV, battery/dQ/dV, 1H NMR & XPS sheet."""
+    e_cv, j_cv = _synthesize_reversible_cv()
+    q_dis, v_dis, q_chg, v_chg = _synthesize_lfp_battery()
+
+    et_oac_nmr = [
+        {
+            "shift": 4.12,
+            "integral": 2.0,
+            "multiplicity": "q",
+            "j_hz": 7.1,
+            "label": r"$\mathrm{-OCH_2-}$",
+        },
+        {
+            "shift": 2.05,
+            "integral": 3.0,
+            "multiplicity": "s",
+            "j_hz": 0.0,
+            "label": r"$\mathrm{CH_3CO-}$",
+        },
+        {
+            "shift": 1.26,
+            "integral": 3.0,
+            "multiplicity": "t",
+            "j_hz": 7.1,
+            "label": r"$\mathrm{-CH_3}$",
+        },
+    ]
+
+    be_grid = np.linspace(281.0, 292.5, 360)
+    xps_comps = [
+        {
+            "label": "C-C / C-H",
+            "center": 284.8,
+            "amplitude": 1.00,
+            "fwhm": 1.15,
+        },
+        {"label": "C-O", "center": 286.4, "amplitude": 0.46, "fwhm": 1.25},
+        {"label": "O-C=O", "center": 288.9, "amplitude": 0.34, "fwhm": 1.25},
+    ]
+    net_xps = np.zeros_like(be_grid)
+    for comp in xps_comps:
+        net_xps += xm.broaden_peaks(
+            [float(comp["center"])],
+            [float(comp["amplitude"])],
+            be_grid,
+            fwhm=float(comp["fwhm"]),
+            profile="pseudo_voigt",
+            normalize="height",
+        )
+    cum = np.cumsum(net_xps)
+    cum = (cum - cum[0]) / max(float(cum[-1] - cum[0]), 1e-12)
+    rng = np.random.default_rng(7)
+    raw_xps = 0.14 + 0.24 * cum + net_xps + rng.normal(0.0, 0.015, be_grid.size)
+
+    with xm.xkcd_style("classic"):
+        fig, axes = plt.subplots(2, 3, figsize=(16.5, 10.2), dpi=170)
+        fig.patch.set_facecolor(xm.style.PAPER)
+
+        xm.plot_crystal_field(
+            geometry="octahedral",
+            d_electrons=6,
+            spin_state="high",
+            delta=1.25,
+            unit="eV",
+            ax=axes[0, 0],
+            title=r"Octahedral High-Spin $\mathrm{Fe^{2+}}\ (d^6)$",
+        )
+        xm.plot_cyclic_voltammetry(
+            e_cv,
+            j_cv,
+            convention="iupac",
+            potential_label="Potential E (V vs. SHE)",
+            ax=axes[0, 1],
+            title=r"$\mathrm{[Fe(CN)_6]^{3-/4-}}$ Cyclic Voltammetry",
+        )
+        xm.plot_battery_profile(
+            q_dis,
+            v_dis,
+            charge_voltage=v_chg,
+            charge_capacity=q_chg,
+            plateau_shade=True,
+            ax=axes[0, 2],
+            title=r"$\mathrm{LiFePO_4}$ Charge / Discharge",
+        )
+        xm.plot_dqdv(
+            v_dis,
+            q_dis,
+            charge_voltage=v_chg,
+            charge_capacity=q_chg,
+            smooth_window=5,
+            annotate_peaks=1,
+            ax=axes[1, 0],
+            title=r"$\mathrm{LiFePO_4}$ Differential Capacity (dQ/dV)",
+        )
+        xm.plot_nmr(
+            et_oac_nmr,
+            spectrometer_mhz=400.0,
+            ppm_range=(-0.3, 4.9),
+            fwhm_ppm=0.016,
+            show_integrals=True,
+            show_trees=True,
+            show_tms=True,
+            nucleus="1H",
+            ax=axes[1, 1],
+            title=r"Ethyl Acetate $^1\mathrm{H}$ NMR (400 MHz)",
+        )
+        xm.plot_xps(
+            be_grid,
+            raw_xps,
+            components=xps_comps,
+            background="shirley",
+            invert_x=True,
+            ax=axes[1, 2],
+            title="C 1s XPS (Shirley Deconvolution)",
+        )
+        fig.suptitle(
+            "Crystal-Field Theory, Electrochemistry, Battery dQ/dV, "
+            "NMR & XPS Spectroscopy",
+            fontsize=15.5,
+            y=0.98,
+        )
+        fig.tight_layout(rect=(0.0, 0.01, 1.0, 0.94), w_pad=2.1, h_pad=2.5)
+        xm.save_figure(
+            fig, out_dir / "electrochem_crystalfield_nmr.png", dpi=170
+        )
+        plt.close(fig)
+
+
 def main() -> None:
     """Generates all gallery PNGs, GIFs, and static interactive assets."""
     matplotlib.use("Agg")
@@ -1561,6 +1945,8 @@ def main() -> None:
     _make_isosurface_shading_gallery(_OUT_DIR)
     _make_brillouin_cohp_volcano_gallery(_OUT_DIR)
     _make_xkcd_comics_gallery(_OUT_DIR)
+    _make_electrochem_crystalfield_nmr_gallery(_OUT_DIR)
+    _make_scicomm_templates_gallery(_OUT_DIR)
     _make_readme_gifs(_OUT_DIR)
     _export_docs_assets()
     print(f"Generated gallery images, GIFs, and studio in {_BOOK_STATIC}")

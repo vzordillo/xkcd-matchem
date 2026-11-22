@@ -66,14 +66,118 @@ body {
   border-bottom: 1px solid var(--ui-border);
   background: #fbfcfe;
 }
+.xm-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.xm-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
 .xm-title {
   font-size: 1.25rem;
   font-weight: 700;
   margin: 0;
 }
+.xm-cat-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #1e40af;
+  border: 1px solid #c7d2fe;
+  letter-spacing: 0.01em;
+}
 .xm-subtitle {
   font-size: 0.92rem;
   color: var(--ui-muted);
+}
+.xm-desc {
+  font-size: 0.84rem;
+  color: #4b5563;
+  line-height: 1.3;
+  margin-top: 1px;
+}
+.xm-scene-bar,
+.xm-iso-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--ui-border);
+  background: #f8fafd;
+}
+.xm-iso-bar {
+  background: #fdfcf8;
+  padding: 6px 12px;
+}
+.xm-scene-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ui-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 2px;
+  white-space: nowrap;
+}
+.xm-scene-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+.xm-scene-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: inherit;
+  font-size: 0.84rem;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-border);
+  background: #ffffff;
+  color: var(--ui-ink);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, box-shadow 0.12s;
+}
+.xm-scene-chip:hover {
+  background: #eef2ff;
+  border-color: #93c5fd;
+}
+.xm-scene-chip:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 1px;
+}
+.xm-scene-chip.active {
+  background: var(--ui-accent);
+  color: #ffffff;
+  border-color: var(--ui-accent);
+  box-shadow: 0 1px 4px rgba(29, 78, 216, 0.25);
+}
+.xm-scene-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #64748b;
+}
+.xm-scene-chip.active .xm-scene-dot {
+  background: #ffffff !important;
+}
+.xm-iso-chip {
+  font-size: 0.8rem;
+  padding: 2px 9px;
 }
 .xm-preset-row {
   display: flex;
@@ -264,23 +368,44 @@ canvas#xm-canvas:active { cursor: grabbing; }
 <div class="xm-shell">
   <div class="xm-stage-card">
     <div class="xm-topbar">
-      <div>
-        <div class="xm-title" id="xm-struct-title">xkcd-matchem 3D Studio</div>
+      <div class="xm-title-block">
+        <div class="xm-title-row">
+          <div class="xm-title" id="xm-struct-title">xkcd-matchem 3D Studio</div>
+          <span class="xm-cat-badge" id="xm-struct-category" style="display:none;"></span>
+        </div>
         <div class="xm-subtitle" id="xm-struct-meta">Interactive structure sandbox</div>
+        <div class="xm-desc" id="xm-struct-desc" style="display:none;"></div>
       </div>
       <div class="xm-preset-row" id="xm-view-buttons">
-        <button class="xm-btn" data-view="isometric">Iso</button>
-        <button class="xm-btn" data-view="perspective">Persp</button>
-        <button class="xm-btn" data-view="front">Front</button>
-        <button class="xm-btn" data-view="side">Side</button>
-        <button class="xm-btn" data-view="top">Top</button>
-        <button class="xm-btn" data-view="a">a</button>
-        <button class="xm-btn" data-view="b">b</button>
-        <button class="xm-btn" data-view="c">c</button>
-        <button class="xm-btn" data-view="a*">a*</button>
-        <button class="xm-btn" data-view="b*">b*</button>
-        <button class="xm-btn" data-view="c*">c*</button>
-        <button class="xm-btn" id="xm-reset-view" title="Reset camera (R)">Reset</button>
+        <button class="xm-btn" type="button" data-view="isometric">Iso</button>
+        <button class="xm-btn" type="button" data-view="perspective">Persp</button>
+        <button class="xm-btn" type="button" data-view="front">Front</button>
+        <button class="xm-btn" type="button" data-view="side">Side</button>
+        <button class="xm-btn" type="button" data-view="top">Top</button>
+        <button class="xm-btn" type="button" data-view="a">a</button>
+        <button class="xm-btn" type="button" data-view="b">b</button>
+        <button class="xm-btn" type="button" data-view="c">c</button>
+        <button class="xm-btn" type="button" data-view="a*">a*</button>
+        <button class="xm-btn" type="button" data-view="b*">b*</button>
+        <button class="xm-btn" type="button" data-view="c*">c*</button>
+        <button class="xm-btn" type="button" id="xm-reset-view" title="Reset camera (R)">Reset</button>
+      </div>
+    </div>
+    <div class="xm-scene-bar" id="xm-scene-bar" role="region" aria-label="Quick Scene Switcher" style="display:none;">
+      <span class="xm-scene-label">Quick Scenes</span>
+      <div class="xm-scene-chips" id="xm-scene-chips" role="toolbar" aria-label="Curated 3D Scenes"></div>
+    </div>
+    <div class="xm-iso-bar" id="xm-iso-bar" role="region" aria-label="Isosurface Shading Modes" style="display:none;">
+      <span class="xm-scene-label">Ink Shading</span>
+      <div class="xm-scene-chips" id="xm-iso-chips" role="toolbar" aria-label="Pen-and-Ink Isosurface Shading">
+        <button class="xm-scene-chip xm-iso-chip" type="button" data-iso-shade="crosshatch" aria-pressed="false">Cross-Hatch</button>
+        <button class="xm-scene-chip xm-iso-chip" type="button" data-iso-shade="hatch" aria-pressed="false">Hatch</button>
+        <button class="xm-scene-chip xm-iso-chip" type="button" data-iso-shade="contour" aria-pressed="false">Contour</button>
+        <button class="xm-scene-chip xm-iso-chip" type="button" data-iso-shade="cross_contour" aria-pressed="false">Cross-Contour</button>
+        <button class="xm-scene-chip xm-iso-chip" type="button" data-iso-shade="stipple" aria-pressed="false">Stipple</button>
+        <button class="xm-scene-chip xm-iso-chip" type="button" data-iso-shade="scumble" aria-pressed="false">Scumble</button>
+        <button class="xm-scene-chip xm-iso-chip" type="button" data-iso-shade="solid" aria-pressed="false">Smooth</button>
+        <button class="xm-scene-chip xm-iso-chip" type="button" data-iso-shade="outline" aria-pressed="false">Outline</button>
       </div>
     </div>
     <div class="xm-canvas-wrap">
@@ -1923,18 +2048,64 @@ canvas#xm-canvas:active { cursor: grabbing; }
     if (hint) hint.classList.toggle("dark", isDarkBg(state.background));
   }
 
+  function syncIsoShadeUI() {
+    const sel = document.getElementById("xm-iso-shade");
+    if (sel) sel.value = state.isoShade;
+    const hasIso = Boolean(baseData.isosurfaces && baseData.isosurfaces.length);
+    const bar = document.getElementById("xm-iso-bar");
+    if (bar) bar.style.display = hasIso ? "flex" : "none";
+    document.querySelectorAll("#xm-iso-chips .xm-iso-chip").forEach((btn) => {
+      const isAct = btn.dataset.isoShade === state.isoShade;
+      btn.classList.toggle("active", isAct);
+      btn.setAttribute("aria-pressed", isAct ? "true" : "false");
+    });
+  }
+
   function updateMetaUI(symbols, cell) {
     const counts = {};
     for (const s of symbols) counts[s] = (counts[s] || 0) + 1;
     const formula = Object.keys(counts).sort().map((s) => counts[s] > 1 ? `${s}${counts[s]}` : s).join("");
     document.getElementById("xm-struct-title").textContent = currentSample.name || formula || "xkcd-matchem";
-    document.getElementById("xm-struct-meta").textContent =
-      `${formula} | ${symbols.length} atoms | ${cell ? "Periodic" : "Molecule"}`;
+    const catEl = document.getElementById("xm-struct-category");
+    if (catEl) {
+      const catText = typeof currentSample.category === "string" ? currentSample.category.trim() : "";
+      if (catText) {
+        catEl.textContent = catText;
+        catEl.style.display = "inline-flex";
+      } else {
+        catEl.textContent = "";
+        catEl.style.display = "none";
+      }
+    }
+    const metaParts = [
+      formula,
+      `${symbols.length} atoms`,
+      cell ? "Periodic" : "Molecule",
+    ];
+    if (baseData.isosurfaces && baseData.isosurfaces.length) {
+      metaParts.push("3D Orbital");
+    }
+    if (currentSample.frames && currentSample.frames.length > 1) {
+      metaParts.push(`${currentSample.frames.length} frames`);
+    }
+    document.getElementById("xm-struct-meta").textContent = metaParts.join(" | ");
+    const descEl = document.getElementById("xm-struct-desc");
+    if (descEl) {
+      const descText = typeof currentSample.description === "string" ? currentSample.description.trim() : "";
+      if (descText) {
+        descEl.textContent = descText;
+        descEl.style.display = "block";
+      } else {
+        descEl.textContent = "";
+        descEl.style.display = "none";
+      }
+    }
     document.getElementById("xm-camera-readout").textContent =
       `az=${state.azimuth.toFixed(1)} deg | el=${state.elevation.toFixed(1)} deg | zoom=${state.zoom.toFixed(2)} | R: reset`;
     document.getElementById("xm-supercell-group").style.display = cell ? "block" : "none";
     document.getElementById("xm-py-preview").value = buildPythonSnippet();
     syncBackgroundButtons();
+    syncIsoShadeUI();
     syncSwatches(symbols);
   }
 
@@ -2437,7 +2608,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     renderFrame();
   }, { passive: false });
 
-  document.querySelectorAll("#xm-view-buttons .xm-btn").forEach((btn) => {
+  document.querySelectorAll("#xm-view-buttons .xm-btn[data-view]").forEach((btn) => {
     btn.addEventListener("click", () => applyViewPreset(btn.dataset.view));
   });
   document.getElementById("xm-style").value = state.style;
@@ -2489,7 +2660,20 @@ canvas#xm-canvas:active { cursor: grabbing; }
   });
   document.getElementById("xm-iso-shade").value = state.isoShade;
   document.getElementById("xm-iso-shade").addEventListener("change", (e) => {
-    state.isoShade = e.target.value; renderFrame();
+    state.isoShade = e.target.value;
+    syncIsoShadeUI();
+    renderFrame();
+  });
+  document.querySelectorAll("#xm-iso-chips .xm-iso-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (!btn.dataset.isoShade) return;
+      state.isoShade = btn.dataset.isoShade;
+      state.showIso = true;
+      const isoCheck = document.getElementById("xm-show-iso");
+      if (isoCheck) isoCheck.checked = true;
+      syncIsoShadeUI();
+      renderFrame();
+    });
   });
 
   function stopPlayback() {
@@ -2587,7 +2771,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     document.getElementById("xm-bg-color").value = state.background;
     document.getElementById("xm-cell-mode").value = state.cellMode;
     document.getElementById("xm-axes-mode").value = state.axesMode;
-    document.getElementById("xm-iso-shade").value = state.isoShade;
+    document.getElementById("xm-show-iso").checked = state.showIso;
     document.getElementById("xm-persp").value = state.perspective;
     document.getElementById("xm-persp-val").textContent = state.perspective.toFixed(2);
     document.getElementById("xm-zoom").value = state.zoom;
@@ -2598,6 +2782,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     document.getElementById("xm-nb").value = state.supercell[1];
     document.getElementById("xm-nc").value = state.supercell[2];
     syncBackgroundButtons();
+    syncIsoShadeUI();
   }
 
   function applySampleState(smp, isUpload) {
@@ -2620,6 +2805,9 @@ canvas#xm-canvas:active { cursor: grabbing; }
     if (smp.show_cell !== undefined) {
       state.cellMode = resolveInitialCellMode(smp.show_cell);
       state.axesMode = resolveInitialAxesMode(smp.show_cell);
+    }
+    if (smp.isosurfaces && smp.isosurfaces.length) {
+      state.showIso = true;
     }
     state.isoShade = smp.iso_shade || "solid";
     document.querySelectorAll("#xm-view-buttons .xm-btn").forEach((b) => {
@@ -2655,18 +2843,95 @@ canvas#xm-canvas:active { cursor: grabbing; }
     }
   });
 
+  function sceneChipLabel(smp, idx) {
+    const raw = (typeof smp.short_name === "string" && smp.short_name.trim())
+      ? smp.short_name.trim()
+      : String(smp.name || `Sample ${idx + 1}`).trim();
+    const cleaned = raw.replace(/\s+\([^()]*\.[a-zA-Z0-9]{2,8}\)$/, "").trim();
+    return cleaned || raw || `Sample ${idx + 1}`;
+  }
+
+  function sceneCategoryColor(smp) {
+    const cat = typeof smp.category === "string" ? smp.category.toLowerCase() : "";
+    if (cat.includes("orbital") || cat.includes("iso") || (smp.isosurfaces && smp.isosurfaces.length)) {
+      return "#0072B2";
+    }
+    if (cat.includes("reaction") || cat.includes("md") || cat.includes("traj") || (smp.frames && smp.frames.length > 1)) {
+      return "#D55E00";
+    }
+    if (cat.includes("bio")) return "#E69F00";
+    if (cat.includes("crystal") || cat.includes("slab") || cat.includes("poly") || smp.cell) {
+      return "#009E73";
+    }
+    if (cat.includes("mol")) return "#CC79A7";
+    return "#64748b";
+  }
+
+  function syncSceneChips(activeIdx) {
+    document.querySelectorAll("#xm-scene-chips .xm-scene-chip").forEach((chip) => {
+      const isAct = Number(chip.dataset.sampleIndex) === activeIdx;
+      chip.classList.toggle("active", isAct);
+      chip.setAttribute("aria-pressed", isAct ? "true" : "false");
+    });
+  }
+
+  function selectSampleByIndex(idx) {
+    if (!Number.isInteger(idx) || idx < 0 || idx >= samples.length) return;
+    const sel = document.getElementById("xm-sample-select");
+    if (sel && sel.value !== String(idx)) sel.value = String(idx);
+    syncSceneChips(idx);
+    applySampleState(samples[idx], false);
+  }
+
   if (samples.length > 1) {
     const grp = document.getElementById("xm-sample-group");
     const sel = document.getElementById("xm-sample-select");
+    const sceneBar = document.getElementById("xm-scene-bar");
+    const chipWrap = document.getElementById("xm-scene-chips");
     grp.style.display = "block";
+    if (sceneBar) sceneBar.style.display = "flex";
+    if (chipWrap) chipWrap.textContent = "";
     samples.forEach((smp, i) => {
       const opt = document.createElement("option");
       opt.value = String(i);
-      opt.textContent = smp.name || `Sample ${i + 1}`;
+      const optCat = typeof smp.category === "string" && smp.category.trim()
+        ? `[${smp.category.trim()}] `
+        : "";
+      opt.textContent = `${optCat}${smp.name || `Sample ${i + 1}`}`;
       sel.appendChild(opt);
+
+      if (chipWrap) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "xm-scene-chip";
+        chip.dataset.sampleIndex = String(i);
+        chip.setAttribute("aria-pressed", i === 0 ? "true" : "false");
+        const tipParts = [smp.name || `Sample ${i + 1}`];
+        if (typeof smp.category === "string" && smp.category.trim()) {
+          tipParts.push(smp.category.trim());
+        }
+        if (typeof smp.description === "string" && smp.description.trim()) {
+          tipParts.push(smp.description.trim());
+        }
+        chip.title = tipParts.join(" — ");
+
+        const dot = document.createElement("span");
+        dot.className = "xm-scene-dot";
+        dot.style.background = sceneCategoryColor(smp);
+        dot.setAttribute("aria-hidden", "true");
+        const labelSpan = document.createElement("span");
+        labelSpan.textContent = sceneChipLabel(smp, i);
+
+        chip.appendChild(dot);
+        chip.appendChild(labelSpan);
+        chip.addEventListener("click", () => selectSampleByIndex(i));
+        chipWrap.appendChild(chip);
+      }
     });
+    sel.value = "0";
+    syncSceneChips(0);
     sel.addEventListener("change", (e) => {
-      applySampleState(samples[parseInt(e.target.value, 10)], false);
+      selectSampleByIndex(parseInt(e.target.value, 10));
     });
   }
 
@@ -2675,6 +2940,9 @@ canvas#xm-canvas:active { cursor: grabbing; }
     if (!file) return;
     try {
       const txt = await file.text();
+      syncSceneChips(-1);
+      const sel = document.getElementById("xm-sample-select");
+      if (sel) sel.selectedIndex = -1;
       applySampleState(parseUploadedFile(file.name, txt), true);
       document.getElementById("xm-status").textContent = `Loaded ${file.name}`;
     } catch (err) {
