@@ -28,6 +28,7 @@ from scipy import optimize
 from xkcd_matchem.core import exceptions
 from xkcd_matchem.core import wulff
 from xkcd_matchem.data import elements
+from xkcd_matchem.style import layout
 from xkcd_matchem.style import palettes
 from xkcd_matchem.style import patterns
 from xkcd_matchem.style import theme
@@ -92,22 +93,59 @@ def _annotate_phase_labels(
 ) -> None:
     """Places stable phase labels below hull nodes and unstable above."""
     y_span = max(float(np.ptp(ys)), 0.25)
+    x_span = max(float(np.ptp(xs)), 0.5)
+    max_len = max((len(str(s)) for s in labels), default=0)
+    fsize = 8.0 if (len(labels) > 8 or max_len > 14) else 9.5
+    stable_idx = [
+        k for k, s in enumerate(labels) if k in lower_indices and str(s).strip()
+    ]
+    unstable_idx = [
+        k
+        for k, s in enumerate(labels)
+        if k not in lower_indices and str(s).strip()
+    ]
+    dy_map: dict[int, float] = {}
+    if stable_idx:
+        _, dy_s = layout.resolve_1d_label_positions(
+            xs[stable_idx],
+            np.full(len(stable_idx), -12.0, dtype=np.float64),
+            min_dx=0.14 * x_span,
+            y_step=-12.5,
+            max_tiers=4,
+        )
+        for pos, k_idx in enumerate(stable_idx):
+            dy_map[k_idx] = float(dy_s[pos])
+    if unstable_idx:
+        _, dy_u = layout.resolve_1d_label_positions(
+            xs[unstable_idx],
+            np.full(len(unstable_idx), 9.0, dtype=np.float64),
+            min_dx=0.14 * x_span,
+            y_step=12.5,
+            max_tiers=4,
+        )
+        for pos, k_idx in enumerate(unstable_idx):
+            dy_map[k_idx] = float(dy_u[pos])
+
     for k, lbl in enumerate(labels):
+        if not str(lbl).strip():
+            continue
         if k in lower_indices:
-            dx, dy, ha = 0, -12, "center"
-        elif -0.18 * y_span <= ys[k] < 0.02 * y_span:
-            dx, dy, ha = 8, -2, "left"
+            dx, dy, ha = 0.0, dy_map.get(k, -12.0), "center"
+        elif -0.18 * y_span <= ys[k] < 0.02 * y_span and len(unstable_idx) <= 4:
+            dx, dy, ha = 8.0, -2.0, "left"
         else:
-            dx, dy, ha = 0, 8, "center"
+            dx, dy, ha = 0.0, dy_map.get(k, 9.0), "center"
         ann = ax.annotate(
             lbl,
             xy=(xs[k], ys[k]),
             xytext=(dx, dy),
             textcoords="offset points",
             ha=ha,
-            fontsize=9.5,
+            va="center",
+            fontsize=fsize,
             color=ink_col,
-            bbox=theme.label_halo_bbox(bg_color, pad=0.07, alpha=0.84),
+            bbox=theme.label_halo_bbox(bg_color, pad=0.07, alpha=0.86),
+            zorder=7.0,
         )
         patch = ann.get_bbox_patch()
         if patch is not None:
@@ -205,7 +243,8 @@ def plot_phase_diagram_2d(
             x_pad = 0.06 * max(x_hi - x_lo, 1.0)
             ax.set_xlim(x_lo - x_pad, x_hi + x_pad)
         ax.set_ylim(
-            float(np.min(ys)) - 0.18 * y_span,
+            float(np.min(ys))
+            - (0.34 if (labels and len(labels) >= 6) else 0.18) * y_span,
             float(np.max(ys)) + 0.46 * y_span,
         )
         ax.set_xlabel(xlabel)
@@ -214,6 +253,14 @@ def plot_phase_diagram_2d(
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
+        if labels:
+            layout.avoid_text_overlaps(
+                ax,
+                clamp_to_axes=True,
+                draw_leaders=True,
+                leader_color=preset_obj.ink_color,
+                leader_lw=sw.leader * 0.85,
+            )
     return ax
 
 
@@ -338,6 +385,9 @@ def plot_eos(
                 f"B0' = {fit_res.b0_prime:.2f}\n"
                 f"RMSE = {_format_eos_rmse(fit_res.rmse_ev)}"
             )
+            box_fs = (
+                7.5 if ax.get_window_extent().width < 220.0 else 8.6
+            )
             box_txt = ax.text(
                 0.50,
                 0.57,
@@ -345,7 +395,7 @@ def plot_eos(
                 transform=ax.transAxes,
                 ha="center",
                 va="center",
-                fontsize=8.6,
+                fontsize=box_fs,
                 color=preset_obj.ink_color,
                 bbox={
                     "boxstyle": "round,pad=0.3",
@@ -368,6 +418,7 @@ def plot_eos(
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
+        layout.avoid_text_overlaps(ax, clamp_to_axes=True)
     return ax
 
 
@@ -470,6 +521,8 @@ def plot_pourbaix(
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
+        if len(regions) > 1:
+            layout.avoid_text_overlaps(ax, clamp_to_axes=True)
     return ax
 
 
@@ -562,7 +615,20 @@ def _annotate_volcano_labels(
     if labels is None:
         return
     l_leg, r_leg, x_apex, x_span, y_span, invert_y = geom
+    max_len = max((len(str(s)) for s in labels), default=0)
+    fsize = 7.8 if (len(labels) > 10 or max_len > 12) else 9.0
+    stagger_dy = np.zeros(len(labels), dtype=np.float64)
+    if len(labels) >= 6:
+        _, stagger_dy = layout.resolve_1d_label_positions(
+            xs,
+            np.zeros(len(labels), dtype=np.float64),
+            min_dx=0.11 * x_span,
+            y_step=-11.5 if invert_y else 11.5,
+            max_tiers=4,
+        )
     for idx, lbl in enumerate(labels):
+        if not str(lbl).strip():
+            continue
         xi, yi = float(xs[idx]), float(ys[idx])
         dx_pt, dy_pt = _volcano_label_shift(
             xi, yi, l_leg, r_leg, x_apex, x_span, y_span, invert_y
@@ -570,11 +636,11 @@ def _annotate_volcano_labels(
         ann = ax.annotate(
             lbl,
             xy=(xi, yi),
-            xytext=(dx_pt, dy_pt),
+            xytext=(float(dx_pt), float(dy_pt) + float(stagger_dy[idx])),
             textcoords="offset points",
             ha="center",
             va="center",
-            fontsize=9.0,
+            fontsize=fsize,
             color=ink_col,
             bbox=theme.label_halo_bbox(bg_color, pad=0.07, alpha=0.86),
             zorder=6.0,
@@ -726,6 +792,14 @@ def plot_volcano(
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
+        if labels is not None:
+            layout.avoid_text_overlaps(
+                ax,
+                clamp_to_axes=True,
+                draw_leaders=True,
+                leader_color=preset_obj.ink_color,
+                leader_lw=sw.leader * 0.85,
+            )
     return ax
 
 
@@ -996,4 +1070,12 @@ def plot_defect_formation(
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
+        if show_transitions:
+            layout.avoid_text_overlaps(
+                ax,
+                clamp_to_axes=True,
+                draw_leaders=True,
+                leader_color=preset_obj.ink_color,
+                leader_lw=sw.leader * 0.85,
+            )
     return ax
