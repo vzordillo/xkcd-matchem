@@ -110,7 +110,7 @@ def plot_phase_diagram_2d(
     energies: Sequence[float] | np.ndarray,
     labels: Sequence[str] | None = None,
     ax: maxes.Axes | None = None,
-    xlabel: str = "Mole Fraction x_B",
+    xlabel: str = "Mole Fraction $x_B$",
     palette: str | Sequence[str] = "okabe_ito",
     preset: str | theme.ThemePreset = "classic",
     title: str | None = None,
@@ -286,7 +286,7 @@ def plot_eos(
             float(np.min(es)) - 0.14 * e_span,
             float(np.max(es)) + 0.38 * e_span,
         )
-        ax.set_xlabel("Cell Volume (A^3)")
+        ax.set_xlabel("Cell Volume ($\\mathrm{\\AA}^3$)")
         ax.set_ylabel("Total Energy (eV)")
         ax.legend(loc="upper center", ncol=2, frameon=True, fontsize=8.5)
         theme.apply_xkcd_spines(ax, preset=preset)
@@ -464,7 +464,7 @@ def plot_volcano(
     right_leg: tuple[float, float] | None = None,
     fit_legs: bool = True,
     peak_shade: bool = True,
-    xlabel: str = "Descriptor dG_ads (eV)",
+    xlabel: str = "Descriptor $\\Delta G_{\\mathrm{ads}}$ (eV)",
     ylabel: str = "Activity / Limiting Potential (V)",
     invert_y: bool = False,
     palette: str | Sequence[str] = "okabe_ito",
@@ -646,6 +646,16 @@ def _lower_defect_envelope(
     return curve, transitions
 
 
+def _format_defect_label(name: str) -> str:
+    """Formats simple ``X_Y`` defect names using mathtext subscripts."""
+    if "$" in name or "_" not in name:
+        return name
+    base, sub = name.split("_", 1)
+    if base and sub and base.isalnum() and sub.isalnum():
+        return f"$\\mathrm{{{base}}}_{{\\mathrm{{{sub}}}}}$"
+    return name
+
+
 def _plot_single_defect(
     ax: maxes.Axes,
     d_name: str,
@@ -662,7 +672,7 @@ def _plot_single_defect(
         [pt[1] for pt in curve],
         color=col,
         lw=2.2,
-        label=d_name,
+        label=_format_defect_label(d_name),
         zorder=4.0,
     )
     if show_transitions and trans:
@@ -693,8 +703,8 @@ def plot_defect_formation(
     band_gap: float = 1.12,
     fermi_range: tuple[float, float] | None = None,
     show_transitions: bool = True,
-    xlabel: str = "Fermi Level E_F - E_VBM (eV)",
-    ylabel: str = "Formation Energy E^f (eV)",
+    xlabel: str = "Fermi Level $E_F - E_{\\mathrm{VBM}}$ (eV)",
+    ylabel: str = "Formation Energy $E^f$ (eV)",
     palette: str | Sequence[str] = "okabe_ito",
     preset: str | theme.ThemePreset = "classic",
     ax: maxes.Axes | None = None,

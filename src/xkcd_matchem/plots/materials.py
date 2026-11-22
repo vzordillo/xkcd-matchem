@@ -1003,7 +1003,7 @@ def _draw_bz_kpath_and_axes(
             ax.text(
                 float(xy[1, 0]) * 1.12,
                 float(xy[1, 1]) * 1.12,
-                f"b{idx + 1}",
+                f"$b_{idx + 1}$",
                 fontsize=8.5,
                 color=ax_cols[idx],
                 ha="center",

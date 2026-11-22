@@ -212,7 +212,7 @@ def _serialize_isosurface_meshes(
                 f"Expected VolumetricGrid, got {type(grid).__name__}."
             )
         max_abs = max(float(np.max(np.abs(grid.data))), 1e-12)
-        level = 0.25 * max_abs if isolevel is None else float(isolevel)
+        level = 0.35 * max_abs if isolevel is None else float(isolevel)
         sym_flag = (
             bool(float(np.min(grid.data)) < -0.05 * max_abs)
             if symmetric_iso is None

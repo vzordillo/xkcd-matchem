@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 import pathlib
 
+from matplotlib import collections as mcoll
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
@@ -275,6 +276,39 @@ def test_studio_20_trajectory_isosurface_and_vectors(
 
     ax_mpl = xm.view_structure("water_homo.cube", backend="matplotlib")
     assert ax_mpl is not None
+    plt.close("all")
+
+
+def test_isosurface_clarity_and_mathtext_subscripts() -> None:
+    """Verifies translucent depth-split isosurfaces and mathtext subscripts."""
+    ax_iso = xm.plot_isosurface("water_homo.cube")
+    polys = [
+        c for c in ax_iso.collections if isinstance(c, mcoll.PolyCollection)
+    ]
+    assert len(polys) >= 2
+    for coll in polys:
+        sp = coll.get_sketch_params()
+        assert sp is None or sp[0] == 0.0
+        alpha_val = coll.get_alpha()
+        assert alpha_val is not None
+        assert float(alpha_val) <= 0.35
+    assert any(coll.get_zorder() < 2.0 for coll in polys)
+    assert any(coll.get_zorder() >= 20.0 for coll in polys)
+
+    ax_cohp = xm.plot_cohp("si_cohp.lobster")
+    assert "$E - E_F$" in ax_cohp.get_ylabel()
+
+    ax_vol = xm.plot_volcano([-0.5, 0.0, 0.5], [-1.0, -0.2, -1.1])
+    assert "$\\Delta G_{\\mathrm{ads}}$" in ax_vol.get_xlabel()
+
+    ax_def = xm.plot_defect_formation({"V_Si": [(0, 2.0), (1, 1.5)]})
+    assert "$E_F - E_{\\mathrm{VBM}}$" in ax_def.get_xlabel()
+    assert "$E^f$" in ax_def.get_ylabel()
+    leg = ax_def.get_legend()
+    assert leg is not None
+    assert "$\\mathrm{V}_{\\mathrm{Si}}$" in [
+        t.get_text() for t in leg.get_texts()
+    ]
     plt.close("all")
 
 

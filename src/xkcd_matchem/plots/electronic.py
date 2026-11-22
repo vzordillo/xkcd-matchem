@@ -56,6 +56,18 @@ def _split_kpath_breaks(
     )
 
 
+def _format_k_labels(labels: Sequence[str]) -> list[str]:
+    """Formats standard Brillouin-zone tick names with mathtext symbols."""
+    out: list[str] = []
+    for raw in labels:
+        token = str(raw).strip()
+        if token.upper() in ("G", "GAMMA"):
+            out.append("$\\Gamma$")
+        else:
+            out.append(str(raw))
+    return out
+
+
 def _resolve_fatband_weights(
     bands: electronic.BandStructure,
     fatband: str | Sequence[str] | None,
@@ -162,16 +174,16 @@ def plot_bands(
             color=palettes.MUTED_GRAY,
             linestyle="--",
             linewidth=1.3,
-            label="E_F",
+            label="$E_F$",
         )
         if bands.k_ticks and len(bands.k_ticks) == len(bands.k_labels):
             for tick_x in bands.k_ticks:
                 ax.axvline(tick_x, color=ink_col, linewidth=0.9, alpha=0.45)
             ax.set_xticks(bands.k_ticks)
-            ax.set_xticklabels(bands.k_labels)
+            ax.set_xticklabels(_format_k_labels(bands.k_labels))
         ax.set_xlim(float(bands.k_distances[0]), float(bands.k_distances[-1]))
         ax.set_ylim(ylim)
-        ax.set_ylabel("E - E_F (eV)" if shift_fermi else "Energy (eV)")
+        ax.set_ylabel("$E - E_F$ (eV)" if shift_fermi else "Energy (eV)")
         ax.set_xlabel("Wavevector Path")
         if n_spin == 2:
             ax.legend(loc="upper right", frameon=True)
@@ -287,7 +299,7 @@ def plot_dos(
                 )
             ax.axhline(e_ref, color=palettes.MUTED_GRAY, linestyle="--", lw=1.2)
             ax.set_xlabel("DOS (states/eV)")
-            ax.set_ylabel("E - E_F (eV)" if shift_fermi else "Energy (eV)")
+            ax.set_ylabel("$E - E_F$ (eV)" if shift_fermi else "Energy (eV)")
             ax.set_xlim(d_lo, d_hi)
             if xlim is not None:
                 ax.set_ylim(xlim)
@@ -337,7 +349,7 @@ def plot_dos(
                     label=lbl,
                 )
             ax.axvline(e_ref, color=palettes.MUTED_GRAY, linestyle="--", lw=1.2)
-            ax.set_xlabel("E - E_F (eV)" if shift_fermi else "Energy (eV)")
+            ax.set_xlabel("$E - E_F$ (eV)" if shift_fermi else "Energy (eV)")
             ax.set_ylabel("DOS (states/eV)")
             ax.set_ylim(d_lo, d_hi)
             if xlim is not None:
@@ -653,6 +665,68 @@ def _coerce_volumetric_grid(
     return loaded
 
 
+def _chain_silhouette_edges(
+    edges: Sequence[tuple[int, int]],
+    xy_v: np.ndarray,
+) -> list[np.ndarray]:
+    """Chains unordered 2D silhouette edges into continuous stroke paths."""
+    if not edges:
+        return []
+    adj: dict[int, list[int]] = {}
+    for u, v in edges:
+        adj.setdefault(u, []).append(v)
+        adj.setdefault(v, []).append(u)
+    visited: set[tuple[int, int]] = set()
+    paths: list[np.ndarray] = []
+    for start, nbrs in adj.items():
+        for nxt in nbrs:
+            e_key = (start, nxt) if start < nxt else (nxt, start)
+            if e_key in visited:
+                continue
+            chain = [start]
+            cur = nxt
+            visited.add(e_key)
+            while True:
+                chain.append(cur)
+                if cur == start:
+                    break
+                moved = False
+                for cand in adj.get(cur, ()):
+                    c_key = (cur, cand) if cur < cand else (cand, cur)
+                    if c_key not in visited:
+                        visited.add(c_key)
+                        cur = cand
+                        moved = True
+                        break
+                if not moved:
+                    break
+            if len(chain) >= 3:
+                paths.append(xy_v[np.asarray(chain, dtype=np.int64)])
+    return paths
+
+
+def _extract_silhouette_polylines(
+    mesh: isosurface.IsosurfaceMesh,
+    xy_v: np.ndarray,
+    front_mask: np.ndarray,
+) -> list[np.ndarray]:
+    """Finds front/back horizon edges separating visible and hidden faces."""
+    edge_flags: dict[tuple[int, int], list[bool]] = {}
+    for t_idx, tri in enumerate(mesh.faces):
+        is_f = bool(front_mask[t_idx])
+        i0, i1, i2 = int(tri[0]), int(tri[1]), int(tri[2])
+        for u, v in ((i0, i1), (i1, i2), (i2, i0)):
+            key = (u, v) if u < v else (v, u)
+            edge_flags.setdefault(key, []).append(is_f)
+    sil_edges = [
+        key
+        for key, flags in edge_flags.items()
+        if (len(flags) == 2 and flags[0] != flags[1])
+        or (len(flags) == 1 and flags[0])
+    ]
+    return _chain_silhouette_edges(sil_edges, xy_v)
+
+
 def _collect_mesh_triangles(
     mesh: isosurface.IsosurfaceMesh,
     cam: geometry.Camera,
@@ -661,34 +735,49 @@ def _collect_mesh_triangles(
     base_hex: str,
     basis: np.ndarray,
     light_dir: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Projects one ``IsosurfaceMesh`` and computes triangle depths and RGB."""
+) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[np.ndarray]
+]:
+    """Projects front-facing ``IsosurfaceMesh`` triangles & rim paths."""
     if len(mesh.faces) == 0:
         return (
             np.zeros((0, 3, 2), dtype=np.float64),
             np.zeros((0,), dtype=np.float64),
             np.zeros((0, 3), dtype=np.float64),
             np.zeros((0, 2), dtype=np.float64),
+            [],
         )
     xy_v, depth_v = geometry.project_points(
         mesh.vertices, cam, center=pivot, span=span
     )
-    tris = xy_v[mesh.faces]
-    tri_depth = np.mean(depth_v[mesh.faces], axis=1)
     n_rot = mesh.normals @ basis.T
-    lambert = 0.58 + 0.42 * np.clip(n_rot @ light_dir, 0.0, 1.0)
+    front_mask = n_rot[:, 2] >= -0.02
+    sils = _extract_silhouette_polylines(mesh, xy_v, front_mask)
+    if not np.any(front_mask):
+        return (
+            np.zeros((0, 3, 2), dtype=np.float64),
+            np.zeros((0,), dtype=np.float64),
+            np.zeros((0, 3), dtype=np.float64),
+            xy_v,
+            sils,
+        )
+    vis_faces = mesh.faces[front_mask]
+    tris = xy_v[vis_faces]
+    tri_depth = np.mean(depth_v[vis_faces], axis=1)
+    lambert = 0.68 + 0.32 * np.clip(n_rot[front_mask] @ light_dir, 0.0, 1.0)
     rgb_base = np.asarray(mcolors.to_rgb(base_hex), dtype=np.float64)
-    face_rgb = np.clip(rgb_base[None, :] * lambert[:, None], 0.0, 1.0)
-    return tris, tri_depth, face_rgb, xy_v
+    face_rgb = np.clip(
+        0.26 + 0.74 * rgb_base[None, :] * lambert[:, None], 0.0, 1.0
+    )
+    return tris, tri_depth, face_rgb, xy_v, sils
 
 
-def _build_isosurface_collection(
+def _iso_scene_frame(
     meshes: Sequence[tuple[isosurface.IsosurfaceMesh, str]],
     grid: electronic.VolumetricGrid,
     cam: geometry.Camera,
-    alpha: float,
-) -> tuple[collections.PolyCollection | None, np.ndarray | None]:
-    """Builds depth-sorted Lambert-shaded ``PolyCollection`` for iso lobes."""
+) -> tuple[np.ndarray, float, np.ndarray | None, np.ndarray | None]:
+    """Resolves common pivot, projection span, and projected atom depths."""
     if grid.atoms is not None and len(grid.atoms) > 0:
         pivot = (
             0.5 * (grid.atoms.cell[0] + grid.atoms.cell[1] + grid.atoms.cell[2])
@@ -698,18 +787,101 @@ def _build_isosurface_collection(
         span = geometry.scene_projection_span(
             grid.atoms.positions, cam, center=pivot, cell=grid.atoms.cell
         )
-    else:
-        ext = np.asarray(grid.data.shape, dtype=np.float64)[:, None]
-        pivot = grid.origin + 0.5 * np.sum(ext * grid.voxel_vectors, axis=0)
-        box_pts = np.vstack(
-            [mesh.vertices for mesh, _ in meshes if len(mesh.vertices)]
+        atom_xy, atom_depth = geometry.project_points(
+            grid.atoms.positions, cam, center=pivot, span=span
         )
-        span = (
-            geometry.scene_projection_span(box_pts, cam, center=pivot)
-            if len(box_pts)
-            else 5.0
-        )
+        return pivot, span, atom_xy, atom_depth
 
+    ext = np.asarray(grid.data.shape, dtype=np.float64)[:, None]
+    pivot = grid.origin + 0.5 * np.sum(ext * grid.voxel_vectors, axis=0)
+    pts = [mesh.vertices for mesh, _ in meshes if len(mesh.vertices)]
+    box_pts = np.vstack(pts) if pts else np.zeros((0, 3), dtype=np.float64)
+    span = (
+        geometry.scene_projection_span(box_pts, cam, center=pivot)
+        if len(box_pts)
+        else 5.0
+    )
+    return pivot, span, None, None
+
+
+def _make_iso_poly_collection(
+    tris: np.ndarray,
+    cols: np.ndarray,
+    depths: np.ndarray,
+    alpha: float,
+    zorder: float,
+) -> collections.PolyCollection | None:
+    """Constructs a depth-sorted, un-sketched PolyCollection for smooth fill."""
+    if len(tris) == 0:
+        return None
+    order = np.argsort(depths)
+    coll = collections.PolyCollection(
+        cast(Any, tris[order]),
+        facecolors=cols[order],
+        edgecolors="none",
+        linewidths=0.0,
+        antialiaseds=False,
+        alpha=alpha,
+        zorder=zorder,
+    )
+    coll.set_sketch_params(0.0, 0.0, 0.0)
+    return coll
+
+
+def _split_depth_layer_collections(
+    tri_chunks: Sequence[np.ndarray],
+    dep_chunks: Sequence[np.ndarray],
+    rgb_chunks: Sequence[np.ndarray],
+    atom_xy: np.ndarray | None,
+    atom_depth: np.ndarray | None,
+    alpha: float,
+) -> tuple[
+    collections.PolyCollection | None,
+    collections.PolyCollection | None,
+]:
+    """Splits shaded triangles into behind-atom and front-of-atom layers."""
+    all_tris = np.concatenate(tri_chunks, axis=0)
+    all_deps = np.concatenate(dep_chunks, axis=0)
+    all_rgbs = np.concatenate(rgb_chunks, axis=0)
+    if atom_xy is not None and atom_depth is not None:
+        tri_xy = np.mean(all_tris, axis=1)
+        nearest = np.argmin(
+            np.sum((tri_xy[:, None, :] - atom_xy[None, :, :]) ** 2, axis=2),
+            axis=1,
+        )
+        back_mask = all_deps < (atom_depth[nearest] - 0.03)
+    else:
+        back_mask = np.zeros(len(all_tris), dtype=bool)
+    back_coll = _make_iso_poly_collection(
+        all_tris[back_mask],
+        all_rgbs[back_mask],
+        all_deps[back_mask],
+        alpha * 0.95,
+        zorder=1.4,
+    )
+    front_coll = _make_iso_poly_collection(
+        all_tris[~back_mask],
+        all_rgbs[~back_mask],
+        all_deps[~back_mask],
+        alpha,
+        zorder=40.0,
+    )
+    return back_coll, front_coll
+
+
+def _build_isosurface_layers(
+    meshes: Sequence[tuple[isosurface.IsosurfaceMesh, str]],
+    grid: electronic.VolumetricGrid,
+    cam: geometry.Camera,
+    alpha: float,
+) -> tuple[
+    collections.PolyCollection | None,
+    collections.PolyCollection | None,
+    list[tuple[str, float, list[np.ndarray]]],
+    np.ndarray | None,
+]:
+    """Splits shaded isosurface triangles behind/in front of atoms + rims."""
+    pivot, span, atom_xy, atom_depth = _iso_scene_frame(meshes, grid, cam)
     basis = geometry.rotation_matrix(cam.azimuth, cam.elevation, cam.roll)
     light_dir = np.array([-0.45, 0.55, 0.70], dtype=np.float64)
     light_dir /= float(np.linalg.norm(light_dir))
@@ -717,8 +889,9 @@ def _build_isosurface_collection(
     dep_chunks: list[np.ndarray] = []
     rgb_chunks: list[np.ndarray] = []
     xy_chunks: list[np.ndarray] = []
+    sil_draws: list[tuple[str, float, list[np.ndarray]]] = []
     for mesh, hex_col in meshes:
-        tris, deps, rgbs, xy_m = _collect_mesh_triangles(
+        tris, deps, rgbs, xy_m, sils = _collect_mesh_triangles(
             mesh, cam, pivot, span, hex_col, basis, light_dir
         )
         if len(tris) > 0:
@@ -726,20 +899,20 @@ def _build_isosurface_collection(
             dep_chunks.append(deps)
             rgb_chunks.append(rgbs)
             xy_chunks.append(xy_m)
+            z_sil = 41.0
+            if atom_xy is not None and atom_depth is not None:
+                c_xy = np.mean(tris.reshape(-1, 2), axis=0)
+                near = int(np.argmin(np.sum((atom_xy - c_xy) ** 2, axis=1)))
+                if float(np.mean(deps)) < float(atom_depth[near]) - 0.03:
+                    z_sil = 1.5
+            sil_draws.append((hex_col, z_sil, sils))
     if not tri_chunks:
-        return None, None
+        return None, None, [], None
 
-    all_deps = np.concatenate(dep_chunks, axis=0)
-    order = np.argsort(all_deps)
-    poly_coll = collections.PolyCollection(
-        cast(Any, np.concatenate(tri_chunks, axis=0)[order]),
-        facecolors=np.concatenate(rgb_chunks, axis=0)[order],
-        edgecolors="face",
-        linewidths=0.25,
-        alpha=alpha,
-        zorder=900.0,
+    back_coll, front_coll = _split_depth_layer_collections(
+        tri_chunks, dep_chunks, rgb_chunks, atom_xy, atom_depth, alpha
     )
-    return poly_coll, np.vstack(xy_chunks)
+    return back_coll, front_coll, sil_draws, np.vstack(xy_chunks)
 
 
 def _expand_isosurface_limits(
@@ -769,7 +942,7 @@ def plot_isosurface(
     camera: geometry.Camera | str | None = "isometric",
     ax: maxes.Axes | None = None,
     colors: tuple[str, str] = ("#0072B2", "#D55E00"),
-    alpha: float = 0.58,
+    alpha: float = 0.28,
     show_atoms: bool = True,
     palette: str = "xkcd",
     preset: str | theme.ThemePreset = "classic",
@@ -779,7 +952,7 @@ def plot_isosurface(
 
     Args:
       source: ``VolumetricGrid`` or path/sample (``.cube``, ``CHGCAR``).
-      level: Isovalue threshold. Defaults to ``0.25 * max(|data|)``.
+      level: Isovalue threshold. Defaults to ``0.35 * max(|data|)``.
       symmetric: If ``True``, extracts both ``+level`` and ``-level`` lobes.
       camera: ``Camera`` object or preset string.
       ax: Optional target Matplotlib ``Axes``.
@@ -795,7 +968,7 @@ def plot_isosurface(
     """
     grid = _coerce_volumetric_grid(source)
     max_abs = max(float(np.max(np.abs(grid.data))), 1e-12)
-    iso_level = 0.25 * max_abs if level is None else float(level)
+    iso_level = 0.35 * max_abs if level is None else float(level)
     if abs(iso_level) < 1e-15:
         raise exceptions.StructureError("Isosurface level must be non-zero.")
     sym_flag = (
@@ -815,7 +988,9 @@ def plot_isosurface(
     cam = geometry.resolve_camera(
         camera, cell=grid.atoms.cell if grid.atoms is not None else None
     )
-    poly_coll, all_xy = _build_isosurface_collection(meshes, grid, cam, alpha)
+    back_coll, front_coll, sil_draws, all_xy = _build_isosurface_layers(
+        meshes, grid, cam, alpha
+    )
     ink_col = theme.get_preset(preset).ink_color
     has_atoms = bool(
         show_atoms and grid.atoms is not None and len(grid.atoms) > 0
@@ -826,6 +1001,8 @@ def plot_isosurface(
             _, ax = plt.subplots(figsize=(5.6, 4.8))
         else:
             theme.style_existing_axes(ax, preset=preset)
+        if back_coll is not None:
+            ax.add_collection(back_coll)
         if has_atoms and grid.atoms is not None:
             structure3d.render_structure_3d(
                 grid.atoms,
@@ -836,9 +1013,21 @@ def plot_isosurface(
                 show_cell=False,
                 crystal_axes=False,
                 show_bonds=True,
+                radius_scale=1.08,
             )
-        if poly_coll is not None and all_xy is not None:
-            ax.add_collection(poly_coll)
+        if front_coll is not None:
+            ax.add_collection(front_coll)
+        for hex_col, z_sil, sil_paths in sil_draws:
+            for poly in sil_paths:
+                ax.plot(
+                    poly[:, 0],
+                    poly[:, 1],
+                    color=hex_col,
+                    linewidth=1.6,
+                    alpha=min(1.0, alpha + 0.44),
+                    zorder=z_sil,
+                )
+        if all_xy is not None:
             _expand_isosurface_limits(ax, all_xy, has_atoms)
         ax.set_aspect("equal")
         ax.set_axis_off()
@@ -926,12 +1115,15 @@ def plot_phonon_bands(
             for tick_q in pbs.q_ticks:
                 ax.axvline(tick_q, color=ink_col, linewidth=0.9, alpha=0.45)
             ax.set_xticks(pbs.q_ticks)
-            ax.set_xticklabels(pbs.q_labels)
+            ax.set_xticklabels(_format_k_labels(pbs.q_labels))
         ax.set_xlim(float(pbs.q_distances[0]), float(pbs.q_distances[-1]))
         if ylim is not None:
             ax.set_ylim(ylim)
+        disp_unit = (
+            "$\\mathrm{cm}^{-1}$" if unit.strip().lower() == "cm-1" else unit
+        )
         ax.set_xlabel("Wavevector Path")
-        ax.set_ylabel(f"Frequency ({unit})")
+        ax.set_ylabel(f"Frequency ({disp_unit})")
         if imag_labeled:
             ax.legend(loc="best", frameon=True)
         theme.apply_xkcd_spines(ax, preset=preset)
@@ -998,7 +1190,7 @@ def _configure_cohp_axes(
         ax.axhline(0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=1.2)
         ax.axvline(0.0, color=ink_col, lw=1.0, alpha=0.55)
         ax.set_xlabel(pop_label)
-        ax.set_ylabel("E - E_F (eV)")
+        ax.set_ylabel("$E - E_F$ (eV)")
         if xlim is not None:
             ax.set_xlim(xlim)
         if ylim is not None:
@@ -1006,7 +1198,7 @@ def _configure_cohp_axes(
     else:
         ax.axvline(0.0, color=palettes.MUTED_GRAY, linestyle="--", lw=1.2)
         ax.axhline(0.0, color=ink_col, lw=1.0, alpha=0.55)
-        ax.set_xlabel("E - E_F (eV)")
+        ax.set_xlabel("$E - E_F$ (eV)")
         ax.set_ylabel(pop_label)
         if ylim is not None:
             ax.set_xlim(ylim)

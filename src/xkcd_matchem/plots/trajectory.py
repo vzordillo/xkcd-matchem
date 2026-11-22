@@ -111,6 +111,9 @@ def plot_rdf(
     title: str | None = None,
 ) -> maxes.Axes:
     """Plots a radial distribution function ``g(r)`` with ``g(r)=1`` guide."""
+    disp_unit = (
+        "$\\mathrm{\\AA}$" if unit.strip() in ("A", "Angstrom") else unit
+    )
     with theme.xkcd_style(preset=preset):
         if ax is None:
             _, ax = plt.subplots(figsize=(6.0, 4.0))
@@ -129,7 +132,7 @@ def plot_rdf(
                 -0.14 * r_span if near_right else 0.12 * r_span
             )
             ax.annotate(
-                f"r1 = {r_vals[peak_idx]:.2f} {unit}",
+                f"$r_1$ = {r_vals[peak_idx]:.2f} {disp_unit}",
                 xy=(float(r_vals[peak_idx]), float(g_vals[peak_idx])),
                 xytext=(text_x, float(g_vals[peak_idx]) * 0.9),
                 ha="right" if near_right else "left",
@@ -139,8 +142,8 @@ def plot_rdf(
         if len(r_vals) >= 2:
             ax.set_xlim(float(r_vals[0]), float(r_vals[-1]))
         ax.set_ylim(bottom=0.0)
-        ax.set_xlabel(f"Pair Distance r ({unit})")
-        ax.set_ylabel("g(r)")
+        ax.set_xlabel(f"Pair Distance $r$ ({disp_unit})")
+        ax.set_ylabel("$g(r)$")
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
@@ -164,7 +167,7 @@ def plot_rmsd(
             theme.style_existing_axes(ax, preset=preset)
         ax.plot(times, rmsd_vals, color=color, lw=2.0)
         ax.set_xlabel(f"Time ({time_unit})")
-        ax.set_ylabel("RMSD (A)")
+        ax.set_ylabel("RMSD ($\\mathrm{\\AA}$)")
         theme.apply_xkcd_spines(ax, preset=preset)
         if title:
             ax.set_title(title)
