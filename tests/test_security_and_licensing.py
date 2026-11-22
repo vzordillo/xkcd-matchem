@@ -25,6 +25,7 @@ from xkcd_matchem.core import exceptions
 from xkcd_matchem.io.native import _limits
 from xkcd_matchem.io.native import cif
 from xkcd_matchem.io.native import cube
+from xkcd_matchem.io.native import lammps
 from xkcd_matchem.io.native import vasp
 from xkcd_matchem.io.native import xyz
 from xkcd_matchem.render import interactive
@@ -246,6 +247,103 @@ def test_adversarial_parser_resource_ceilings(
     with pytest.raises(exceptions.ParseError, match="XM_MAX_ATOMS"):
         cif.read_cif(cif_file)
     monkeypatch.delenv("XM_MAX_ATOMS")
+
+
+def test_lammps_parser_resource_ceilings_and_streaming(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """LAMMPS .data and streaming .lammpstrj enforce file/atom/frame limits."""
+    valid_data = tmp_path / "valid.data"
+    valid_data.write_text(
+        "Small LAMMPS data\n"
+        "2 atoms\n1 atom types\n"
+        "0.0 8.0 xlo xhi\n0.0 8.0 ylo yhi\n0.0 8.0 zlo zhi\n\n"
+        "Masses\n\n1 63.546\n\nAtoms # atomic\n\n"
+        "1 1 1.0 1.0 1.0\n2 1 3.0 3.0 3.0\n",
+        encoding="utf-8",
+    )
+    frame_tpl = (
+        "ITEM: TIMESTEP\n{step}\nITEM: NUMBER OF ATOMS\n1\n"
+        "ITEM: BOX BOUNDS pp pp pp\n0.0 6.0\n0.0 6.0\n0.0 6.0\n"
+        "ITEM: ATOMS id type element x y z\n1 1 Cu 1.0 2.0 3.0\n"
+    )
+    valid_trj = tmp_path / "three_frames.lammpstrj"
+    valid_trj.write_text(
+        "".join(frame_tpl.format(step=s) for s in (0, 10, 20)),
+        encoding="utf-8",
+    )
+
+    # 1. XM_MAX_FILE_BYTES rejects oversized LAMMPS .data and .lammpstrj fast.
+    monkeypatch.setenv("XM_MAX_FILE_BYTES", "16")
+    with pytest.raises(exceptions.ParseError, match="XM_MAX_FILE_BYTES"):
+        lammps.read_lammps_data(valid_data)
+    with pytest.raises(exceptions.ParseError, match="XM_MAX_FILE_BYTES"):
+        lammps.read_lammpstrj(valid_trj)
+    with pytest.raises(exceptions.ParseError, match="XM_MAX_FILE_BYTES"):
+        lammps.read_lammpstrj_first(valid_trj)
+    monkeypatch.delenv("XM_MAX_FILE_BYTES")
+
+    # 2. XM_MAX_ATOMS rejects huge header count and un-headered Atoms table.
+    huge_data_hdr = tmp_path / "huge_hdr.data"
+    huge_data_hdr.write_text(
+        "Adversarial LAMMPS header\n"
+        "999999999 atoms\n1 atom types\n"
+        "0.0 8.0 xlo xhi\n0.0 8.0 ylo yhi\n0.0 8.0 zlo zhi\n\n"
+        "Masses\n\n1 63.546\n\nAtoms # atomic\n\n1 1 0.0 0.0 0.0\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(exceptions.ParseError, match="XM_MAX_ATOMS"):
+        lammps.read_lammps_data(huge_data_hdr)
+
+    no_hdr_data = tmp_path / "no_hdr.data"
+    no_hdr_data.write_text(
+        "No atom count header\n"
+        "0.0 8.0 xlo xhi\n0.0 8.0 ylo yhi\n0.0 8.0 zlo zhi\n\n"
+        "Masses\n\n1 63.546\n\nAtoms # atomic\n\n"
+        "1 1 0.0 0.0 0.0\n2 1 1.0 1.0 1.0\n3 1 2.0 2.0 2.0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("XM_MAX_ATOMS", "2")
+    with pytest.raises(exceptions.ParseError, match="XM_MAX_ATOMS"):
+        lammps.read_lammps_data(no_hdr_data)
+    monkeypatch.delenv("XM_MAX_ATOMS")
+
+    huge_trj_atoms = tmp_path / "huge_atoms.lammpstrj"
+    huge_trj_atoms.write_text(
+        "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n999999999\n"
+        "ITEM: BOX BOUNDS pp pp pp\n0.0 6.0\n0.0 6.0\n0.0 6.0\n"
+        "ITEM: ATOMS id type element x y z\n1 1 Cu 0.0 0.0 0.0\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(exceptions.ParseError, match="XM_MAX_ATOMS"):
+        lammps.read_lammpstrj(huge_trj_atoms)
+    with pytest.raises(exceptions.ParseError, match="XM_MAX_ATOMS"):
+        lammps.read_lammpstrj_first(huge_trj_atoms)
+
+    # 3. XM_MAX_FRAMES rejects >2 frames in read_lammpstrj, while
+    # read_lammpstrj_first streams only frame 1 and stops immediately.
+    monkeypatch.setenv("XM_MAX_FRAMES", "2")
+    with pytest.raises(exceptions.ParseError, match="XM_MAX_FRAMES"):
+        lammps.read_lammpstrj(valid_trj)
+    monkeypatch.setenv("XM_MAX_FRAMES", "1")
+    first_only = lammps.read_lammpstrj_first(valid_trj)
+    assert first_only.formula() == "Cu"
+    assert first_only.metadata["timestep"] == 0
+    monkeypatch.delenv("XM_MAX_FRAMES")
+
+    # Streaming proof: malformed trailing content after frame 1 is never read
+    # by read_lammpstrj_first().
+    stream_trj = tmp_path / "stream_stop.lammpstrj"
+    stream_trj.write_text(
+        frame_tpl.format(step=5)
+        + "ITEM: TIMESTEP\nnot_an_int\nITEM: NUMBER OF ATOMS\n999999999\n",
+        encoding="utf-8",
+    )
+    first_stream = lammps.read_lammpstrj_first(stream_trj)
+    assert first_stream.metadata["timestep"] == 5
+    with pytest.raises(exceptions.ParseError):
+        lammps.read_lammpstrj(stream_trj)
 
 
 def test_interactive_html_escapes_hostile_title_and_json_xss(

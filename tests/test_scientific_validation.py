@@ -903,7 +903,15 @@ def test_domain5_ballistic_pbc_crossing_msd_and_rigid_rmsd(
     p_xu.write_text("".join(lines_xu), encoding="utf-8")
 
     traj_ix = lammps.read_lammpstrj(p_ix)
-    traj_xu = lammps.read_lammpstrj(p_xu)
+    traj_xu = lammps.read_lammpstrj(p_xu, timestep_size=0.05, time_unit="ps")
+    assert traj_ix.times is None
+    assert np.array_equal(
+        traj_ix.metadata["timesteps"], np.arange(11, dtype=np.int64) * 100
+    )
+    assert traj_xu.times is not None
+    np.testing.assert_allclose(
+        traj_xu.times, times * 1000.0, rtol=1e-12, atol=1e-12
+    )
     expected_msd = v_sq * (times**2)
 
     with warnings.catch_warnings(record=True) as caught:

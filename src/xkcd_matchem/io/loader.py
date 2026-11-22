@@ -81,13 +81,17 @@ def load_sample(name: str) -> Any:
 def load_trajectory(
     source: str | pathlib.Path,
     fmt: str | None = None,
+    *,
+    type_map: dict[int, str] | None = None,
+    timestep_size: float | None = None,
+    time_unit: str | None = None,
 ) -> trajectory.Trajectory:
     """Loads a multi-frame trajectory (XYZ/extXYZ, XDATCAR, LAMMPS, PDB)."""
     path = _resolve_input_path(source)
     key = fmt.lower() if fmt is not None else registry.detect_format(path).name
     result: trajectory.Trajectory | None = None
     if key == "xyz":
-        result = xyz.read_xyz_trajectory(path)
+        result = xyz.read_xyz_trajectory(path, time_unit=time_unit)
     elif key == "xdatcar":
         result = vasp.read_xdatcar(path)
     elif key == "vasp":
@@ -97,7 +101,12 @@ def load_trajectory(
             else trajectory.Trajectory(frames=[vasp.read_poscar(path)])
         )
     elif key == "lammpstrj":
-        result = lammps.read_lammpstrj(path)
+        result = lammps.read_lammpstrj(
+            path,
+            type_map=type_map,
+            timestep_size=timestep_size,
+            time_unit="fs" if time_unit is None else time_unit,
+        )
     elif key == "pdb":
         result = pdb.read_pdb_trajectory(path)
     else:
