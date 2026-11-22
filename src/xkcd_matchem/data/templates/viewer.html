@@ -50,6 +50,7 @@ body {
   background: var(--ui-card);
   border: 1px solid var(--ui-border);
   border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(22, 24, 29, 0.04);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -88,9 +89,15 @@ body {
   background: #ffffff;
   color: var(--ui-ink);
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
 .xm-btn:hover { background: #eef2ff; border-color: #93c5fd; }
+.xm-btn:focus-visible,
+.xm-row select:focus-visible,
+.xm-row input:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 1px;
+}
 .xm-btn.active {
   background: #1d4ed8;
   color: #ffffff;
@@ -113,14 +120,21 @@ canvas#xm-canvas {
 canvas#xm-canvas:active { cursor: grabbing; }
 .xm-hint {
   position: absolute;
-  left: 10px;
+  right: 10px;
   bottom: 8px;
-  font-size: 0.85rem;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.78);
+  font-size: 0.84rem;
+  padding: 3px 9px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.84);
   color: #374151;
+  border: 1px solid rgba(22, 24, 29, 0.08);
   pointer-events: none;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.xm-hint.dark {
+  background: rgba(24, 26, 31, 0.84);
+  color: #e5e7eb;
+  border-color: rgba(255, 255, 255, 0.14);
 }
 .xm-actions {
   display: flex;
@@ -140,12 +154,26 @@ canvas#xm-canvas:active { cursor: grabbing; }
   background: var(--ui-card);
   border: 1px solid var(--ui-border);
   border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(22, 24, 29, 0.04);
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 11px;
   overflow-y: auto;
   max-height: 760px;
+}
+.xm-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 10px;
+  margin: 6px 0;
+  font-size: 0.92rem;
+}
+.xm-checks label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
 }
 .xm-group {
   border-bottom: 1px dashed #e2e6ef;
@@ -252,12 +280,13 @@ canvas#xm-canvas:active { cursor: grabbing; }
         <button class="xm-btn" data-view="a*">a*</button>
         <button class="xm-btn" data-view="b*">b*</button>
         <button class="xm-btn" data-view="c*">c*</button>
+        <button class="xm-btn" id="xm-reset-view" title="Reset camera (R)">Reset</button>
       </div>
     </div>
     <div class="xm-canvas-wrap">
       <canvas id="xm-canvas"></canvas>
       <div class="xm-hint" id="xm-camera-readout">
-        Drag: orbit | Shift+Drag: roll | Wheel: zoom
+        Drag: orbit | Shift+Drag: roll | Wheel: zoom | R: reset
       </div>
     </div>
     <div class="xm-actions">
@@ -341,7 +370,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
           <option value="off">Hidden</option>
         </select>
       </div>
-      <div class="xm-row">
+      <div class="xm-checks">
         <label><input type="checkbox" id="xm-show-bonds" checked /> Bonds</label>
         <label><input type="checkbox" id="xm-boundary-atoms" checked /> Boundary</label>
         <label><input type="checkbox" id="xm-center-cell" /> Center</label>
@@ -801,191 +830,48 @@ canvas#xm-canvas:active { cursor: grabbing; }
     });
   }
 
+  const LIGHT_DIR = (() => {
+    const raw = [-0.52, 0.58, 0.63];
+    const n = Math.hypot(raw[0], raw[1], raw[2]) || 1;
+    return [raw[0] / n, raw[1] / n, raw[2] / n];
+  })();
+
+  function polyShadeFactor(vA, vB, vC, basis) {
+    const wn = cross3(
+      [vB[0] - vA[0], vB[1] - vA[1], vB[2] - vA[2]],
+      [vC[0] - vA[0], vC[1] - vA[1], vC[2] - vA[2]]
+    );
+    const wnn = norm3(wn) || 1;
+    let nRot = [
+      dot3(wn, basis[0]) / wnn,
+      dot3(wn, basis[1]) / wnn,
+      dot3(wn, basis[2]) / wnn,
+    ];
+    if (nRot[2] < 0) nRot = [-nRot[0], -nRot[1], -nRot[2]];
+    const nd = Math.max(0, dot3(nRot, LIGHT_DIR));
+    return 0.68 + 0.34 * nd;
+  }
+
   function wiggledSegment(p0, p1, amp, seed) {
     if (amp <= 0.02) return [p0, p1];
-    const steps = 12;
     const dx = p1[0] - p0[0], dy = p1[1] - p0[1];
     const len = Math.hypot(dx, dy) || 1;
+    const steps = Math.max(8, Math.min(18, Math.round(len / 14)));
+    const freqScale = Math.max(0.75, Math.min(len / 95, 1.9));
+    const effAmp = amp * Math.min(1.0, len / 36);
     const nx = -dy / len, ny = dx / len;
     const pts = [];
     for (let k = 0; k <= steps; k++) {
       const t = k / steps;
       const env = Math.sin(Math.PI * t);
-      const wave = 0.75 * Math.sin(t * 4.2 + seed * 3.17) + 0.25 * Math.sin(t * 7.8 + seed * 5.13);
-      const off = amp * env * wave;
+      const wave =
+        0.78 * Math.sin(t * 3.8 * freqScale + seed * 3.17) +
+        0.22 * Math.sin(t * 6.4 * freqScale + seed * 5.13);
+      const off = effAmp * env * wave;
       pts.push([p0[0] + dx * t + nx * off, p0[1] + dy * t + ny * off]);
     }
     return pts;
   }
-
-  function renderFrame() {
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    const width = Math.max(rect.width, 320);
-    const height = Math.max(rect.height, 360);
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    const dark = isDarkBg(state.background);
-    const ink = dark ? "#F5F5F0" : "#111111";
-    ctx.fillStyle = state.background;
-    ctx.fillRect(0, 0, width, height);
-
-    const scene = buildActiveSceneData();
-    const { symbols, positions, cell, bonds, polyhedra, vectors, isosurfaces } = scene;
-    if (!positions.length) return;
-
-    const pivot = [0, 0, 0];
-    if (cell && state.cellMode !== "off") {
-      pivot[0] = 0.5 * (cell[0][0] + cell[1][0] + cell[2][0]);
-      pivot[1] = 0.5 * (cell[0][1] + cell[1][1] + cell[2][1]);
-      pivot[2] = 0.5 * (cell[0][2] + cell[1][2] + cell[2][2]);
-    } else {
-      for (const p of positions) {
-        pivot[0] += p[0]; pivot[1] += p[1]; pivot[2] += p[2];
-      }
-      pivot[0] /= positions.length;
-      pivot[1] /= positions.length;
-      pivot[2] /= positions.length;
-    }
-
-    const basis = rotationBasis();
-    const sceneSpan = computeSceneSpan(positions, cell, pivot, basis);
-    const proj = projectList(positions, pivot, basis, sceneSpan);
-
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (let i = 0; i < proj.length; i++) {
-      const r = visualRadius(symbols[i]);
-      minX = Math.min(minX, proj[i][0] - r * 1.4);
-      maxX = Math.max(maxX, proj[i][0] + r * 1.4);
-      minY = Math.min(minY, proj[i][1] - r * 1.4);
-      maxY = Math.max(maxY, proj[i][1] + r * 1.4);
-    }
-
-    let cellCorners = null;
-    if (cell && state.cellMode !== "off") {
-      const rawC = [];
-      for (let i = 0; i < 2; i++) {
-        for (let j = 0; j < 2; j++) {
-          for (let k = 0; k < 2; k++) {
-            rawC.push([
-              i * cell[0][0] + j * cell[1][0] + k * cell[2][0],
-              i * cell[0][1] + j * cell[1][1] + k * cell[2][1],
-              i * cell[0][2] + j * cell[1][2] + k * cell[2][2],
-            ]);
-          }
-        }
-      }
-      cellCorners = projectList(rawC, pivot, basis, sceneSpan);
-      for (const c of cellCorners) {
-        minX = Math.min(minX, c[0] - 0.6);
-        maxX = Math.max(maxX, c[0] + 0.6);
-        minY = Math.min(minY, c[1] - 0.6);
-        maxY = Math.max(maxY, c[1] + 0.6);
-      }
-    }
-
-    const legendPad = state.showLegend ? 38 : 14;
-    const availW = width - 48;
-    const availH = height - 40 - legendPad;
-    const spanX = Math.max(maxX - minX, 2.0);
-    const spanY = Math.max(maxY - minY, 2.0);
-    const pxPerA = Math.min(availW / spanX, availH / spanY);
-    const midX = 0.5 * (minX + maxX);
-    const midY = 0.5 * (minY + maxY);
-    const cx = width * 0.5;
-    const cy = (height - legendPad) * 0.5;
-    const toScreen = (xy) => [
-      cx + (xy[0] - midX) * pxPerA,
-      cy - (xy[1] - midY) * pxPerA,
-    ];
-
-    // Unit-cell base plane and back dashed edges
-    const cellEdgesIdx = [
-      [0, 1], [0, 2], [0, 4], [1, 3], [1, 5], [2, 3],
-      [2, 6], [3, 7], [4, 5], [4, 6], [5, 7], [6, 7],
-    ];
-    let backCornerIdx = 0;
-    if (cellCorners) {
-      for (let i = 1; i < 8; i++) {
-        if (cellCorners[i][2] < cellCorners[backCornerIdx][2]) backCornerIdx = i;
-      }
-      if (state.cellMode === "box") {
-        const baseIdx = [0, 4, 6, 2]; // (0,0,0), (1,0,0), (1,1,0), (0,1,0)
-        ctx.beginPath();
-        baseIdx.forEach((ci, idx) => {
-          const p = toScreen(cellCorners[ci]);
-          if (idx === 0) ctx.moveTo(p[0], p[1]);
-          else ctx.lineTo(p[0], p[1]);
-        });
-        ctx.closePath();
-        ctx.fillStyle = dark ? "rgba(180,190,210,0.12)" : "rgba(236,238,244,0.65)";
-        ctx.fill();
-      }
-      for (let eIdx = 0; eIdx < cellEdgesIdx.length; eIdx++) {
-        const [u, v] = cellEdgesIdx[eIdx];
-        if (u !== backCornerIdx && v !== backCornerIdx) continue;
-        drawStrokeWiggle(
-          toScreen(cellCorners[u]),
-          toScreen(cellCorners[v]),
-          dark ? "#9ca3af" : "#777777",
-          1.35,
-          true,
-          state.wiggle * 0.6,
-          eIdx + 1
-        );
-      }
-    }
-
-    // Painter's queue
-    const items = [];
-    for (let idx = 0; idx < bonds.length; idx++) {
-      const [i, j, order, shift] = bonds[idx];
-      if (i >= proj.length || j >= proj.length) continue;
-      const isInternal = shift[0] === 0 && shift[1] === 0 && shift[2] === 0;
-      if (isInternal || !cell) {
-        const iBack = proj[i][2] <= proj[j][2] ? i : j;
-        const iFront = iBack === i ? j : i;
-        const dz = proj[iFront][2] - proj[iBack][2];
-        const bondDepth = dz < 0.25
-          ? proj[iBack][2] - 0.04
-          : 0.5 * (proj[iBack][2] + proj[iFront][2]) - 0.02;
-        items.push({
-          depth: bondDepth,
-          kind: "bond",
-          p0: proj[iBack],
-          p1: proj[iFront],
-          c0: elementColor(symbols[iBack]),
-          c1: elementColor(symbols[iFront]),
-          order,
-          seed: idx + 1,
-        });
-      } else {
-        const sv = [
-          shift[0] * cell[0][0] + shift[1] * cell[1][0] + shift[2] * cell[2][0],
-          shift[0] * cell[0][1] + shift[1] * cell[1][1] + shift[2] * cell[2][1],
-          shift[0] * cell[0][2] + shift[1] * cell[1][2] + shift[2] * cell[2][2],
-        ];
-        const pi = positions[i], pj = positions[j];
-        const stubA = [pi[0] + 0.42 * (pj[0] + sv[0] - pi[0]), pi[1] + 0.42 * (pj[1] + sv[1] - pi[1]), pi[2] + 0.42 * (pj[2] + sv[2] - pi[2])];
-        const stubB = [pj[0] + 0.42 * (pi[0] - sv[0] - pj[0]), pj[1] + 0.42 * (pi[1] - sv[1] - pj[1]), pj[2] + 0.42 * (pi[2] - sv[2] - pj[2])];
-        const sProj = projectList([stubA, stubB], pivot, basis, sceneSpan);
-        items.push({ depth: proj[i][2] - 0.06, kind: "half", p0: proj[i], p1: sProj[0], col: elementColor(symbols[i]), order, seed: idx + 1 });
-        items.push({ depth: proj[j][2] - 0.06, kind: "half", p0: proj[j], p1: sProj[1], col: elementColor(symbols[j]), order, seed: idx + 100 });
-      }
-    }
-
-    if (state.style === "polyhedra" && polyhedra && polyhedra.length) {
-      for (const poly of polyhedra) {
-        const vProj = projectList(poly.vertices, pivot, basis, sceneSpan);
-        const col = elementColor(poly.center_symbol);
-        for (const [f0, f1, f2] of poly.faces) {
-          const md = (vProj[f0][2] + vProj[f1][2] + vProj[f2][2]) / 3 - 0.03;
-          items.push({ depth: md, kind: "tri", pts: [vProj[f0], vProj[f1], vProj[f2]], col });
-        }
-      }
-    }
 
   function computeLobeAxesWorld(verts, positions) {
     let cx = 0, cy = 0, cz = 0;
@@ -1399,6 +1285,181 @@ canvas#xm-canvas:active { cursor: grabbing; }
     });
   }
 
+  function renderFrame() {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(rect.width, 320);
+    const height = Math.max(rect.height, 360);
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const dark = isDarkBg(state.background);
+    const ink = dark ? "#F5F5F0" : "#111111";
+    ctx.fillStyle = state.background;
+    ctx.fillRect(0, 0, width, height);
+
+    const scene = buildActiveSceneData();
+    const { symbols, positions, cell, bonds, polyhedra, vectors, isosurfaces } = scene;
+    if (!positions.length) return;
+
+    const pivot = [0, 0, 0];
+    if (cell && state.cellMode !== "off") {
+      pivot[0] = 0.5 * (cell[0][0] + cell[1][0] + cell[2][0]);
+      pivot[1] = 0.5 * (cell[0][1] + cell[1][1] + cell[2][1]);
+      pivot[2] = 0.5 * (cell[0][2] + cell[1][2] + cell[2][2]);
+    } else {
+      for (const p of positions) {
+        pivot[0] += p[0]; pivot[1] += p[1]; pivot[2] += p[2];
+      }
+      pivot[0] /= positions.length;
+      pivot[1] /= positions.length;
+      pivot[2] /= positions.length;
+    }
+
+    const basis = rotationBasis();
+    const sceneSpan = computeSceneSpan(positions, cell, pivot, basis);
+    const proj = projectList(positions, pivot, basis, sceneSpan);
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < proj.length; i++) {
+      const r = visualRadius(symbols[i]);
+      minX = Math.min(minX, proj[i][0] - r * 1.4);
+      maxX = Math.max(maxX, proj[i][0] + r * 1.4);
+      minY = Math.min(minY, proj[i][1] - r * 1.4);
+      maxY = Math.max(maxY, proj[i][1] + r * 1.4);
+    }
+
+    let cellCorners = null;
+    if (cell && state.cellMode !== "off") {
+      const rawC = [];
+      for (let i = 0; i < 2; i++) {
+        for (let j = 0; j < 2; j++) {
+          for (let k = 0; k < 2; k++) {
+            rawC.push([
+              i * cell[0][0] + j * cell[1][0] + k * cell[2][0],
+              i * cell[0][1] + j * cell[1][1] + k * cell[2][1],
+              i * cell[0][2] + j * cell[1][2] + k * cell[2][2],
+            ]);
+          }
+        }
+      }
+      cellCorners = projectList(rawC, pivot, basis, sceneSpan);
+      for (const c of cellCorners) {
+        minX = Math.min(minX, c[0] - 0.6);
+        maxX = Math.max(maxX, c[0] + 0.6);
+        minY = Math.min(minY, c[1] - 0.6);
+        maxY = Math.max(maxY, c[1] + 0.6);
+      }
+    }
+
+    const legendPad = state.showLegend ? 38 : 14;
+    const availW = width - 48;
+    const availH = height - 40 - legendPad;
+    const spanX = Math.max(maxX - minX, 2.0);
+    const spanY = Math.max(maxY - minY, 2.0);
+    const pxPerA = Math.min(availW / spanX, availH / spanY);
+    const midX = 0.5 * (minX + maxX);
+    const midY = 0.5 * (minY + maxY);
+    const cx = width * 0.5;
+    const cy = (height - legendPad) * 0.5;
+    const toScreen = (xy) => [
+      cx + (xy[0] - midX) * pxPerA,
+      cy - (xy[1] - midY) * pxPerA,
+    ];
+
+    // Unit-cell base plane and back dashed edges
+    const cellEdgesIdx = [
+      [0, 1], [0, 2], [0, 4], [1, 3], [1, 5], [2, 3],
+      [2, 6], [3, 7], [4, 5], [4, 6], [5, 7], [6, 7],
+    ];
+    let backCornerIdx = 0;
+    if (cellCorners) {
+      for (let i = 1; i < 8; i++) {
+        if (cellCorners[i][2] < cellCorners[backCornerIdx][2]) backCornerIdx = i;
+      }
+      if (state.cellMode === "box") {
+        const baseIdx = [0, 4, 6, 2]; // (0,0,0), (1,0,0), (1,1,0), (0,1,0)
+        ctx.beginPath();
+        baseIdx.forEach((ci, idx) => {
+          const p = toScreen(cellCorners[ci]);
+          if (idx === 0) ctx.moveTo(p[0], p[1]);
+          else ctx.lineTo(p[0], p[1]);
+        });
+        ctx.closePath();
+        ctx.fillStyle = dark ? "rgba(180,190,210,0.12)" : "rgba(236,238,244,0.65)";
+        ctx.fill();
+      }
+      for (let eIdx = 0; eIdx < cellEdgesIdx.length; eIdx++) {
+        const [u, v] = cellEdgesIdx[eIdx];
+        if (u !== backCornerIdx && v !== backCornerIdx) continue;
+        drawStrokeWiggle(
+          toScreen(cellCorners[u]),
+          toScreen(cellCorners[v]),
+          dark ? "rgba(156,163,175,0.68)" : "rgba(110,118,129,0.62)",
+          1.15,
+          true,
+          state.wiggle * 0.45,
+          eIdx + 1
+        );
+      }
+    }
+
+    // Painter's queue
+    const items = [];
+    for (let idx = 0; idx < bonds.length; idx++) {
+      const [i, j, order, shift] = bonds[idx];
+      if (i >= proj.length || j >= proj.length) continue;
+      const isInternal = shift[0] === 0 && shift[1] === 0 && shift[2] === 0;
+      if (isInternal || !cell) {
+        const iBack = proj[i][2] <= proj[j][2] ? i : j;
+        const iFront = iBack === i ? j : i;
+        const dz = proj[iFront][2] - proj[iBack][2];
+        const bondDepth = dz < 0.25
+          ? proj[iBack][2] - 0.04
+          : 0.5 * (proj[iBack][2] + proj[iFront][2]) - 0.02;
+        items.push({
+          depth: bondDepth,
+          kind: "bond",
+          p0: proj[iBack],
+          p1: proj[iFront],
+          c0: elementColor(symbols[iBack]),
+          c1: elementColor(symbols[iFront]),
+          order,
+          seed: idx + 1,
+        });
+      } else {
+        const sv = [
+          shift[0] * cell[0][0] + shift[1] * cell[1][0] + shift[2] * cell[2][0],
+          shift[0] * cell[0][1] + shift[1] * cell[1][1] + shift[2] * cell[2][1],
+          shift[0] * cell[0][2] + shift[1] * cell[1][2] + shift[2] * cell[2][2],
+        ];
+        const pi = positions[i], pj = positions[j];
+        const stubA = [pi[0] + 0.42 * (pj[0] + sv[0] - pi[0]), pi[1] + 0.42 * (pj[1] + sv[1] - pi[1]), pi[2] + 0.42 * (pj[2] + sv[2] - pi[2])];
+        const stubB = [pj[0] + 0.42 * (pi[0] - sv[0] - pj[0]), pj[1] + 0.42 * (pi[1] - sv[1] - pj[1]), pj[2] + 0.42 * (pi[2] - sv[2] - pj[2])];
+        const sProj = projectList([stubA, stubB], pivot, basis, sceneSpan);
+        items.push({ depth: proj[i][2] - 0.06, kind: "half", p0: proj[i], p1: sProj[0], col: elementColor(symbols[i]), order, seed: idx + 1 });
+        items.push({ depth: proj[j][2] - 0.06, kind: "half", p0: proj[j], p1: sProj[1], col: elementColor(symbols[j]), order, seed: idx + 100 });
+      }
+    }
+
+    if (state.style === "polyhedra" && polyhedra && polyhedra.length) {
+      for (const poly of polyhedra) {
+        const vProj = projectList(poly.vertices, pivot, basis, sceneSpan);
+        const col = elementColor(poly.center_symbol);
+        for (const [f0, f1, f2] of poly.faces) {
+          const md = (vProj[f0][2] + vProj[f1][2] + vProj[f2][2]) / 3 - 0.03;
+          const shade = polyShadeFactor(
+            poly.vertices[f0],
+            poly.vertices[f1],
+            poly.vertices[f2],
+            basis
+          );
+          items.push({ depth: md, kind: "tri", pts: [vProj[f0], vProj[f1], vProj[f2]], col, shade });
+        }
+      }
+    }
+
     if (state.showIso && isosurfaces && isosurfaces.length) {
       for (const iso of isosurfaces) {
         const res = collectIsoLobeArt(iso, pivot, basis, sceneSpan, toScreen, proj, positions);
@@ -1464,10 +1525,11 @@ canvas#xm-canvas:active { cursor: grabbing; }
         ctx.lineTo(s[1][0], s[1][1]);
         ctx.lineTo(s[2][0], s[2][1]);
         ctx.closePath();
-        ctx.fillStyle = hexToRgba(item.col, 0.42);
+        ctx.fillStyle = shadeHexRgba(item.col, 0.44, item.shade || 0.92);
         ctx.fill();
         ctx.strokeStyle = ink;
-        ctx.lineWidth = 1.0;
+        ctx.lineWidth = 1.05;
+        ctx.lineJoin = "round";
         ctx.stroke();
       } else if (item.kind === "bond") {
         if (!state.showBonds || state.style === "spacefill" || state.style === "polyhedra") continue;
@@ -1476,7 +1538,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
         if (!state.showBonds || state.style === "spacefill" || state.style === "polyhedra") continue;
         drawHalfBond(toScreen(item.p0), toScreen(item.p1), item.col, ink, stickHalfPx, item.order, item.seed);
       } else if (item.kind === "cell_edge") {
-        drawStrokeWiggle(toScreen(cellCorners[item.u]), toScreen(cellCorners[item.v]), ink, 1.65, false, state.wiggle * 0.6, item.seed);
+        drawStrokeWiggle(toScreen(cellCorners[item.u]), toScreen(cellCorners[item.v]), ink, 1.75, false, state.wiggle * 0.55, item.seed);
       } else {
         drawAtom(toScreen(item.p), visualRadius(item.sym) * pxPerA, elementColor(item.sym), ink, outlineW, item.idx + 1);
       }
@@ -1542,11 +1604,11 @@ canvas#xm-canvas:active { cursor: grabbing; }
       ctx.moveTo(ox, oy);
       ctx.lineTo(tx, ty);
       ctx.strokeStyle = colors[v.k];
-      ctx.lineWidth = 2.4;
+      ctx.lineWidth = 1.9;
       ctx.lineCap = "round";
       ctx.stroke();
       const ux = v.dx / seg, uy = v.dy / seg;
-      const ah = 8, aw = 4.2;
+      const ah = 7.2, aw = 3.6;
       ctx.beginPath();
       ctx.moveTo(tx, ty);
       ctx.lineTo(tx - ah * ux + aw * uy, ty - ah * uy - aw * ux);
@@ -1554,14 +1616,18 @@ canvas#xm-canvas:active { cursor: grabbing; }
       ctx.closePath();
       ctx.fillStyle = colors[v.k];
       ctx.fill();
-      ctx.font = 'bold 15px "__XM_FONT_FAMILY__", sans-serif';
-      ctx.fillStyle = colors[v.k];
+      ctx.font = 'bold 14.5px "__XM_FONT_FAMILY__", sans-serif';
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(names[v.k], tx + ux * 12, ty + uy * 12);
+      const lx = tx + ux * 12, ly = ty + uy * 12;
+      ctx.lineWidth = 3.2;
+      ctx.strokeStyle = state.background;
+      ctx.strokeText(names[v.k], lx, ly);
+      ctx.fillStyle = colors[v.k];
+      ctx.fillText(names[v.k], lx, ly);
     }
     ctx.beginPath();
-    ctx.arc(ox, oy, 3.2, 0, Math.PI * 2);
+    ctx.arc(ox, oy, 2.8, 0, Math.PI * 2);
     ctx.fillStyle = ink;
     ctx.fill();
     ctx.restore();
@@ -1671,7 +1737,22 @@ canvas#xm-canvas:active { cursor: grabbing; }
       else ctx.lineTo(px, py);
     }
     ctx.closePath();
-    ctx.fillStyle = fillCol;
+    if (radius >= 4.0) {
+      const grad = ctx.createRadialGradient(
+        cx - radius * 0.32,
+        cy - radius * 0.34,
+        radius * 0.08,
+        cx,
+        cy,
+        radius * 1.08
+      );
+      grad.addColorStop(0.0, shadeHexRgba(fillCol, 1.0, 1.16));
+      grad.addColorStop(0.58, fillCol);
+      grad.addColorStop(1.0, shadeHexRgba(fillCol, 1.0, 0.80));
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = fillCol;
+    }
     ctx.fill();
     ctx.strokeStyle = ink;
     ctx.lineWidth = outlineW;
@@ -1793,17 +1874,25 @@ canvas#xm-canvas:active { cursor: grabbing; }
       ? "atoms = atoms.center_in_cell()\n" : "";
     const repeatLine = (na > 1 || nb > 1 || nc > 1)
       ? `atoms = atoms.repeat((${na}, ${nb}, ${nc}))\n` : "";
-    const fn = baseData.cell ? "plot_crystal" : "plot_molecule";
+    const hasIso = Boolean(baseData.isosurfaces && baseData.isosurfaces.length);
+    const fn = hasIso
+      ? "plot_isosurface"
+      : baseData.cell
+      ? "plot_crystal"
+      : "plot_molecule";
     let extra = "";
-    if (baseData.cell) {
+    if (hasIso) {
+      extra += `, shade=${JSON.stringify(state.isoShade)}`;
+    } else if (baseData.cell) {
       if (state.cellMode === "off") extra += ", show_cell=False";
       else if (state.cellMode === "wireframe") extra += ', show_cell="wireframe"';
       if (state.axesMode !== "edges") extra += `, crystal_axes=${JSON.stringify(state.axesMode)}`;
       if (!state.boundaryAtoms) extra += ", boundary_atoms=False";
     }
-    if (!state.showBonds) extra += ", show_bonds=False";
-    const plotCall =
-      `xm.${fn}(atoms, style=${JSON.stringify(state.style)}, palette=${palExpr}, camera=cam${extra})`;
+    if (!hasIso && !state.showBonds) extra += ", show_bonds=False";
+    const plotCall = hasIso
+      ? `xm.plot_isosurface(atoms, camera=cam${extra})`
+      : `xm.${fn}(atoms, style=${JSON.stringify(state.style)}, palette=${palExpr}, camera=cam${extra})`;
     const bgNorm = state.background.toUpperCase();
     const callBlock = bgNorm !== "#FFFFFF"
       ? `with xm.xkcd_style("classic", background=${JSON.stringify(bgNorm)}):\n    ax = ${plotCall}`
@@ -1825,6 +1914,15 @@ canvas#xm-canvas:active { cursor: grabbing; }
     return out;
   }
 
+  function syncBackgroundButtons() {
+    const curBg = state.background.toUpperCase();
+    document.querySelectorAll("[data-bg]").forEach((btn) => {
+      btn.classList.toggle("active", (btn.dataset.bg || "").toUpperCase() === curBg);
+    });
+    const hint = document.getElementById("xm-camera-readout");
+    if (hint) hint.classList.toggle("dark", isDarkBg(state.background));
+  }
+
   function updateMetaUI(symbols, cell) {
     const counts = {};
     for (const s of symbols) counts[s] = (counts[s] || 0) + 1;
@@ -1833,9 +1931,10 @@ canvas#xm-canvas:active { cursor: grabbing; }
     document.getElementById("xm-struct-meta").textContent =
       `${formula} | ${symbols.length} atoms | ${cell ? "Periodic" : "Molecule"}`;
     document.getElementById("xm-camera-readout").textContent =
-      `az=${state.azimuth.toFixed(1)} deg | el=${state.elevation.toFixed(1)} deg | zoom=${state.zoom.toFixed(2)} | Drag: orbit`;
+      `az=${state.azimuth.toFixed(1)} deg | el=${state.elevation.toFixed(1)} deg | zoom=${state.zoom.toFixed(2)} | R: reset`;
     document.getElementById("xm-supercell-group").style.display = cell ? "block" : "none";
     document.getElementById("xm-py-preview").value = buildPythonSnippet();
+    syncBackgroundButtons();
     syncSwatches(symbols);
   }
 
@@ -1938,11 +2037,11 @@ canvas#xm-canvas:active { cursor: grabbing; }
         const fillCol = dark ? "rgba(180,190,210,0.12)" : "rgba(236,238,244,0.65)";
         parts.push(`<polygon points="${ptsStr}" fill="${fillCol}" stroke="none"/>`);
       }
-      const dashCol = dark ? "#9ca3af" : "#777777";
+      const dashCol = dark ? "#9ca3af" : "#6e7681";
       for (const [u, v] of cellEdgesIdx) {
         if (u !== backCornerIdx && v !== backCornerIdx) continue;
         const p0 = sc(cellCorners[u]), p1 = sc(cellCorners[v]);
-        parts.push(`<line x1="${p0[0].toFixed(1)}" y1="${p0[1].toFixed(1)}" x2="${p1[0].toFixed(1)}" y2="${p1[1].toFixed(1)}" stroke="${dashCol}" stroke-width="1.35" stroke-dasharray="6,5" stroke-linecap="round"/>`);
+        parts.push(`<line x1="${p0[0].toFixed(1)}" y1="${p0[1].toFixed(1)}" x2="${p1[0].toFixed(1)}" y2="${p1[1].toFixed(1)}" stroke="${dashCol}" stroke-opacity="0.65" stroke-width="1.15" stroke-dasharray="6,5" stroke-linecap="round"/>`);
       }
     }
 
@@ -1980,7 +2079,13 @@ canvas#xm-canvas:active { cursor: grabbing; }
         const col = elementColor(poly.center_symbol);
         for (const [f0, f1, f2] of poly.faces) {
           const md = (vProj[f0][2] + vProj[f1][2] + vProj[f2][2]) / 3 - 0.03;
-          q.push({ d: md, t: "tri", pts: [sc(vProj[f0]), sc(vProj[f1]), sc(vProj[f2])], c: col });
+          const sh = polyShadeFactor(
+            poly.vertices[f0],
+            poly.vertices[f1],
+            poly.vertices[f2],
+            basis
+          );
+          q.push({ d: md, t: "tri", pts: [sc(vProj[f0]), sc(vProj[f1]), sc(vProj[f2])], c: shadeHexRgba(col, 0.44, sh) });
         }
       }
     }
@@ -2065,12 +2170,19 @@ canvas#xm-canvas:active { cursor: grabbing; }
           for (let d = -diag; d <= diag; d += 9.0) {
             const qPts = wiggledSegment([bx0 + d, by1], [bx0 + d + diag * 0.84, by1 - diag], Math.max(state.wiggle * 0.5, 0.5), Math.abs(Math.round(d)));
             parts.push(`<polyline points="${_svgPolylinePoints(qPts)}"/>`);
-            if (state.isoShade === "crosshatch") {
+          }
+          parts.push("</g>");
+          if (state.isoShade === "crosshatch" && art.corePolys.length) {
+            const cidCore = `xm-iso-core-${++isoClipCounter}`;
+            const cPath = art.corePolys.map((p) => `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}L${p[1][0].toFixed(1)},${p[1][1].toFixed(1)}L${p[2][0].toFixed(1)},${p[2][1].toFixed(1)}Z`).join("");
+            parts.push(`<defs><clipPath id="${cidCore}"><path d="${cPath}"/></clipPath></defs>`);
+            parts.push(`<g clip-path="url(#${cidCore})" fill="none" stroke="${art.col}" stroke-opacity="0.42" stroke-width="0.70" stroke-linecap="round">`);
+            for (let d = -diag; d <= diag; d += 9.0) {
               const qPts2 = wiggledSegment([bx0 + d, by0], [bx0 + d + diag * 0.90, by0 + diag], Math.max(state.wiggle * 0.5, 0.5), Math.abs(Math.round(d)) + 13);
               parts.push(`<polyline points="${_svgPolylinePoints(qPts2)}"/>`);
             }
+            parts.push("</g>");
           }
-          parts.push("</g>");
         }
         const [bx0, by0, bx1, by1] = art.bbox;
         const rcx = 0.5 * (bx0 + bx1), rcy = 0.5 * (by0 + by1);
@@ -2096,7 +2208,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
         parts.push(`<line x1="${it.a[0].toFixed(1)}" y1="${it.a[1].toFixed(1)}" x2="${it.b[0].toFixed(1)}" y2="${it.b[1].toFixed(1)}" stroke="${it.c}" stroke-width="2.0" stroke-linecap="round"/>`);
       } else if (it.t === "tri") {
         const ptsStr = it.pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
-        parts.push(`<polygon points="${ptsStr}" fill="${it.c}" fill-opacity="0.42" stroke="${ink}" stroke-width="1.0"/>`);
+        parts.push(`<polygon points="${ptsStr}" fill="${it.c}" stroke="${ink}" stroke-width="1.05" stroke-linejoin="round"/>`);
       } else if (it.t === "b2") {
         const dx = it.b[0] - it.a[0], dy = it.b[1] - it.a[1], l = Math.hypot(dx, dy) || 1;
         const nx = -dy / l, ny = dx / l;
@@ -2469,6 +2581,80 @@ canvas#xm-canvas:active { cursor: grabbing; }
     });
   });
 
+  function syncControlInputs() {
+    document.getElementById("xm-style").value = state.style;
+    document.getElementById("xm-palette").value = state.palette;
+    document.getElementById("xm-bg-color").value = state.background;
+    document.getElementById("xm-cell-mode").value = state.cellMode;
+    document.getElementById("xm-axes-mode").value = state.axesMode;
+    document.getElementById("xm-iso-shade").value = state.isoShade;
+    document.getElementById("xm-persp").value = state.perspective;
+    document.getElementById("xm-persp-val").textContent = state.perspective.toFixed(2);
+    document.getElementById("xm-zoom").value = state.zoom;
+    document.getElementById("xm-zoom-val").textContent = state.zoom.toFixed(2);
+    document.getElementById("xm-scale").value = state.scale;
+    document.getElementById("xm-scale-val").textContent = state.scale.toFixed(2);
+    document.getElementById("xm-na").value = state.supercell[0];
+    document.getElementById("xm-nb").value = state.supercell[1];
+    document.getElementById("xm-nc").value = state.supercell[2];
+    syncBackgroundButtons();
+  }
+
+  function applySampleState(smp, isUpload) {
+    currentSample = smp;
+    baseData = cloneStruct(smp);
+    const cam = smp.camera || {};
+    state.azimuth = cam.azimuth ?? -118;
+    state.elevation = cam.elevation ?? 24;
+    state.roll = cam.roll ?? 0;
+    state.perspective = cam.perspective ?? 0;
+    state.zoom = cam.zoom ?? 1.0;
+    state.supercell = [1, 1, 1];
+    state.customColors = Object.assign({}, smp.custom_colors || {});
+    if (smp.style) {
+      state.style = smp.style;
+    } else if (isUpload && !smp.cell && state.style === "polyhedra") {
+      state.style = "ball_and_stick";
+    }
+    if (smp.palette_name) state.palette = smp.palette_name;
+    if (smp.show_cell !== undefined) {
+      state.cellMode = resolveInitialCellMode(smp.show_cell);
+      state.axesMode = resolveInitialAxesMode(smp.show_cell);
+    }
+    state.isoShade = smp.iso_shade || "solid";
+    document.querySelectorAll("#xm-view-buttons .xm-btn").forEach((b) => {
+      b.classList.remove("active");
+    });
+    syncControlInputs();
+    syncTrajectoryControls();
+    renderFrame();
+  }
+
+  document.getElementById("xm-reset-view").addEventListener("click", () => {
+    const cam = currentSample.camera || {};
+    state.azimuth = cam.azimuth ?? -118;
+    state.elevation = cam.elevation ?? 24;
+    state.roll = cam.roll ?? 0;
+    state.perspective = cam.perspective ?? 0;
+    state.zoom = cam.zoom ?? 1.0;
+    document.querySelectorAll("#xm-view-buttons .xm-btn").forEach((b) => {
+      b.classList.remove("active");
+    });
+    syncControlInputs();
+    renderFrame();
+  });
+
+  window.addEventListener("keydown", (e) => {
+    const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : "";
+    if (tag === "input" || tag === "select" || tag === "textarea") return;
+    if (e.key === "r" || e.key === "R") {
+      document.getElementById("xm-reset-view").click();
+    } else if (e.key === " " && currentSample.frames && currentSample.frames.length > 1) {
+      e.preventDefault();
+      document.getElementById("xm-traj-play").click();
+    }
+  });
+
   if (samples.length > 1) {
     const grp = document.getElementById("xm-sample-group");
     const sel = document.getElementById("xm-sample-select");
@@ -2480,20 +2666,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
       sel.appendChild(opt);
     });
     sel.addEventListener("change", (e) => {
-      currentSample = samples[parseInt(e.target.value, 10)];
-      baseData = cloneStruct(currentSample);
-      state.supercell = [1, 1, 1];
-      document.getElementById("xm-na").value = 1;
-      document.getElementById("xm-nb").value = 1;
-      document.getElementById("xm-nc").value = 1;
-      if (currentSample.style) {
-        state.style = currentSample.style;
-        document.getElementById("xm-style").value = state.style;
-      }
-      state.isoShade = currentSample.iso_shade || "solid";
-      document.getElementById("xm-iso-shade").value = state.isoShade;
-      syncTrajectoryControls();
-      renderFrame();
+      applySampleState(samples[parseInt(e.target.value, 10)], false);
     });
   }
 
@@ -2502,11 +2675,7 @@ canvas#xm-canvas:active { cursor: grabbing; }
     if (!file) return;
     try {
       const txt = await file.text();
-      currentSample = parseUploadedFile(file.name, txt);
-      baseData = cloneStruct(currentSample);
-      state.supercell = [1, 1, 1];
-      syncTrajectoryControls();
-      renderFrame();
+      applySampleState(parseUploadedFile(file.name, txt), true);
       document.getElementById("xm-status").textContent = `Loaded ${file.name}`;
     } catch (err) {
       document.getElementById("xm-status").textContent = err.message;
