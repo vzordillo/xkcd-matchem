@@ -9,6 +9,7 @@ authors:
     affiliation: "Nara Institute of Science and Technology"
 version: 0.1.0
 date-released: "2026-11-22"
+doi: "10.5281/zenodo.24450307"
 license: Apache-2.0
 repository-code: "https://github.com/vzordillo/xkcd-matchem"
 url: "https://vzordillo.github.io/xkcd-matchem/"
