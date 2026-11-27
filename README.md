@@ -6,6 +6,7 @@
 [![Launch Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/vzordillo/xkcd-matchem/main?urlpath=lab%2Ftree%2Fbook%2Ftutorials%2F01_quickstart_and_themes.ipynb)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/downloads/)
 [![Code License: Apache-2.0](https://img.shields.io/badge/code-Apache--2.0-green.svg)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24450307.svg)](https://doi.org/10.5281/zenodo.24450307)
 
 **A clean, approachable xkcd-style Python suite for visualizing molecules, crystals, electronic structure, spectra, reactions, and trajectories — with 29 zero-dependency file readers and an offline Interactive 3D Studio.**
 
@@ -145,6 +146,7 @@ If `xkcd-matchem` helps with your poster, talk, or tutorial, please cite it via 
   year        = {2026},
   version     = {0.1.0},
   url         = {https://github.com/vzordillo/xkcd-matchem}
+  doi         = {https://doi.org/10.5281/zenodo.24450307}
 }
 ```
 
